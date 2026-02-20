@@ -56,3 +56,39 @@
 ---
 
 <!-- NOWE WPISY DODAWAJ PONIZEJ TEJ LINII -->
+
+## 2026-02-20 - Dzien 1: Commit bazowy + naprawa builda
+
+**Sesja z:** Claude Code (Sonnet 4.6)
+
+**Co zrobiono:**
+- Zrobiono porzadek z git: commitujemy caly kod ktory istnial ale nie byl w repo
+- Wykluczone z repo: external-deps/ (59MB bibl.), jdhole-skills/, jdhole-mcp-servers/ (wlasne git repo)
+- Zaktualizowany .gitignore
+- PROBLEM ZNALEZIONY: projekt zostal przeniesiony z "Moj dysk" na Desktop, symlinki w node_modules byly zepsute
+- NAPRAWIONE: package.json - zmiana sciezek z `file:../` na `file:./external-deps/`
+- Usuniete nieistniejace zaleznosci: smart-chunks, smart-instruct-model
+- npm install przebudowal symlinki, build dziala
+- npm run build: dist/main.js 882kb w 158ms - SUKCES
+
+**Pliki zmienione:**
+- `.gitignore` - external-deps/, jdhole-*, dodane do ignorowanych
+- `package.json` - naprawione sciezki zaleznosci
+- `package-lock.json` - przebudowany po npm install
+- 58 nowych plikow src/ i dokumentacja (commit 2)
+
+**Co zostalo POTWIERDZONE:**
+- Plugin buduje sie bez bledow (npm run build)
+- Plugin kopiuje sie automatycznie do vaultu Obsidiana
+
+**Co NIE ZOSTALO zweryfikowane (nastepny krok):**
+- Czy plugin laduje sie w Obsidianie bez bledow
+- Czy chat z AI dziala
+- Czy system agentow dziala
+- Czy MCP, pamiec, uprawnienia dzialaja
+
+**Nastepne kroki:**
+- Otworz Obsidiana i sprawdz czy plugin sie laduje
+- Przetestuj podstawowy chat z AI
+- Sprawdz konsole pluginu czy sa errory
+- Zdecyduj co testujemy jako pierwsze z "niezweryfikowanych" funkcji
