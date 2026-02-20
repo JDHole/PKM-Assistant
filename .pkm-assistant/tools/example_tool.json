@@ -1,0 +1,21 @@
+{
+    "name": "web_search",
+    "description": "Search the web for information using Brave Search",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Search query"
+            },
+            "count": {
+                "type": "number",
+                "description": "Number of results (default: 5)"
+            }
+        },
+        "required": [
+            "query"
+        ]
+    },
+    "mcp_server": "brave-search"
+}

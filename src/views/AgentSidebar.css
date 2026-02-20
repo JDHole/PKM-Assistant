@@ -1,0 +1,167 @@
+/* Agent Sidebar Styles */
+
+.agent-sidebar {
+    padding: 10px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.agent-sidebar-header {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 10px;
+}
+
+.agent-sidebar-header h3 {
+    margin: 0;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+/* Agent List */
+.agent-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.agent-section {
+    margin-bottom: 15px;
+}
+
+.agent-section h4 {
+    font-size: 0.75em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 8px 0;
+    letter-spacing: 0.05em;
+}
+
+/* Agent Item */
+.agent-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    margin-bottom: 4px;
+    gap: 10px;
+}
+
+.agent-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.agent-item.active {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.agent-item.active:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* Agent Emoji */
+.agent-emoji {
+    font-size: 1.4em;
+    width: 28px;
+    text-align: center;
+}
+
+/* Agent Info */
+.agent-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.agent-name {
+    font-weight: 500;
+    font-size: 0.95em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-role {
+    font-size: 0.75em;
+    color: var(--text-muted);
+}
+
+.agent-item.active .agent-role {
+    color: var(--text-on-accent);
+    opacity: 0.8;
+}
+
+/* Active Badge */
+.agent-active-badge {
+    color: var(--text-on-accent);
+    font-size: 0.6em;
+    opacity: 0.8;
+}
+
+/* Footer */
+.agent-sidebar-footer {
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+    margin-top: auto;
+}
+
+.agent-add-button {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--background-modifier-border);
+    border: none;
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.15s ease;
+}
+
+.agent-add-button:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* Error state */
+.agent-error {
+    color: var(--text-error);
+    font-size: 0.9em;
+    padding: 10px;
+}
+
+/* Agent Creator Modal */
+.agent-creator-modal {
+    padding: 20px;
+}
+
+.agent-creator-modal h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+.agent-creator-modal .setting-item {
+    border-top: none;
+    padding-top: 12px;
+}
+
+.agent-creator-modal textarea {
+    min-height: 100px;
+}
+
+.agent-creator-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agent-creator-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+}

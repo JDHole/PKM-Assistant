@@ -1,0 +1,613 @@
+/* PKM Assistant Chat View Styles */
+/* Designed to integrate seamlessly with Obsidian themes */
+
+/* ===== MAIN CONTAINER ===== */
+.pkm-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  background-color: var(--background-primary);
+}
+
+.pkm-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+}
+
+/* ===== HEADER ===== */
+.pkm-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Agent Controls */
+.agent-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-dropdown {
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.agent-dropdown:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+/* Session Controls */
+.session-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-dropdown {
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  max-width: 150px;
+  cursor: pointer;
+}
+
+.session-dropdown:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.session-new,
+.session-save,
+.chat-permissions-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.chat-permissions-btn {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  font-size: 1.1em;
+  padding: 2px 8px;
+}
+
+.chat-permissions-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.session-new {
+  background-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.session-new:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.session-save {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.session-save:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.autosave-status {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  min-width: 60px;
+}
+
+/* Token counter */
+.token-counter {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.token-counter.token-warning {
+  color: var(--text-error);
+  font-weight: 500;
+}
+
+/* ===== MESSAGES AREA ===== */
+.pkm-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background-color: var(--background-primary);
+}
+
+/* ===== MESSAGE WRAPPER ===== */
+.pkm-chat-message {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== MESSAGE ROW (contains avatar + bubble) ===== */
+.pkm-chat-message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+/* USER messages - right aligned, no avatar */
+.pkm-chat-message.user {
+  align-items: flex-end;
+}
+
+.pkm-chat-message.user .pkm-chat-message-row {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+/* ASSISTANT messages - left aligned with avatar */
+.pkm-chat-message.assistant {
+  align-items: flex-start;
+}
+
+.pkm-chat-message.assistant .pkm-chat-message-row {
+  flex-direction: row;
+}
+
+/* ===== AVATAR ===== */
+.pkm-chat-avatar {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: var(--background-secondary-alt);
+  border: 2px solid var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* ===== MESSAGE BUBBLE ===== */
+.pkm-chat-bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: var(--radius-m);
+  word-wrap: break-word;
+  position: relative;
+}
+
+/* User bubble - accent color, rounded left */
+.pkm-chat-message.user .pkm-chat-bubble {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-bottom-right-radius: var(--radius-s);
+}
+
+/* Assistant bubble - secondary bg, rounded right */
+.pkm-chat-message.assistant .pkm-chat-bubble {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-bottom-left-radius: var(--radius-s);
+}
+
+/* ===== MESSAGE CONTENT ===== */
+.pkm-chat-content {
+  font-size: var(--font-text-size);
+  line-height: 1.6;
+}
+
+.pkm-chat-content p {
+  margin: 0;
+}
+
+.pkm-chat-content p+p {
+  margin-top: 8px;
+}
+
+/* Code blocks */
+.pkm-chat-content pre {
+  background-color: var(--code-background);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  margin: 10px 0;
+  overflow-x: auto;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.pkm-chat-content code {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  background-color: var(--code-background);
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+}
+
+.pkm-chat-content pre code {
+  padding: 0;
+  background: none;
+}
+
+/* Links in assistant messages */
+.pkm-chat-message.assistant .pkm-chat-content a {
+  color: var(--link-color);
+}
+
+.pkm-chat-message.assistant .pkm-chat-content a:hover {
+  color: var(--link-color-hover);
+}
+
+/* ===== TIMESTAMP ===== */
+.pkm-chat-timestamp {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.pkm-chat-message.user .pkm-chat-timestamp {
+  text-align: right;
+}
+
+.pkm-chat-message.assistant .pkm-chat-timestamp {
+  text-align: left;
+  margin-left: 46px;
+  /* avatar width + gap */
+}
+
+/* ===== ACTION BUTTONS (on hover) ===== */
+.pkm-chat-actions {
+  display: flex;
+  gap: 2px;
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.pkm-chat-bubble:hover .pkm-chat-actions {
+  opacity: 1;
+}
+
+.pkm-action-btn,
+.pkm-chat-copy-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+  opacity: 0.7;
+  transition: all 0.15s ease;
+}
+
+.pkm-action-btn:hover,
+.pkm-chat-copy-btn:hover {
+  background: var(--background-modifier-hover);
+  opacity: 1;
+}
+
+.pkm-react-btn.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  opacity: 1;
+}
+
+/* ===== TYPING INDICATOR ===== */
+.pkm-chat-typing {
+  display: flex;
+  gap: 4px;
+  padding: 8px 4px;
+  align-items: center;
+}
+
+.pkm-chat-typing span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  animation: typing 1.4s ease-in-out infinite;
+}
+
+.pkm-chat-typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.pkm-chat-typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===== INPUT AREA ===== */
+.pkm-chat-input-container {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 12px;
+  background-color: var(--background-secondary);
+}
+
+.pkm-chat-input {
+  width: 100%;
+  min-height: 60px;
+  max-height: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  resize: none;
+  margin-bottom: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.pkm-chat-input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.pkm-chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pkm-chat-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Buttons */
+.pkm-chat-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pkm-chat-send-button,
+.pkm-chat-stop-button {
+  padding: 8px 20px;
+  border-radius: var(--radius-s);
+  border: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pkm-chat-send-button {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.pkm-chat-send-button:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.pkm-chat-stop-button {
+  background-color: var(--text-error);
+  color: white;
+}
+
+.pkm-chat-stop-button:hover {
+  opacity: 0.85;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ===== EDIT MODE ===== */
+.pkm-edit-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 10px;
+  border: 2px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: inherit;
+  resize: vertical;
+}
+
+.pkm-edit-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pkm-edit-save,
+.pkm-edit-cancel {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.pkm-edit-save {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.pkm-edit-cancel {
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+/* ===== TOOL CALL DISPLAY ===== */
+.tool-call-container {
+  margin: 8px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--background-secondary);
+}
+
+.tool-call-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tool-call-icon {
+  font-size: 1.1em;
+}
+
+.tool-call-name {
+  font-family: var(--font-monospace);
+  font-weight: 500;
+  flex: 1;
+}
+
+.tool-call-status {
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  font-size: 0.85em;
+}
+
+.tool-call-status.success {
+  background: rgba(0, 200, 83, 0.15);
+  color: var(--text-success, #00c853);
+}
+
+.tool-call-status.error {
+  background: rgba(255, 82, 82, 0.15);
+  color: var(--text-error);
+}
+
+.tool-call-status.pending {
+  background: rgba(255, 193, 7, 0.15);
+  color: var(--text-warning, #ffc107);
+}
+
+.tool-call-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.tool-call-toggle.expanded {
+  transform: rotate(180deg);
+}
+
+.tool-call-body {
+  padding: 10px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.tool-call-body.collapsed {
+  display: none;
+}
+
+.tool-call-body pre {
+  margin: 4px 0;
+  padding: 8px;
+  background: var(--background-primary);
+  border-radius: var(--radius-s);
+  overflow-x: auto;
+  font-size: 0.9em;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tool-call-input,
+.tool-call-output {
+  margin-bottom: 8px;
+}
+
+.tool-call-output:last-child {
+  margin-bottom: 0;
+}
+
+/* ===== ERROR MESSAGES ===== */
+.pkm-chat-error {
+  color: var(--text-error) !important;
+  background-color: rgba(255, 82, 82, 0.1) !important;
+  border-color: var(--text-error) !important;
+}
+
+/* ===== SCROLLBAR (Obsidian-native) ===== */
+.pkm-chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pkm-chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pkm-chat-messages::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-bg);
+  border-radius: 4px;
+}
+
+.pkm-chat-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-active-thumb-bg);
+}

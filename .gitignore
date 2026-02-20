@@ -12,9 +12,9 @@ ref
 
 .git-dev
 
-# Nested repositories
-jdhole-skills/.git
-jdhole-mcp-servers/.git
-external-deps/jsbrains/.git
-external-deps/obsidian-smart-env/.git
-external-deps/smart-context-obsidian/.git
+# External dependencies (large, unmodified libraries)
+external-deps/
+
+# Separate tool repositories (managed independently)
+jdhole-skills/
+jdhole-mcp-servers/
