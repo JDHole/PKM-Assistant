@@ -1,0 +1,20 @@
+.DS_Store
+.env
+.obsidian
+.smart-connections
+.vscode
+dist
+node_modules
+stylesheets
+ref
+
+*.sublime-*
+
+.git-dev
+
+# Nested repositories
+jdhole-skills/.git
+jdhole-mcp-servers/.git
+external-deps/jsbrains/.git
+external-deps/obsidian-smart-env/.git
+external-deps/smart-context-obsidian/.git
