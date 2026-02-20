@@ -87,8 +87,24 @@
 - Czy system agentow dziala
 - Czy MCP, pamiec, uprawnienia dzialaja
 
+**WYNIK TESTOW (w tej samej sesji):**
+
+Plugin odpalony w Obsidianie - doslownie po buildzie. Wynik:
+- Plugin laduje sie: TAK
+- Indeksuje vault: TAK
+- Chat z Jaskierem: TAK (agent gada po polsku, widzi vault)
+- Token counter: TAK (6627/100000 widoczne w UI)
+- MCP vault_list: TAK (listuje foldery)
+- MCP vault_read: TAK (czyta notatki)
+- MCP vault_write: TAK (po zatwierdzeniu uprawnien)
+- System uprawnien: TAK! (vault_write zablokowany domyslnie, X czerwony, user musi zatwierdzic)
+- Notatka stworzona w vaultcie: TAK
+
+Model uzywany: Claude Sonnet 4 (via API)
+
 **Nastepne kroki:**
-- Otworz Obsidiana i sprawdz czy plugin sie laduje
-- Przetestuj podstawowy chat z AI
-- Sprawdz konsole pluginu czy sa errory
-- Zdecyduj co testujemy jako pierwsze z "niezweryfikowanych" funkcji
+- Przetestowac pozostalych agentow (Iris, Dexter, Ezra, Silas, Lexie)
+- Sprawdzic vault_search i vault_delete
+- Przetestowac system pamieci (czy Jaskier pamieata pomiedzy sesjami)
+- Sprawdzic Agent Sidebar i Agent Creator Modal
+- Zdecydowac o pierwszym celu rozwoju

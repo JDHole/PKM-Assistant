@@ -17,30 +17,37 @@ Cel: System specjalizowanych AI agentow w Obsidianie, ktorzy pomagaja zarzadzac 
 
 ---
 
-## Co NAPEWNO dziala (potwierdzone)
+## Co NAPEWNO dziala (potwierdzone 2026-02-20)
 
-- [x] Chat z AI w Obsidianie (panel boczny)
-- [x] AI widzi notatki uzytkownika i moze o nich rozmawiac
-- [x] AI potrafi stworzyc nowa notatke i w niej pisac
-- [x] Multi-provider: Claude, GPT, Ollama, OpenRouter
 - [x] Plugin laduje sie w Obsidianie bez bledow
+- [x] Plugin indeksuje vault automatycznie
+- [x] Chat z AI w Obsidianie (panel boczny, agent Jaskier)
+- [x] Token counter w UI (np. 6627/100000)
+- [x] AI widzi notatki uzytkownika (vault_read + vault_list dzialaja)
+- [x] AI potrafi stworzyc nowa notatke (vault_write dziala)
+- [x] Multi-provider: Claude Sonnet 4 via API potwierdzone
+- [x] System uprawnien DZIALA - blokuje vault_write az user zatwierdzi
+- [x] MCP narzedzia: vault_list, vault_read, vault_write potwierdzone
+- [x] Build: npm run build -> dist/main.js 882kb, auto-kopia do vaultu
 
-## Co ISTNIEJE w kodzie ale NIE WIADOMO czy dziala
+## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
-- [ ] System 6 agentow (Jaskier, Iris, Dexter, Ezra, Silas, Lexie)
+- [ ] Pozostale agenty (Iris, Dexter, Ezra, Silas, Lexie) - Jaskier dziala!
 - [ ] System pamieci (rolling window, summarizer, RAG)
-- [ ] System uprawnien (PermissionSystem, ApprovalManager)
-- [ ] MCP narzedzia (odczyt/zapis/szukanie w vaulcie)
+- [ ] MCP narzedzia: vault_search, vault_delete
 - [ ] Agent Creator Modal (tworzenie agentow z UI)
-- [ ] Strefy vaulta (VaultZones)
+- [ ] Strefy vaulta (VaultZones - konfiguracja jest w .pkm-assistant/config.yaml)
 - [ ] Workflow parser i loader
+- [ ] Agent Sidebar (osobny panel z lista agentow)
 
-## Co jest PLANOWANE (jeszcze nie zaczete)
+## Co jest PLANOWANE (pelna wizja w WIZJA.md)
 
+- [ ] Ciagloa pamiec agentow (hierarchiczna: sesja -> tydzien -> miesiac -> rok)
 - [ ] Rebranding UI: "Smart Connections" -> "Obsek"
-- [ ] Hierarchia agentow (parent-child)
-- [ ] Miniony - male lokalne modele do prostych zadan
-- [ ] Token tracking w UI
+- [ ] Przelaczanie agentow w sidebar
+- [ ] Agent Creator Modal
+- [ ] Token tracking i limity
+- [ ] Miniony (male lokalne modele)
 - [ ] Ollama one-click setup
 
 ---
@@ -107,9 +114,17 @@ Po buildzie: skopiuj `dist/` do folderu pluginu w vaulcie Obsidiana.
 
 ---
 
-## Kontekst do rozmow z AI
+## Dokumentacja projektu
 
-Kiedy kopiujesz ten plik do innego czatu, dodaj tez:
-1. **CLAUDE.md** - konwencje kodu i tech stack
+| Plik | Cel |
+|------|-----|
+| **STATUS.md** (ten plik) | Co dziala, co nie, stan projektu |
+| **WIZJA.md** | Dokad zmierzamy - finalny produkt |
+| **DEVLOG.md** | Chronologiczny log zmian |
+| **CLAUDE.md** | Konwencje kodu, tech stack |
+| **CHEATSHEET.md** | Sciaga do pracy z Claude Code |
+
+Kiedy kopiujesz kontekst do innego czatu z AI, daj mu:
+1. **STATUS.md** + **WIZJA.md** - stan i cel
 2. **DEVLOG.md** - co sie ostatnio zmienilo
 3. Konkretny plik/pliki ktorych dotyczy pytanie
