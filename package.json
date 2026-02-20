@@ -39,23 +39,21 @@
   "dependencies": {
     "js-tiktoken": "^1.0.19",
     "obsidian": "latest",
-    "smart-blocks": "file:../jsbrains/smart-blocks",
-    "smart-chat-model": "file:../jsbrains/smart-chat-model",
-    "smart-chunks": "file:../jsbrains/smart-chunks",
-    "smart-collections": "file:../jsbrains/smart-collections",
-    "smart-embed-model": "file:../jsbrains/smart-embed-model",
-    "smart-entities": "file:../jsbrains/smart-entities",
-    "obsidian-smart-env": "file:../obsidian-smart-env",
-    "smart-file-system": "file:../jsbrains/smart-fs",
-    "smart-http-request": "file:../jsbrains/smart-http-request",
-    "smart-instruct-model": "file:../jsbrains/smart-instruct-model",
-    "smart-model": "file:../jsbrains/smart-model",
-    "smart-notices": "file:../jsbrains/smart-notices",
-    "smart-settings": "file:../jsbrains/smart-settings",
-    "smart-sources": "file:../jsbrains/smart-sources",
-    "smart-utils": "file:../jsbrains/smart-utils",
-    "smart-view": "file:../jsbrains/smart-view",
-    "smart-context-obsidian": "file:../smart-context-obsidian"
+    "smart-blocks": "file:./external-deps/jsbrains/smart-blocks",
+    "smart-chat-model": "file:./external-deps/jsbrains/smart-chat-model",
+    "smart-collections": "file:./external-deps/jsbrains/smart-collections",
+    "smart-embed-model": "file:./external-deps/jsbrains/smart-embed-model",
+    "smart-entities": "file:./external-deps/jsbrains/smart-entities",
+    "obsidian-smart-env": "file:./external-deps/obsidian-smart-env",
+    "smart-file-system": "file:./external-deps/jsbrains/smart-fs",
+    "smart-http-request": "file:./external-deps/jsbrains/smart-http-request",
+    "smart-model": "file:./external-deps/jsbrains/smart-model",
+    "smart-notices": "file:./external-deps/jsbrains/smart-notices",
+    "smart-settings": "file:./external-deps/jsbrains/smart-settings",
+    "smart-sources": "file:./external-deps/jsbrains/smart-sources",
+    "smart-utils": "file:./external-deps/jsbrains/smart-utils",
+    "smart-view": "file:./external-deps/jsbrains/smart-view",
+    "smart-context-obsidian": "file:./external-deps/smart-context-obsidian"
   },
   "ava": {
     "files": [
@@ -67,7 +65,8 @@
     "require": []
   },
   "workspaces": [
-    "../jsbrains/*",
-    "../smart-context-obsidian"
+    "./external-deps/jsbrains/*",
+    "./external-deps/smart-context-obsidian",
+    "./external-deps/obsidian-smart-env"
   ]
 }
