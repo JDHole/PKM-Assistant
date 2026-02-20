@@ -4,7 +4,10 @@ const ACTION_TYPE_MAP = {
     'vault_write': 'vault.write',
     'vault_list': 'vault.read',
     'vault_delete': 'vault.delete',
-    'vault_search': 'vault.read'
+    'vault_search': 'vault.read',
+    'memory_search': 'vault.read',
+    'memory_update': 'vault.write',  // overridden below for read_brain
+    'memory_status': 'vault.read'
 };
 
 /**
@@ -60,7 +63,11 @@ export class MCPClient {
             }
 
             // 4. Check permissions (only if we have an agent)
-            const actionType = ACTION_TYPE_MAP[toolCall.name] || 'unknown';
+            let actionType = ACTION_TYPE_MAP[toolCall.name] || 'unknown';
+            // memory_update with read_brain is a read operation, not write
+            if (toolCall.name === 'memory_update' && args.operation === 'read_brain') {
+                actionType = 'vault.read';
+            }
             let targetPath = args.path || args.targetPath || args.file || '';
 
             // Special handling if the tool operates on 'folder'
@@ -97,9 +104,9 @@ export class MCPClient {
                 }
             }
 
-            // 6. Execute tool
+            // 6. Execute tool (pass plugin as 3rd arg for tools that need it, e.g. memory_search)
             console.log(`[MCPClient] Executing tool logic for ${toolCall.name}`);
-            const result = await tool.execute(args, this.app);
+            const result = await tool.execute(args, this.app, this.plugin);
             return result;
 
         } catch (error) {

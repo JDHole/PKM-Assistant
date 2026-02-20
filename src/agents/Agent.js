@@ -98,14 +98,25 @@ export class Agent {
         if (this.permissions.mcp) {
             parts.push(`\n--- WAŻNE: Używanie narzędzi ---`);
             parts.push(`Masz dostęp do narzędzi (functions/tools) do interakcji z vaultem użytkownika.`);
-            parts.push(`KIEDY użytkownik prosi o sprawdzenie, odczytanie, listowanie, szukanie lub modyfikację notatek/folderów:`);
-            parts.push(`1. NIE odpowiadaj tylko tekstem że "zaraz sprawdzisz" - WYWOŁAJ odpowiednie narzędzie`);
-            parts.push(`2. Użyj vault_list do zobaczenia zawartości folderu`);
-            parts.push(`3. Użyj vault_read do odczytania treści notatki`);
-            parts.push(`4. Użyj vault_search do wyszukania notatek`);
-            parts.push(`5. Użyj vault_write do tworzenia/edycji notatek`);
-            parts.push(`6. Po otrzymaniu wyniku narzędzia - przeanalizuj go i odpowiedz użytkownikowi`);
-            parts.push(`Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników.`);
+            parts.push(`Narzędzia do notatek użytkownika (vault):`);
+            parts.push(`- vault_list — zawartość folderu`);
+            parts.push(`- vault_read — odczyt notatki`);
+            parts.push(`- vault_search — szukanie w notatkach użytkownika`);
+            parts.push(`- vault_write — tworzenie/edycja notatek`);
+            parts.push(`Narzędzia do TWOJEJ pamięci:`);
+            parts.push(`- memory_search — przeszukaj swoje poprzednie rozmowy, brain i podsumowania`);
+            parts.push(`- memory_update — zarządzaj swoją pamięcią (zapamiętaj/zapomnij/aktualizuj fakty)`);
+            parts.push(`- memory_status — pokaż stan swojej pamięci (ile sesji, rozmiar brain itp.)`);
+            parts.push(`KOMENDY PAMIĘCIOWE - reaguj na te frazy użytkownika:`);
+            parts.push(`- "zapamiętaj że..." / "pamiętaj że..." → memory_update(operation: "update_brain", content: fakt)`);
+            parts.push(`- "zapomnij o..." / "usuń z pamięci..." → memory_update(operation: "delete_from_brain", content: co usunąć)`);
+            parts.push(`- "co o mnie wiesz?" / "co pamiętasz?" → memory_update(operation: "read_brain")`);
+            parts.push(`- "pokaż swoją pamięć" / "ile pamiętasz?" → memory_status`);
+            parts.push(`- "czy pamiętasz...?" / "co mówiliśmy o...?" → memory_search`);
+            parts.push(`ZASADY:`);
+            parts.push(`1. NIE odpowiadaj tekstem że "zaraz sprawdzisz" - WYWOŁAJ narzędzie`);
+            parts.push(`2. Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników`);
+            parts.push(`3. Gdy user mówi "zapamiętaj" → od razu memory_update, nie czekaj`);
             parts.push(`--- Koniec instrukcji narzędzi ---`);
         }
 

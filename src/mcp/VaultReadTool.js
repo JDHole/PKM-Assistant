@@ -23,7 +23,14 @@ export function createVaultReadTool(app) {
                 const file = app.vault.getAbstractFileByPath(args.path);
 
                 if (!file) {
-                    return { success: false, error: `File not found: ${args.path}` };
+                    // Fallback: try adapter for hidden/unindexed paths (e.g. .pkm-assistant)
+                    try {
+                        const content = await app.vault.adapter.read(args.path);
+                        console.log(`[VaultReadTool] Read hidden file: ${args.path}`);
+                        return { success: true, content, path: args.path };
+                    } catch (adapterErr) {
+                        return { success: false, error: `File not found: ${args.path}` };
+                    }
                 }
 
                 if (!(file instanceof TFile)) {

@@ -41,29 +41,32 @@ export function createVaultWriteTool(app) {
                     throw new Error(`Path ${path} exists but is not a file (likely a folder)`);
                 }
 
+                // Check if path is in a hidden/unindexed folder (e.g. .pkm-assistant)
+                const isHiddenPath = path.startsWith('.') || path.includes('/.');
+
                 let finalContent = content;
                 let bytesWritten = 0;
+
+                // For hidden paths, use adapter directly (Obsidian doesn't index these)
+                if (isHiddenPath) {
+                    const fileExists = await app.vault.adapter.exists(path);
+                    if (mode === 'create' && fileExists) {
+                        throw new Error(`File ${path} already exists. Use mode "replace", "append", or "prepend" to modify it.`);
+                    }
+                    if (mode === 'append' || mode === 'prepend') {
+                        if (!fileExists) throw new Error(`File ${path} does not exist. Cannot ${mode}.`);
+                        const oldContent = await app.vault.adapter.read(path);
+                        finalContent = mode === 'append' ? oldContent + content : content + oldContent;
+                    }
+                    await app.vault.adapter.write(path, finalContent);
+                    console.log(`[VaultWriteTool] Wrote hidden file: ${path}`);
+                    return { success: true, path, mode, bytesWritten: finalContent.length };
+                }
 
                 if (mode === 'create') {
                     if (file) {
                         throw new Error(`File ${path} already exists. Use mode "replace", "append", or "prepend" to modify it.`);
                     }
-                    // For create, we rely on app.vault.create which handles folder creation automatically if using newer API, 
-                    // but standard check says we might need to ensure folders exist. 
-                    // However, user prompt implies straightforward usage. 
-                    // Let's rely on standard behavior or basic check.
-                    // Actually, Obsidian's create usually requires folder existence. 
-                    // Let's implement safe folder creation if needed or just try create.
-                    // The prompt snippet: "// Tworzenie pliku (z auto-tworzeniem folderów)" implies it might, 
-                    // or I should just call create.
-                    // Let's assume standard behavior for now to match requested logic simplicity unless error occurs.
-
-                    // Wait, standard app.vault.create DOES NOT auto-create folders in older versions, 
-                    // but let's stick to the prompt's implied logic: "Użyj app.vault.create(path, content)".
-
-                    // Actually, let's just make sure we try to create folders if we can, 
-                    // but the prompt implementation instructions are specific:
-                    // "Jeśli plik istnieje → error. Użyj app.vault.create(path, content)"
                     const createdFile = await app.vault.create(path, finalContent);
                     bytesWritten = content.length;
                     return {
@@ -73,9 +76,6 @@ export function createVaultWriteTool(app) {
                         bytesWritten
                     };
                 }
-
-                // For other modes, file might not exist (except maybe they expect it to for append/prepend?)
-                // Prompt says: "replace: Użyj app.vault.modify(file, content) lub create jeśli nie istnieje"
 
                 if (!file) {
                     if (mode === 'replace') {
@@ -88,8 +88,6 @@ export function createVaultWriteTool(app) {
                             bytesWritten: finalContent.length
                         };
                     } else {
-                        // append/prepend require existing file usually, or strictly defined?
-                        // "append: Odczytaj content, dodaj na końcu, modify" -> Implying read fails if no file.
                         throw new Error(`File ${path} does not exist. Cannot ${mode}.`);
                     }
                 }

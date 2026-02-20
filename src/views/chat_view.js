@@ -4,6 +4,8 @@ import { RollingWindow } from '../memory/RollingWindow.js';
 import { SessionManager } from '../memory/SessionManager.js';
 import { RAGRetriever } from '../memory/RAGRetriever.js';
 import { EmbeddingHelper } from '../memory/EmbeddingHelper.js';
+import { MemoryExtractor } from '../memory/MemoryExtractor.js';
+import { Summarizer } from '../memory/Summarizer.js';
 import chat_view_styles from './chat_view.css' with { type: 'css' };
 import { createToolCallDisplay } from '../components/ToolCallDisplay.js';
 import { openPermissionsModal } from './PermissionsModal.js';
@@ -19,9 +21,8 @@ export class ChatView extends SmartItemView {
 
     constructor(leaf, plugin) {
         super(leaf, plugin);
-        // Initialize RollingWindow with settings or default
-        const maxTokens = this.env?.settings?.smart_chat_model?.maxContextTokens || 100000;
-        this.rollingWindow = new RollingWindow({ maxTokens });
+        // Initialize RollingWindow (summarizer attached later when model available)
+        this.rollingWindow = this._createRollingWindow();
         this.is_generating = false;
         this.current_message_container = null;
         this.sessionManager = null;
@@ -31,18 +32,21 @@ export class ChatView extends SmartItemView {
         // Input history state
         this.inputHistory = [];
         this.historyIndex = -1;
+
+        // Session timeout tracking (detect return after long inactivity)
+        this.lastMessageTimestamp = null;
     }
 
     async initSessionManager() {
-        this.sessionManager = new SessionManager(this.app.vault, this.env?.settings?.smart_chat_model || {});
+        this.sessionManager = new SessionManager(this.app.vault, this.env?.settings?.obsek || {});
         await this.sessionManager.initialize();
 
-        // Auto-save callback
+        // Auto-save callback (agent name resolved at save time, not at init time)
         this.sessionManager.startAutoSave(() => ({
             messages: this.rollingWindow.messages,
             metadata: {
                 created: new Date().toISOString(),
-                agent: 'default',
+                agent: this.plugin?.agentManager?.getActiveAgent()?.name || 'default',
                 tokens_used: this.rollingWindow.getCurrentTokenCount()
             }
         }));
@@ -155,6 +159,10 @@ export class ChatView extends SmartItemView {
         // Global listeners
         this.handleGlobalKeydownBound = this.handleGlobalKeydown.bind(this);
         document.addEventListener('keydown', this.handleGlobalKeydownBound);
+
+        // Best-effort save on browser/Obsidian unload (additional safety net)
+        this.handleBeforeUnloadBound = () => { this.handleSaveSession(); };
+        window.addEventListener('beforeunload', this.handleBeforeUnloadBound);
 
         // Add welcome message if no messages
         if (this.rollingWindow.messages.length === 0) {
@@ -300,83 +308,42 @@ export class ChatView extends SmartItemView {
      * Get or create the chat model instance from our settings
      */
     get_chat_model() {
-        console.log('[Obsek] get_chat_model called');
-        console.log('[Obsek] this.env:', this.env);
-        console.log('[Obsek] this.env.config:', this.env?.config);
-        console.log('[Obsek] this.env.config.modules:', this.env?.config?.modules);
-        console.log('[Obsek] this.env.settings:', this.env?.settings);
+        // Return cached model if available
+        if (this.env.smart_chat_model?.stream) return this.env.smart_chat_model;
 
-        // Check if already initialized
-        if (this.env.smart_chat_model?.stream) {
-            console.log('[Obsek] Using cached smart_chat_model');
-            return this.env.smart_chat_model;
-        }
-
-        // Get our settings
         const settings = this.env.settings?.smart_chat_model;
-        console.log('[Obsek] smart_chat_model settings:', settings);
 
-        // Determine platform - use setting or detect from available API keys
+        // Detect platform from setting or API keys
         let platform = settings?.platform;
         if (!platform) {
-            // Try to detect platform from available API keys
-            const platforms = ['anthropic', 'openai', 'gemini', 'groq', 'open_router', 'deepseek', 'ollama'];
-            for (const p of platforms) {
-                if (settings?.[`${p}_api_key`] || p === 'ollama') {
-                    platform = p;
-                    console.log('[Obsek] Auto-detected platform:', platform);
-                    break;
-                }
+            for (const p of ['anthropic', 'openai', 'gemini', 'groq', 'open_router', 'deepseek', 'ollama']) {
+                if (settings?.[`${p}_api_key`] || p === 'ollama') { platform = p; break; }
             }
         }
+        if (!platform) return null;
 
-        if (!platform) {
-            console.log('[Obsek] No platform set and no API keys found');
-            return null;
-        }
-
-        // Get platform-specific API key
         const api_key = settings[`${platform}_api_key`];
-        console.log('[Obsek] Platform:', platform, 'API key exists:', !!api_key);
+        if (!api_key && platform !== 'ollama') return null;
 
-        if (!api_key && platform !== 'ollama') {
-            console.log('[Obsek] No API key for platform:', platform);
-            return null;
-        }
-
-        // Get module config
         const module_config = this.env.config?.modules?.smart_chat_model;
-        console.log('[Obsek] Module config:', module_config);
-        console.log('[Obsek] Module config class:', module_config?.class);
-        console.log('[Obsek] Module config adapters:', module_config?.adapters);
-
         if (!module_config?.class) {
             console.error('[Obsek] SmartChatModel class not found in config');
-            console.error('[Obsek] Available modules:', Object.keys(this.env?.config?.modules || {}));
             return null;
         }
 
-        // Get model name
         const model_key = settings[`${platform}_model`] || this.get_default_model(platform);
-        console.log('[Obsek] Model key:', model_key);
 
-        // Create the model instance
         try {
-            console.log('[Obsek] Creating SmartChatModel with adapter:', platform);
             const chat_model = new module_config.class({
                 ...module_config,
                 class: null,
                 env: this.env,
                 settings: this.env.settings,
                 adapter: platform,
-                // Pass API key directly (adapter looks for opts.api_key)
                 api_key: api_key,
                 model_key: model_key,
             });
-
-            // Cache on env
             this.env.smart_chat_model = chat_model;
-            console.log('[Obsek] SmartChatModel created successfully');
             return chat_model;
         } catch (e) {
             console.error('[Obsek] Error creating chat model:', e);
@@ -403,6 +370,22 @@ export class ChatView extends SmartItemView {
     async send_message() {
         const text = this.input_area.value.trim();
         if (!text || this.is_generating) return;
+
+        // Detect return after long inactivity → consolidate + start new session
+        const timeoutMs = (this.env?.settings?.sessionTimeoutMinutes || 30) * 60 * 1000;
+        if (this.lastMessageTimestamp && this.rollingWindow.messages.length > 0) {
+            if (Date.now() - this.lastMessageTimestamp > timeoutMs) {
+                console.log('[ChatView] Session timeout detected, consolidating and starting new session');
+                await this.consolidateSession();
+                if (this.sessionManager) this.sessionManager.startNewSession();
+                this.rollingWindow = this._createRollingWindow();
+                this.render_messages();
+                this.add_welcome_message();
+                this.updateTokenCounter();
+                await this.updateSessionDropdown();
+            }
+        }
+        this.lastMessageTimestamp = Date.now();
 
         // Handle slash commands
         if (text.startsWith('/')) {
@@ -437,10 +420,10 @@ export class ChatView extends SmartItemView {
         // Ensure RAG is initialized (lazy init - waits for embed model)
         await this.ensureRAGInitialized();
 
-        // Get system prompt from active agent
+        // Get system prompt from active agent (includes memory: brain + active context)
         const agentManager = this.plugin?.agentManager;
         if (agentManager) {
-            const basePrompt = agentManager.getActiveSystemPrompt();
+            const basePrompt = await agentManager.getActiveSystemPromptWithMemory();
             this.rollingWindow.setSystemPrompt(basePrompt);
         }
 
@@ -450,9 +433,9 @@ export class ChatView extends SmartItemView {
                 const ragResults = await this.ragRetriever.retrieve(text);
                 if (ragResults.length > 0) {
                     const context = this.ragRetriever.formatContext(ragResults);
-                    const currentPrompt = this.rollingWindow.systemPrompt || '';
+                    const currentBase = this.rollingWindow.baseSystemPrompt || '';
                     this.rollingWindow.setSystemPrompt(
-                        `${currentPrompt}\n\n--- Relevantny kontekst z poprzednich rozmów ---\n${context}`
+                        `${currentBase}\n\n--- Relevantny kontekst z poprzednich rozmów ---\n${context}`
                     );
                 }
             } catch (ragError) {
@@ -468,7 +451,6 @@ export class ChatView extends SmartItemView {
         const activeAgent = this.plugin?.agentManager?.getActiveAgent();
         if (activeAgent?.permissions?.mcp && this.plugin?.toolRegistry) {
             tools = this.plugin.toolRegistry.getToolDefinitions();
-            console.log('[ChatView] Passing', tools.length, 'tools to AI');
         }
 
         try {
@@ -495,7 +477,6 @@ export class ChatView extends SmartItemView {
     }
 
     handle_chunk(response) {
-        console.log('[ChatView] handle_chunk received:', response);
         this.hideTypingIndicator();
         if (!this.current_message_container) {
             // Create assistant message container
@@ -532,16 +513,9 @@ export class ChatView extends SmartItemView {
     }
 
     async handle_done(response) {
-        console.log('[ChatView] handle_done received:', response);
-        console.log('[ChatView] response.choices[0].message:', response?.choices?.[0]?.message);
-        console.log('[ChatView] response.choices[0].message.tool_calls:', response?.choices?.[0]?.message?.tool_calls);
-
         // Guard against duplicate handle_done calls (streaming can fire this twice)
         const responseId = response?.id || '';
-        if (this._lastProcessedResponseId === responseId && responseId) {
-            console.log('[ChatView] Skipping duplicate handle_done for:', responseId);
-            return;
-        }
+        if (this._lastProcessedResponseId === responseId && responseId) return;
         this._lastProcessedResponseId = responseId;
 
         this.hideTypingIndicator();
@@ -549,7 +523,6 @@ export class ChatView extends SmartItemView {
 
         // Parse tool calls from response (supports both OpenAI and Anthropic formats)
         const toolCalls = this.plugin?.mcpClient?.parseToolCalls(response) || [];
-        console.log('[ChatView] parseToolCalls result:', toolCalls);
 
         // Also check direct tool_calls on response (OpenAI format)
         if (response?.tool_calls?.length > 0) {
@@ -564,7 +537,6 @@ export class ChatView extends SmartItemView {
 
         // Check for tool calls in response
         if (toolCalls.length > 0) {
-            console.log('[ChatView] Processing', toolCalls.length, 'tool calls');
 
             // Ensure we have a container
             if (!this.current_message_container) {
@@ -593,7 +565,6 @@ export class ChatView extends SmartItemView {
                 let result;
                 try {
                     result = await this.plugin.mcpClient.executeToolCall(toolCall, agentName);
-                    console.log('[ChatView] Tool result:', result);
 
                     // Update display with result
                     toolDisplay.replaceWith(createToolCallDisplay({
@@ -668,7 +639,6 @@ export class ChatView extends SmartItemView {
      */
     async continueWithToolResults() {
         const messages = this.rollingWindow.getMessagesForAPI();
-        console.log('[ChatView] continueWithToolResults - messages:', JSON.stringify(messages, null, 2));
 
         // Get tools again
         let tools = [];
@@ -972,8 +942,6 @@ export class ChatView extends SmartItemView {
         if (this.ragRetriever) return; // Already initialized
 
         console.log('[Obsek] ensureRAGInitialized called');
-        console.log('[Obsek] smart_embed_model:', this.env?.smart_embed_model);
-        console.log('[Obsek] smart_embed_model.embed:', this.env?.smart_embed_model?.embed);
 
         const chatSettings = this.env?.settings?.smart_chat_model || {};
         try {
@@ -982,11 +950,16 @@ export class ChatView extends SmartItemView {
             console.log('[Obsek] embeddingHelper.isReady():', isReady);
 
             if (isReady) {
+                const agentMemory = this.plugin?.agentManager?.getActiveMemory();
+                if (!agentMemory) {
+                    console.log('[Obsek] No active agent memory, RAG skipped');
+                    return;
+                }
+
                 this.ragRetriever = new RAGRetriever({
                     embeddingHelper: this.embeddingHelper,
-                    sessionManager: this.sessionManager,
-                    vault: this.app.vault,
-                    settings: chatSettings
+                    agentMemory: agentMemory,
+                    settings: this.env?.settings?.obsek || {}
                 });
                 await this.ragRetriever.indexAllSessions();
                 console.log('[Obsek] RAG initialized and sessions indexed.');
@@ -1002,6 +975,9 @@ export class ChatView extends SmartItemView {
         if (this.handleGlobalKeydownBound) {
             document.removeEventListener('keydown', this.handleGlobalKeydownBound);
         }
+        if (this.handleBeforeUnloadBound) {
+            window.removeEventListener('beforeunload', this.handleBeforeUnloadBound);
+        }
 
         // Cleanup if needed
         if (this.is_generating) {
@@ -1010,15 +986,26 @@ export class ChatView extends SmartItemView {
         if (this.sessionManager) {
             this.sessionManager.stopAutoSave();
         }
+
+        // Best-effort fire-and-forget save (async - may not complete before Obsidian closes)
+        // Auto-save is the primary safety net; this is a bonus attempt
+        if (this.rollingWindow?.messages?.length > 0) {
+            this.handleSaveSession();
+        }
     }
 
     // --- Session Handlers ---
 
     async handleNewSession() {
+        // Consolidate session (extract memory + save) BEFORE clearing
+        if (this.rollingWindow.messages.length > 0) {
+            await this.consolidateSession();
+        }
+
         if (this.sessionManager) {
             this.sessionManager.startNewSession();
         }
-        this.rollingWindow = new RollingWindow({ maxTokens: this.env?.settings?.smart_chat_model?.maxContextTokens || 100000 });
+        this.rollingWindow = this._createRollingWindow();
         this.render_messages();
         this.add_welcome_message();
         this.updateTokenCounter();
@@ -1047,6 +1034,7 @@ export class ChatView extends SmartItemView {
                     console.log('[ChatView] Saved session to agent memory:', savedPath);
                     this.autosaveStatus.textContent = `Saved to ${activeAgentName}!`;
                     setTimeout(() => { this.autosaveStatus.textContent = ''; }, 2000);
+                    await this.updateSessionDropdown();
                     return;
                 }
             }
@@ -1065,11 +1053,23 @@ export class ChatView extends SmartItemView {
     }
 
     async handleLoadSession(path) {
-        if (!path || !this.sessionManager) return;
         try {
-            const { messages } = await this.sessionManager.loadSession(path);
-            this.rollingWindow = new RollingWindow({ maxTokens: this.env?.settings?.smart_chat_model?.maxContextTokens || 100000 });
-            for (const msg of messages) {
+            let parsed;
+
+            // Try loading from AgentMemory first
+            const agentMemory = this.plugin?.agentManager?.getActiveMemory();
+            if (agentMemory) {
+                const filename = path.split('/').pop();
+                parsed = await agentMemory.loadSession(filename);
+            } else if (this.sessionManager) {
+                parsed = await this.sessionManager.loadSession(path);
+            } else {
+                return;
+            }
+
+            if (!parsed?.messages) return;
+            this.rollingWindow = this._createRollingWindow();
+            for (const msg of parsed.messages) {
                 await this.rollingWindow.addMessage(msg.role, msg.content);
             }
             this.render_messages();
@@ -1080,8 +1080,16 @@ export class ChatView extends SmartItemView {
     }
 
     async updateSessionDropdown() {
-        if (!this.sessionManager || !this.sessionDropdown) return;
-        const sessions = await this.sessionManager.listSessions();
+        if (!this.sessionDropdown) return;
+
+        // Get sessions from AgentMemory (primary) or SessionManager (fallback)
+        let sessions = [];
+        const agentMemory = this.plugin?.agentManager?.getActiveMemory();
+        if (agentMemory) {
+            sessions = await agentMemory.listSessions();
+        } else if (this.sessionManager) {
+            sessions = await this.sessionManager.listSessions();
+        }
 
         // Clear existing options except the first placeholder
         while (this.sessionDropdown.options.length > 1) {
@@ -1089,12 +1097,150 @@ export class ChatView extends SmartItemView {
         }
 
         for (const file of sessions) {
-            const opt = this.sessionDropdown.createEl('option', { value: file.path, text: file.name });
-            // Mark active session
-            if (this.sessionManager.activeSessionFile && this.sessionManager.activeSessionFile.path === file.path) {
-                opt.selected = true;
+            this.sessionDropdown.createEl('option', { value: file.path, text: file.name });
+        }
+    }
+
+    // --- Memory Extraction (Phase 3) ---
+
+    /**
+     * Consolidate session: extract memory, update brain, save session.
+     * Called from handleNewSession(), handleAgentChange(), session timeout.
+     * NOT called from onClose() (async extraction won't complete in time).
+     */
+    async consolidateSession() {
+        const messages = this.rollingWindow.messages;
+        if (!messages || messages.length === 0) return;
+
+        const agentManager = this.plugin?.agentManager;
+        const agentMemory = agentManager?.getActiveMemory();
+
+        // Always save the raw session first (safety net)
+        await this.handleSaveSession();
+
+        const minionModel = this._getMinionModel();
+        const chatModel = minionModel || this.get_chat_model();
+        console.log(`[ChatView] consolidateSession model: ${minionModel ? 'MINION (' + (chatModel.model_key || '?') + ')' : 'MAIN (' + (chatModel?.model_key || '?') + ')'}`);
+
+        // Try memory extraction (graceful: skip if no model available)
+        try {
+            if (!chatModel?.stream) {
+                console.log('[ChatView] No chat model for memory extraction, skipping');
+            } else if (!agentMemory) {
+                console.log('[ChatView] No agent memory available, skipping extraction');
+            } else {
+                // Only extract if conversation has substance (at least 2 user messages)
+                const userMessages = messages.filter(m => m.role === 'user');
+                if (userMessages.length < 2) {
+                    console.log('[ChatView] Too few messages for extraction, skipping');
+                } else {
+                    console.log('[ChatView] Starting memory extraction...');
+
+                    const currentBrain = await agentMemory.getBrain();
+                    const extractor = new MemoryExtractor();
+                    const { brainUpdates, activeContextSummary } = await extractor.extract(
+                        messages,
+                        currentBrain,
+                        chatModel
+                    );
+
+                    console.log(`[ChatView] Extraction result: ${brainUpdates.length} updates, summary: ${activeContextSummary ? 'yes' : 'no'}`);
+
+                    // Apply updates through central memoryWrite
+                    await agentMemory.memoryWrite(brainUpdates, activeContextSummary);
+
+                    console.log('[ChatView] Memory consolidation complete');
+                }
+            }
+        } catch (error) {
+            // Graceful degradation: session is already saved, extraction failure is non-fatal
+            console.error('[ChatView] Memory extraction failed (session saved, extraction skipped):', error);
+        }
+
+        // L1/L2 consolidation trigger (runs independently of extraction)
+        if (agentMemory && chatModel?.stream) {
+            try {
+                // Process ALL pending L1 batches in one pass (catch-up)
+                let unconsolidated = await agentMemory.getUnconsolidatedSessions();
+                while (unconsolidated.length >= 5) {
+                    console.log(`[ChatView] ${unconsolidated.length} unconsolidated sessions, creating L1...`);
+                    const batch = unconsolidated.slice(0, 5);
+                    await agentMemory.createL1Summary(batch, chatModel);
+                    unconsolidated = await agentMemory.getUnconsolidatedSessions();
+                }
+
+                // Process ALL pending L2 batches
+                let unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
+                while (unconsolidatedL1s.length >= 5) {
+                    console.log(`[ChatView] ${unconsolidatedL1s.length} L1s ready, creating L2...`);
+                    await agentMemory.createL2Summary(unconsolidatedL1s.slice(0, 5), chatModel);
+                    unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
+                }
+            } catch (l1l2Error) {
+                console.error('[ChatView] L1/L2 consolidation failed (non-fatal):', l1l2Error);
             }
         }
+    }
+
+    /**
+     * Get the minion model for background memory operations.
+     * If minionModel setting is configured, creates a separate model instance.
+     * Otherwise returns null (caller falls back to main model).
+     * @returns {Object|null} SmartChatModel instance or null
+     */
+    _getMinionModel() {
+        const minionModelId = this.env?.settings?.obsek?.minionModel;
+        if (!minionModelId || !minionModelId.trim()) return null;
+
+        // Return cached minion model if available
+        if (this._minionModel?.stream) return this._minionModel;
+
+        const scSettings = this.env?.settings?.smart_chat_model || {};
+        // Infer platform from available keys (SC doesn't persist 'platform' explicitly)
+        let platform = scSettings.platform;
+        if (!platform) {
+            for (const p of ['anthropic', 'openai', 'open_router', 'gemini', 'groq', 'deepseek']) {
+                if (scSettings[`${p}_api_key`]) { platform = p; break; }
+            }
+        }
+        if (!platform) return null;
+
+        const api_key = scSettings[`${platform}_api_key`];
+        if (!api_key && platform !== 'ollama') return null;
+
+        const module_config = this.env?.config?.modules?.smart_chat_model;
+        if (!module_config?.class) return null;
+
+        try {
+            this._minionModel = new module_config.class({
+                ...module_config,
+                class: null,
+                env: this.env,
+                settings: this.env.settings,
+                adapter: platform,
+                api_key: api_key,
+                model_key: minionModelId.trim(),
+            });
+            console.log('[ChatView] Minion model created:', minionModelId.trim());
+            return this._minionModel;
+        } catch (e) {
+            console.warn('[ChatView] Failed to create minion model:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Creates a RollingWindow with optional Summarizer (lazy: uses minion or main model).
+     * @returns {RollingWindow}
+     */
+    _createRollingWindow() {
+        const maxTokens = this.env?.settings?.obsek?.maxContextTokens || 100000;
+        const chatModel = this._getMinionModel() || this.get_chat_model?.();
+        let summarizer = null;
+        if (chatModel?.stream) {
+            summarizer = new Summarizer({ chatModel });
+        }
+        return new RollingWindow({ maxTokens, summarizer });
     }
 
     // --- Agent Handlers ---
@@ -1123,11 +1269,16 @@ export class ChatView extends SmartItemView {
         }
     }
 
-    handleAgentChange(agentName) {
+    async handleAgentChange(agentName) {
         if (!agentName) return;
 
         const agentManager = this.plugin?.agentManager;
         if (!agentManager) return;
+
+        // Consolidate session (extract memory + save) before switching agent
+        if (this.rollingWindow.messages.length > 0) {
+            await this.consolidateSession();
+        }
 
         const switched = agentManager.switchAgent(agentName);
         if (switched) {

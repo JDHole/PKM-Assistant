@@ -45,6 +45,12 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         }
         const settings = this.env.settings.smart_chat_model;
 
+        // Obsek-specific settings (persisted under own key, not smart_chat_model)
+        if (!this.env.settings.obsek) {
+            this.env.settings.obsek = {};
+        }
+        const obsek = this.env.settings.obsek;
+
         // Chat Model Section
         container.createEl('h2', { text: 'Chat Model' });
 
@@ -161,13 +167,13 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .addText(text => {
                 text
                     .setPlaceholder('100000')
-                    .setValue(String(settings.maxContextTokens || 100000))
+                    .setValue(String(obsek.maxContextTokens || 100000))
                     .onChange(async (value) => {
                         let val = parseInt(value);
                         if (isNaN(val)) val = 100000;
                         if (val < 10000) val = 10000;
                         if (val > 2000000) val = 2000000;
-                        settings.maxContextTokens = val;
+                        obsek.maxContextTokens = val;
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
@@ -177,9 +183,9 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .setName('enableAutoSummarization')
             .setDesc('Automatically summarize when context gets large')
             .addToggle(toggle => toggle
-                .setValue(settings.enableAutoSummarization !== false)
+                .setValue(obsek.enableAutoSummarization !== false)
                 .onChange(async (value) => {
-                    settings.enableAutoSummarization = value;
+                    obsek.enableAutoSummarization = value;
                     await this.save_settings();
                 }));
 
@@ -188,10 +194,10 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .setDesc('Trigger summarization at this % of max tokens')
             .addSlider(slider => slider
                 .setLimits(0.5, 0.9, 0.05)
-                .setValue(settings.summarizationThreshold || 0.7)
+                .setValue(obsek.summarizationThreshold || 0.7)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
-                    settings.summarizationThreshold = value;
+                    obsek.summarizationThreshold = value;
                     await this.save_settings();
                 }));
 
@@ -201,12 +207,26 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .addText(text => {
                 text
                     .setPlaceholder('5')
-                    .setValue(String(settings.autoSaveInterval !== undefined ? settings.autoSaveInterval : 5))
+                    .setValue(String(obsek.autoSaveInterval !== undefined ? obsek.autoSaveInterval : 5))
                     .onChange(async (value) => {
-                        settings.autoSaveInterval = parseInt(value);
+                        obsek.autoSaveInterval = parseInt(value);
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
+            });
+
+        new Setting(container)
+            .setName('Minion Model')
+            .setDesc('Model AI do automatycznej ekstrakcji pamięci. Pusty = główny model. Polecany: claude-haiku-4-5-20251001')
+            .addText(text => {
+                text
+                    .setPlaceholder('claude-haiku-4-5-20251001')
+                    .setValue(obsek.minionModel || '')
+                    .onChange(async (value) => {
+                        obsek.minionModel = value;
+                        await this.save_settings();
+                    });
+                text.inputEl.style.width = '250px';
             });
 
         // RAG (Retrieval) Section
@@ -216,9 +236,9 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .setName('enableRAG')
             .setDesc('Enable semantic search in previous sessions')
             .addToggle(toggle => toggle
-                .setValue(settings.enableRAG !== false)
+                .setValue(obsek.enableRAG !== false)
                 .onChange(async (value) => {
-                    settings.enableRAG = value;
+                    obsek.enableRAG = value;
                     await this.save_settings();
                 }));
 
@@ -227,10 +247,10 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .setDesc('Minimum similarity score for RAG results')
             .addSlider(slider => slider
                 .setLimits(0.5, 0.9, 0.05)
-                .setValue(settings.ragSimilarityThreshold || 0.7)
+                .setValue(obsek.ragSimilarityThreshold || 0.7)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
-                    settings.ragSimilarityThreshold = value;
+                    obsek.ragSimilarityThreshold = value;
                     await this.save_settings();
                 }));
 
@@ -240,9 +260,9 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .addText(text => {
                 text
                     .setPlaceholder('5')
-                    .setValue(String(settings.ragMaxResults || 5))
+                    .setValue(String(obsek.ragMaxResults || 5))
                     .onChange(async (value) => {
-                        settings.ragMaxResults = parseInt(value) || 5;
+                        obsek.ragMaxResults = parseInt(value) || 5;
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';

@@ -3,14 +3,18 @@
  * 
  * Structure:
  * .pkm-assistant/agents/{agent_name}/memory/
- * ├── active_context.md     <- Current session
+ * ├── brain.md              <- Long-term memory (~500 tok max)
+ * ├── brain_archive.md      <- Overflow from brain (for RAG)
+ * ├── active_context.md     <- Summary of last session
+ * ├── audit.log             <- Memory change log
  * ├── sessions/             <- Individual sessions with summaries
- * ├── weekly/               <- Weekly summaries
- * ├── monthly/              <- Monthly summaries
- * └── yearly/               <- "Brain" - long-term memory
+ * └── summaries/
+ *     ├── L1/              <- Every 5 sessions → 1 L1 summary
+ *     └── L2/              <- Every 5 L1 → 1 L2 summary
  */
 
 import { formatToMarkdown, parseSessionFile } from './sessionParser.js';
+import { streamToComplete } from './streamHelper.js';
 
 export class AgentMemory {
     /**
@@ -30,9 +34,8 @@ export class AgentMemory {
         // Paths
         this.paths = {
             sessions: `${this.basePath}/sessions`,
-            weekly: `${this.basePath}/weekly`,
-            monthly: `${this.basePath}/monthly`,
-            yearly: `${this.basePath}/yearly`,
+            l1: `${this.basePath}/summaries/L1`,
+            l2: `${this.basePath}/summaries/L2`,
             activeContext: `${this.basePath}/active_context.md`,
             brain: `${this.basePath}/brain.md`
         };
@@ -47,9 +50,9 @@ export class AgentMemory {
         const folders = [
             this.basePath,
             this.paths.sessions,
-            this.paths.weekly,
-            this.paths.monthly,
-            this.paths.yearly
+            `${this.basePath}/summaries`,
+            this.paths.l1,
+            this.paths.l2
         ];
 
         for (const folder of folders) {
@@ -57,6 +60,34 @@ export class AgentMemory {
                 await this.vault.adapter.mkdir(folder);
                 console.log(`[AgentMemory:${this.agentName}] Created folder: ${folder}`);
             }
+        }
+
+        // Migrate old weekly/ files to summaries/L1/ (one-time)
+        await this._migrateOldFolders();
+    }
+
+    /**
+     * One-time migration: move files from old weekly/ to summaries/L1/
+     */
+    async _migrateOldFolders() {
+        const oldWeekly = `${this.basePath}/weekly`;
+        try {
+            if (!(await this.vault.adapter.exists(oldWeekly))) return;
+
+            const listed = await this.vault.adapter.list(oldWeekly);
+            if (!listed?.files || listed.files.length === 0) return;
+
+            for (const filePath of listed.files) {
+                const fileName = filePath.split('/').pop();
+                const newPath = `${this.paths.l1}/${fileName}`;
+                const content = await this.vault.adapter.read(filePath);
+                await this.vault.adapter.write(newPath, content);
+                await this.vault.adapter.remove(filePath);
+                console.log(`[AgentMemory:${this.agentName}] Migrated ${fileName} → summaries/L1/`);
+            }
+            console.log(`[AgentMemory:${this.agentName}] Migration from weekly/ complete`);
+        } catch (e) {
+            console.warn(`[AgentMemory:${this.agentName}] Migration failed (non-fatal):`, e);
         }
     }
 
@@ -86,11 +117,19 @@ export class AgentMemory {
 
     /**
      * Load a session from this agent's memory
-     * @param {string} filename - Session filename
+     * @param {string|Object} fileOrName - Filename string, full path, or {path, name} object
      * @returns {Promise<Object>} { messages, metadata, summary }
      */
-    async loadSession(filename) {
-        const path = `${this.paths.sessions}/${filename}`;
+    async loadSession(fileOrName) {
+        let path;
+        if (typeof fileOrName === 'string') {
+            // If it looks like a full path (contains /), use it directly; otherwise prepend sessions dir
+            path = fileOrName.includes('/') ? fileOrName : `${this.paths.sessions}/${fileOrName}`;
+        } else if (fileOrName && fileOrName.path) {
+            path = fileOrName.path;
+        } else {
+            throw new Error(`Invalid session reference: ${JSON.stringify(fileOrName)}`);
+        }
         const content = await this.vault.adapter.read(path);
         return parseSessionFile(content);
     }
@@ -158,109 +197,42 @@ export class AgentMemory {
     }
 
     /**
-     * Create weekly summary from sessions
-     * @param {Date} weekStart - Start of the week
-     * @returns {Promise<string|null>} Path to summary or null
-     */
-    async createWeeklySummary(weekStart = null) {
-        const sessions = await this.listSessions();
-        if (sessions.length === 0) return null;
-
-        // Get sessions from the last 7 days
-        const now = Date.now();
-        const weekAgo = now - (7 * 24 * 60 * 60 * 1000);
-        const weekSessions = sessions.filter(s => s.mtime >= weekAgo);
-
-        if (weekSessions.length === 0) return null;
-
-        // Load and combine session contents
-        const sessionContents = [];
-        for (const session of weekSessions) {
-            try {
-                const data = await this.loadSession(session.name);
-                sessionContents.push({
-                    name: session.name,
-                    messages: data.messages,
-                    summary: data.summary
-                });
-            } catch (e) {
-                console.warn(`[AgentMemory:${this.agentName}] Could not load session:`, session.name);
-            }
-        }
-
-        // Create summary content
-        const dateStr = new Date().toISOString().slice(0, 10);
-        const filename = `week_${dateStr}.md`;
-        const path = `${this.paths.weekly}/${filename}`;
-
-        const summaryContent = this._formatWeeklySummary(sessionContents, dateStr);
-        await this.vault.adapter.write(path, summaryContent);
-
-        console.log(`[AgentMemory:${this.agentName}] Created weekly summary: ${filename}`);
-        return path;
-    }
-
-    /**
-     * Create monthly summary from weekly summaries
-     * @returns {Promise<string|null>} Path to summary or null
-     */
-    async createMonthlySummary() {
-        // List weekly summaries
-        const listed = await this.vault.adapter.list(this.paths.weekly);
-        if (!listed?.files || listed.files.length === 0) return null;
-
-        const monthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
-        const filename = `month_${monthStr}.md`;
-        const path = `${this.paths.monthly}/${filename}`;
-
-        // Combine weekly summaries
-        const weeklies = [];
-        for (const file of listed.files) {
-            if (file.endsWith('.md')) {
-                try {
-                    const content = await this.vault.adapter.read(file);
-                    weeklies.push({
-                        name: file.split('/').pop(),
-                        content
-                    });
-                } catch (e) {
-                    console.warn(`[AgentMemory:${this.agentName}] Could not read weekly:`, file);
-                }
-            }
-        }
-
-        if (weeklies.length === 0) return null;
-
-        const summaryContent = this._formatMonthlySummary(weeklies, monthStr);
-        await this.vault.adapter.write(path, summaryContent);
-
-        console.log(`[AgentMemory:${this.agentName}] Created monthly summary: ${filename}`);
-        return path;
-    }
-
-    /**
      * Get or create the agent's "brain" - long-term key information
+     * Sections match MEMORY_DESIGN.md: User, Preferencje, Ustalenia, Bieżące
      * @returns {Promise<string>} Brain content
      */
     async getBrain() {
         try {
             if (await this.vault.adapter.exists(this.paths.brain)) {
-                return await this.vault.adapter.read(this.paths.brain);
+                let content = await this.vault.adapter.read(this.paths.brain);
+                // Gracefully add any missing design-spec sections without overwriting existing content
+                const requiredSections = ['## User', '## Preferencje', '## Ustalenia', '## Bieżące'];
+                let changed = false;
+                for (const section of requiredSections) {
+                    if (!content.includes(section)) {
+                        content += `\n${section}\n\n`;
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    await this.vault.adapter.write(this.paths.brain, content);
+                }
+                return content;
             }
 
-            // Create initial brain file
+            // Create initial brain file with design-spec sections
             const initialContent = `# ${this.agentName} - Mózg (Długoterminowa pamięć)
 
-## Kluczowe informacje o użytkowniku
+## User
 
 
-## Ważne preferencje
+## Preferencje
 
 
-## Powtarzające się tematy
+## Ustalenia
 
 
-## Notatki
+## Bieżące
 
 `;
             await this.vault.adapter.write(this.paths.brain, initialContent);
@@ -281,33 +253,655 @@ export class AgentMemory {
     }
 
     /**
-     * Get context for RAG - combines brain + recent summaries
-     * @returns {Promise<string>} Combined context
+     * Get memory context to inject into system prompt.
+     * Combines: brain (long-term) + active_context.md (last session summary) + latest L1 summary
+     * @returns {Promise<string>} Combined context string
      */
     async getMemoryContext() {
         const parts = [];
 
-        // Add brain
+        // Add brain (long-term memory)
         const brain = await this.getBrain();
-        if (brain) {
+        if (brain && brain.trim()) {
             parts.push('## Długoterminowa pamięć\n' + brain);
         }
 
-        // Add most recent weekly summary
+        // Add active context (summary of last session) - only if file exists and has content
         try {
-            const weeklies = await this.vault.adapter.list(this.paths.weekly);
-            if (weeklies?.files?.length > 0) {
-                const sorted = weeklies.files.sort().reverse();
-                if (sorted.length > 0) {
-                    const latestWeekly = await this.vault.adapter.read(sorted[0]);
-                    parts.push('## Podsumowanie ostatniego tygodnia\n' + latestWeekly);
+            if (await this.vault.adapter.exists(this.paths.activeContext)) {
+                const activeCtx = await this.vault.adapter.read(this.paths.activeContext);
+                if (activeCtx && activeCtx.trim()) {
+                    parts.push('## Kontekst poprzedniej sesji\n' + activeCtx);
                 }
             }
         } catch (e) {
-            // No weekly summaries yet
+            // active_context.md not yet created - that's fine
+        }
+
+        // Add most recent L1 summary
+        try {
+            const l1Files = await this.vault.adapter.list(this.paths.l1);
+            if (l1Files?.files?.length > 0) {
+                const sorted = l1Files.files.sort().reverse();
+                if (sorted.length > 0) {
+                    const latestL1 = await this.vault.adapter.read(sorted[0]);
+                    parts.push('## Podsumowanie ostatnich sesji\n' + latestL1);
+                }
+            }
+        } catch (e) {
+            // No L1 summaries yet
         }
 
         return parts.join('\n\n---\n\n');
+    }
+
+    // --- Phase 5: L1/L2 Consolidation ---
+
+    /**
+     * Parse YAML frontmatter from a markdown file.
+     * Returns an object with frontmatter fields, or {} if none.
+     * @param {string} content - File content
+     * @returns {Object}
+     */
+    _parseFrontmatter(content) {
+        const match = content.match(/^---\n([\s\S]*?)\n---/);
+        if (!match) return {};
+        const result = {};
+        for (const line of match[1].split('\n')) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('- ')) {
+                // Array item - append to last key
+                if (result._lastKey) {
+                    if (!Array.isArray(result[result._lastKey])) {
+                        result[result._lastKey] = [];
+                    }
+                    result[result._lastKey].push(trimmed.slice(2).trim());
+                }
+            } else if (trimmed.includes(':')) {
+                const idx = trimmed.indexOf(':');
+                const key = trimmed.slice(0, idx).trim();
+                const val = trimmed.slice(idx + 1).trim();
+                result[key] = val || [];
+                result._lastKey = key;
+            }
+        }
+        delete result._lastKey;
+        return result;
+    }
+
+    /**
+     * Get sessions not yet included in any L1 summary.
+     * Checks L1 frontmatter `sessions: [...]` to determine which sessions are consolidated.
+     * @returns {Promise<Array>} Array of { path, name, mtime } for unconsolidated sessions
+     */
+    async getUnconsolidatedSessions() {
+        const allSessions = await this.listSessions();
+        if (allSessions.length === 0) return [];
+
+        // Collect all session names referenced in L1 files
+        const consolidatedNames = new Set();
+        try {
+            const l1Listed = await this.vault.adapter.list(this.paths.l1);
+            if (l1Listed?.files) {
+                for (const filePath of l1Listed.files) {
+                    if (!filePath.endsWith('.md')) continue;
+                    try {
+                        const content = await this.vault.adapter.read(filePath);
+                        const fm = this._parseFrontmatter(content);
+                        if (Array.isArray(fm.sessions)) {
+                            fm.sessions.forEach(s => consolidatedNames.add(s));
+                        }
+                    } catch (e) { /* skip unreadable L1 */ }
+                }
+            }
+        } catch (e) { /* no L1 folder yet */ }
+
+        return allSessions.filter(s => !consolidatedNames.has(s.name));
+    }
+
+    /**
+     * Get L1 summaries not yet included in any L2 summary.
+     * Checks L2 frontmatter `l1_files: [...]`.
+     * @returns {Promise<Array>} Array of { path, name } for unconsolidated L1s
+     */
+    async getUnconsolidatedL1s() {
+        const allL1s = [];
+        try {
+            const l1Listed = await this.vault.adapter.list(this.paths.l1);
+            if (l1Listed?.files) {
+                for (const filePath of l1Listed.files) {
+                    if (filePath.endsWith('.md')) {
+                        allL1s.push({ path: filePath, name: filePath.split('/').pop() });
+                    }
+                }
+            }
+        } catch (e) { return []; }
+
+        if (allL1s.length === 0) return [];
+
+        // Collect all L1 names referenced in L2 files
+        const consolidatedNames = new Set();
+        try {
+            const l2Listed = await this.vault.adapter.list(this.paths.l2);
+            if (l2Listed?.files) {
+                for (const filePath of l2Listed.files) {
+                    if (!filePath.endsWith('.md')) continue;
+                    try {
+                        const content = await this.vault.adapter.read(filePath);
+                        const fm = this._parseFrontmatter(content);
+                        if (Array.isArray(fm.l1_files)) {
+                            fm.l1_files.forEach(s => consolidatedNames.add(s));
+                        }
+                    } catch (e) { /* skip unreadable L2 */ }
+                }
+            }
+        } catch (e) { /* no L2 folder yet */ }
+
+        return allL1s.filter(l => !consolidatedNames.has(l.name));
+    }
+
+    /**
+     * Create an L1 summary from a batch of sessions using AI.
+     * @param {Array} sessions - Array of { path, name } (max 5)
+     * @param {Object} chatModel - SmartChatModel instance with .stream()
+     * @returns {Promise<string|null>} Path to created L1 file or null
+     */
+    async createL1Summary(sessions, chatModel) {
+        if (!sessions || sessions.length === 0 || !chatModel?.stream) return null;
+
+        // Load session contents
+        const sessionTexts = [];
+        const sessionNames = [];
+        for (const session of sessions) {
+            try {
+                const data = await this.loadSession(session);
+                sessionNames.push(session.name || session);
+                const msgs = (data.messages || [])
+                    .filter(m => m.role === 'user' || m.role === 'assistant')
+                    .map(m => {
+                        const role = m.role === 'user' ? 'User' : 'Agent';
+                        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+                        return `${role}: ${content}`;
+                    })
+                    .join('\n');
+                sessionTexts.push(`### Sesja: ${session.name || session}\n${msgs}`);
+            } catch (e) {
+                console.warn(`[AgentMemory:${this.agentName}] Could not load session for L1:`, session.name);
+            }
+        }
+
+        if (sessionTexts.length === 0) return null;
+
+        // Build prompt
+        const prompt = `Streszcz poniższe ${sessionTexts.length} sesji rozmów z użytkownikiem.
+Wyciągnij:
+1. Główne tematy - o czym rozmawiano
+2. Kluczowe fakty - co ważnego ustalono lub dowiedziałeś się o userze
+3. Decyzje i ustalenia - co postanowiono
+
+Pisz zwięźle (maks 300 słów). Po polsku.
+
+${sessionTexts.join('\n\n---\n\n')}`;
+
+        const apiMessages = [
+            { role: 'user', content: prompt }
+        ];
+
+        let summaryText;
+        try {
+            summaryText = await streamToComplete(chatModel, apiMessages);
+        } catch (e) {
+            console.error(`[AgentMemory:${this.agentName}] AI call for L1 failed:`, e);
+            return null;
+        }
+
+        // Build file with frontmatter
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const timeStr = new Date().toISOString().slice(11, 19).replace(/:/g, '-');
+        const filename = `l1_${dateStr}_${timeStr}.md`;
+        const path = `${this.paths.l1}/${filename}`;
+
+        const sessionsYaml = sessionNames.map(n => `  - ${n}`).join('\n');
+        const content = `---
+type: l1_summary
+agent: ${this.agentName}
+date: ${dateStr}
+sessions:
+${sessionsYaml}
+---
+
+# Podsumowanie ${sessionTexts.length} sesji - ${dateStr}
+
+${summaryText}
+`;
+
+        await this.vault.adapter.write(path, content);
+        console.log(`[AgentMemory:${this.agentName}] Created L1 summary: ${filename} (${sessionNames.length} sessions)`);
+        return path;
+    }
+
+    /**
+     * Create an L2 summary from a batch of L1 summaries using AI.
+     * @param {Array} l1Files - Array of { path, name } (max 5)
+     * @param {Object} chatModel - SmartChatModel instance with .stream()
+     * @returns {Promise<string|null>} Path to created L2 file or null
+     */
+    async createL2Summary(l1Files, chatModel) {
+        if (!l1Files || l1Files.length === 0 || !chatModel?.stream) return null;
+
+        // Load L1 contents
+        const l1Texts = [];
+        const l1Names = [];
+        for (const l1 of l1Files) {
+            try {
+                const content = await this.vault.adapter.read(l1.path);
+                l1Names.push(l1.name);
+                // Strip frontmatter for prompt
+                const body = content.replace(/^---[\s\S]*?---\n*/, '').trim();
+                l1Texts.push(`### ${l1.name}\n${body}`);
+            } catch (e) {
+                console.warn(`[AgentMemory:${this.agentName}] Could not read L1 for L2:`, l1.name);
+            }
+        }
+
+        if (l1Texts.length === 0) return null;
+
+        // Build prompt
+        const prompt = `Streszcz poniższe ${l1Texts.length} podsumowań L1 (każde streszcza 5 sesji rozmów z użytkownikiem).
+Wyciągnij najważniejsze:
+1. Główne tematy z tego okresu
+2. Kluczowe fakty o userze
+3. Ważne decyzje i ustalenia
+
+Pisz bardzo zwięźle (maks 200 słów). Po polsku.
+
+${l1Texts.join('\n\n---\n\n')}`;
+
+        const apiMessages = [
+            { role: 'user', content: prompt }
+        ];
+
+        let summaryText;
+        try {
+            summaryText = await streamToComplete(chatModel, apiMessages);
+        } catch (e) {
+            console.error(`[AgentMemory:${this.agentName}] AI call for L2 failed:`, e);
+            return null;
+        }
+
+        // Build file with frontmatter
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const timeStr = new Date().toISOString().slice(11, 19).replace(/:/g, '-');
+        const filename = `l2_${dateStr}_${timeStr}.md`;
+        const path = `${this.paths.l2}/${filename}`;
+
+        const l1Yaml = l1Names.map(n => `  - ${n}`).join('\n');
+        const content = `---
+type: l2_summary
+agent: ${this.agentName}
+date: ${dateStr}
+l1_files:
+${l1Yaml}
+---
+
+# Podsumowanie ${l1Texts.length} okresów - ${dateStr}
+
+${summaryText}
+`;
+
+        await this.vault.adapter.write(path, content);
+        console.log(`[AgentMemory:${this.agentName}] Created L2 summary: ${filename} (${l1Names.length} L1s)`);
+        return path;
+    }
+
+    // --- Phase 3: Memory Extraction support ---
+
+    /**
+     * Central memory write function.
+     * Applies brain updates and saves active context summary.
+     * All memory writes go through here (future: autonomy check).
+     *
+     * @param {Array} updates - Array of {category, content, section, oldContent?} from MemoryExtractor
+     * @param {string} activeContextSummary - Summary of the session for active_context.md
+     * @returns {Promise<void>}
+     */
+    async memoryWrite(updates, activeContextSummary) {
+        // TODO: autonomy check (MEMORY_DESIGN.md sekcja 9)
+
+        // Apply brain updates if any
+        if (updates && updates.length > 0) {
+            await this.applyBrainUpdates(updates);
+        }
+
+        // Save active context summary
+        if (activeContextSummary && activeContextSummary.trim()) {
+            await this.vault.adapter.write(this.paths.activeContext, activeContextSummary);
+            console.log(`[AgentMemory:${this.agentName}] Saved active context summary`);
+        }
+
+        // Audit log
+        await this._appendAuditLog(updates);
+    }
+
+    /**
+     * Apply extracted facts to brain.md
+     * @param {Array} updates - Array of {category, content, section, oldContent?}
+     * @returns {Promise<void>}
+     */
+    async applyBrainUpdates(updates) {
+        if (!updates || updates.length === 0) return;
+
+        const brainContent = await this.getBrain();
+        const sections = this._parseBrainSections(brainContent);
+
+        for (const update of updates) {
+            if (update.category === 'DELETE') {
+                this._applyDelete(sections, update);
+            } else if (update.category === 'UPDATE') {
+                this._applyUpdate(sections, update);
+            } else {
+                // CORE, PREFERENCE, DECISION, PROJECT → append to section
+                this._applyAppend(sections, update);
+            }
+        }
+
+        // Build new brain content
+        let newBrain = this._buildBrainFromSections(sections);
+
+        // Check size limit (~2000 chars ≈ 500 tokens)
+        const BRAIN_MAX_CHARS = 2000;
+        if (newBrain.length > BRAIN_MAX_CHARS) {
+            newBrain = await this._archiveOverflow(sections, BRAIN_MAX_CHARS);
+        }
+
+        await this.vault.adapter.write(this.paths.brain, newBrain);
+        console.log(`[AgentMemory:${this.agentName}] Brain updated with ${updates.length} changes`);
+    }
+
+    /**
+     * Parse brain.md into sections map
+     * @param {string} brainContent
+     * @returns {Object} { header: string, sections: Map<string, string[]> }
+     */
+    _parseBrainSections(brainContent) {
+        const lines = brainContent.split('\n');
+        let header = '';
+        const sections = new Map();
+        let currentSection = null;
+
+        for (const line of lines) {
+            if (line.startsWith('# ') && !line.startsWith('## ')) {
+                header = line;
+            } else if (line.startsWith('## ')) {
+                currentSection = line;
+                if (!sections.has(currentSection)) {
+                    sections.set(currentSection, []);
+                }
+            } else if (currentSection) {
+                const trimmed = line.trim();
+                if (trimmed) {
+                    sections.get(currentSection).push(trimmed);
+                }
+            }
+        }
+
+        // Ensure all required sections exist
+        for (const s of ['## User', '## Preferencje', '## Ustalenia', '## Bieżące']) {
+            if (!sections.has(s)) {
+                sections.set(s, []);
+            }
+        }
+
+        return { header: header || `# ${this.agentName} - Mózg (Długoterminowa pamięć)`, sections };
+    }
+
+    /**
+     * Rebuild brain.md from sections map
+     * @param {Object} parsed - { header, sections }
+     * @returns {string}
+     */
+    _buildBrainFromSections(parsed) {
+        const parts = [parsed.header, ''];
+
+        // Maintain consistent section order
+        const sectionOrder = ['## User', '## Preferencje', '## Ustalenia', '## Bieżące'];
+        const orderedKeys = [
+            ...sectionOrder.filter(s => parsed.sections.has(s)),
+            ...[...parsed.sections.keys()].filter(s => !sectionOrder.includes(s))
+        ];
+
+        for (const key of orderedKeys) {
+            parts.push(key);
+            const items = parsed.sections.get(key) || [];
+            for (const item of items) {
+                parts.push(item.startsWith('- ') ? item : `- ${item}`);
+            }
+            parts.push('');
+        }
+
+        return parts.join('\n');
+    }
+
+    /**
+     * Append a fact to the appropriate brain section
+     * @param {Object} parsed - { header, sections }
+     * @param {Object} update - { category, content, section }
+     */
+    _applyAppend(parsed, update) {
+        const section = update.section;
+        if (!parsed.sections.has(section)) {
+            parsed.sections.set(section, []);
+        }
+        const items = parsed.sections.get(section);
+        // Fuzzy duplicate check: extract keywords (numbers + significant words)
+        const newKeywords = this._extractKeywords(update.content);
+        const isDuplicate = items.some(item => {
+            const clean = item.replace(/^-\s*/, '');
+            const existingKeywords = this._extractKeywords(clean);
+            return this._keywordsOverlap(newKeywords, existingKeywords);
+        });
+        if (!isDuplicate) {
+            items.push(`- ${update.content}`);
+        } else {
+            console.log(`[AgentMemory:${this.agentName}] Skipped duplicate: ${update.content}`);
+        }
+    }
+
+    /**
+     * Extract significant keywords from a fact string.
+     * Returns numbers and non-stopword words (3+ chars).
+     * @param {string} text
+     * @returns {Set<string>}
+     */
+    _extractKeywords(text) {
+        const lower = text.toLowerCase();
+        const stopwords = new Set([
+            'user', 'jest', 'ma', 'mam', 'masz', 'się', 'nie', 'tak', 'ale', 'że',
+            'to', 'ten', 'ta', 'ci', 'jak', 'już', 'tylko', 'bardzo', 'też', 'czy',
+            'lub', 'albo', 'oraz', 'jego', 'jej', 'ich', 'dla', 'po', 'na', 'ze',
+            'od', 'do', 'przy', 'przez', 'nad', 'pod', 'przed', 'za', 'między',
+            'numer', 'buta', 'kolor', 'lubi', 'woli', 'preferuje'
+        ]);
+        // Extract all numbers
+        const numbers = lower.match(/\d+/g) || [];
+        // Extract words 3+ chars, skip stopwords
+        const words = lower.match(/[a-ząćęłńóśźż]{3,}/g) || [];
+        const significant = words.filter(w => !stopwords.has(w));
+        return new Set([...numbers, ...significant]);
+    }
+
+    /**
+     * Check if two keyword sets overlap enough to be considered duplicates.
+     * If either set has numbers, ALL numbers must match.
+     * For words, at least 50% overlap required.
+     * @param {Set<string>} a
+     * @param {Set<string>} b
+     * @returns {boolean}
+     */
+    _keywordsOverlap(a, b) {
+        if (a.size === 0 || b.size === 0) return false;
+
+        // Separate numbers and words
+        const numsA = [...a].filter(k => /^\d+$/.test(k));
+        const numsB = [...b].filter(k => /^\d+$/.test(k));
+        const wordsA = [...a].filter(k => !/^\d+$/.test(k));
+        const wordsB = [...b].filter(k => !/^\d+$/.test(k));
+
+        // If both have numbers, check if they share at least one
+        if (numsA.length > 0 && numsB.length > 0) {
+            const sharedNums = numsA.filter(n => numsB.includes(n));
+            if (sharedNums.length > 0) {
+                // Same number + at least one shared word → duplicate
+                const sharedWords = wordsA.filter(w => wordsB.includes(w));
+                return sharedWords.length > 0 || wordsA.length === 0 || wordsB.length === 0;
+            }
+            return false; // Different numbers = not duplicate
+        }
+
+        // Words-only comparison: need 50%+ overlap
+        if (wordsA.length === 0 || wordsB.length === 0) return false;
+        const sharedWords = wordsA.filter(w => wordsB.includes(w));
+        const overlapRatio = sharedWords.length / Math.min(wordsA.length, wordsB.length);
+        return overlapRatio >= 0.5;
+    }
+
+    /**
+     * Update (replace) a fact in the brain
+     * @param {Object} parsed - { header, sections }
+     * @param {Object} update - { category, content, section, oldContent }
+     */
+    _applyUpdate(parsed, update) {
+        const section = update.section;
+        if (!parsed.sections.has(section)) {
+            parsed.sections.set(section, []);
+        }
+        const items = parsed.sections.get(section);
+
+        if (update.oldContent) {
+            // Try to find and replace the old fact
+            const oldLower = update.oldContent.toLowerCase();
+            const idx = items.findIndex(item => {
+                const clean = item.replace(/^-\s*/, '').toLowerCase();
+                return clean.includes(oldLower);
+            });
+            if (idx >= 0) {
+                items[idx] = `- ${update.content}`;
+                return;
+            }
+        }
+
+        // If old fact not found, search all sections for something similar
+        for (const [secKey, secItems] of parsed.sections) {
+            if (update.oldContent) {
+                const oldLower = update.oldContent.toLowerCase();
+                const idx = secItems.findIndex(item => {
+                    const clean = item.replace(/^-\s*/, '').toLowerCase();
+                    return clean.includes(oldLower);
+                });
+                if (idx >= 0) {
+                    secItems[idx] = `- ${update.content}`;
+                    return;
+                }
+            }
+        }
+
+        // Fallback: append to target section
+        items.push(`- ${update.content}`);
+    }
+
+    /**
+     * Delete a fact from the brain
+     * @param {Object} parsed - { header, sections }
+     * @param {Object} update - { category, content, section }
+     */
+    _applyDelete(parsed, update) {
+        const contentLower = update.content.toLowerCase();
+
+        // Search in specified section first, then all sections
+        const searchOrder = update.section
+            ? [update.section, ...[...parsed.sections.keys()].filter(k => k !== update.section)]
+            : [...parsed.sections.keys()];
+
+        for (const secKey of searchOrder) {
+            const items = parsed.sections.get(secKey);
+            if (!items) continue;
+
+            const idx = items.findIndex(item => {
+                const clean = item.replace(/^-\s*/, '').toLowerCase();
+                return clean.includes(contentLower);
+            });
+            if (idx >= 0) {
+                items.splice(idx, 1);
+                console.log(`[AgentMemory:${this.agentName}] Deleted fact from ${secKey}: ${update.content}`);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Move oldest facts to brain_archive.md when brain exceeds size limit
+     * @param {Object} parsed - { header, sections }
+     * @param {number} maxChars - Maximum brain size in characters
+     * @returns {Promise<string>} New brain content within limit
+     */
+    async _archiveOverflow(parsed, maxChars) {
+        const archivePath = `${this.basePath}/brain_archive.md`;
+        const archived = [];
+
+        // Remove oldest facts from ## User and ## Bieżące (most likely to overflow)
+        for (const section of ['## Bieżące', '## User']) {
+            const items = parsed.sections.get(section);
+            if (!items) continue;
+
+            while (items.length > 1 && this._buildBrainFromSections(parsed).length > maxChars) {
+                const removed = items.shift(); // Remove oldest (first) item
+                archived.push(`[${new Date().toISOString().slice(0, 10)}] ${section}: ${removed}`);
+            }
+        }
+
+        // Append archived facts to brain_archive.md
+        if (archived.length > 0) {
+            let existingArchive = '';
+            try {
+                if (await this.vault.adapter.exists(archivePath)) {
+                    existingArchive = await this.vault.adapter.read(archivePath);
+                }
+            } catch (e) { /* first archive */ }
+
+            const archiveContent = existingArchive
+                ? existingArchive + '\n' + archived.join('\n')
+                : `# ${this.agentName} - Brain Archive\n\n` + archived.join('\n');
+
+            await this.vault.adapter.write(archivePath, archiveContent);
+            console.log(`[AgentMemory:${this.agentName}] Archived ${archived.length} facts to brain_archive.md`);
+        }
+
+        return this._buildBrainFromSections(parsed);
+    }
+
+    /**
+     * Append memory changes to audit.log
+     * @param {Array} updates - Changes applied
+     */
+    async _appendAuditLog(updates) {
+        if (!updates || updates.length === 0) return;
+
+        const logPath = `${this.basePath}/audit.log`;
+        const timestamp = new Date().toISOString();
+
+        const entries = updates.map(u =>
+            `[${timestamp}] [${u.category}] ${u.content}`
+        ).join('\n');
+
+        try {
+            let existing = '';
+            if (await this.vault.adapter.exists(logPath)) {
+                existing = await this.vault.adapter.read(logPath);
+            }
+            await this.vault.adapter.write(logPath, existing ? existing + '\n' + entries : entries);
+        } catch (e) {
+            console.warn(`[AgentMemory:${this.agentName}] Could not write audit log:`, e);
+        }
     }
 
     // --- Private helpers ---
@@ -319,54 +913,4 @@ export class AgentMemory {
         return `${date}_${time}.md`;
     }
 
-    _formatWeeklySummary(sessions, dateStr) {
-        let content = `---
-type: weekly_summary
-agent: ${this.agentName}
-date: ${dateStr}
-session_count: ${sessions.length}
----
-
-# Podsumowanie tygodnia - ${dateStr}
-
-## Sesje (${sessions.length})
-
-`;
-        for (const session of sessions) {
-            content += `### ${session.name}\n`;
-            if (session.summary) {
-                content += session.summary + '\n\n';
-            } else {
-                content += `Wiadomości: ${session.messages?.length || 0}\n\n`;
-            }
-        }
-
-        content += `## Kluczowe tematy\n\n[Do uzupełnienia przez AI]\n\n`;
-        content += `## Notatki\n\n`;
-
-        return content;
-    }
-
-    _formatMonthlySummary(weeklies, monthStr) {
-        let content = `---
-type: monthly_summary
-agent: ${this.agentName}
-month: ${monthStr}
-weekly_count: ${weeklies.length}
----
-
-# Podsumowanie miesiąca - ${monthStr}
-
-## Tygodnie (${weeklies.length})
-
-`;
-        for (const weekly of weeklies) {
-            content += `### ${weekly.name}\n\n`;
-        }
-
-        content += `## Kluczowe tematy miesiąca\n\n[Do uzupełnienia]\n\n`;
-        content += `## Wnioski\n\n`;
-
-        return content;
-    }
 }

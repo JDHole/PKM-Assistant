@@ -1,7 +1,7 @@
 export function createVaultSearchTool(app) {
     return {
         name: 'vault_search',
-        description: 'Search for notes in the vault by content or filename',
+        description: 'Search for notes in the vault by content or filename. For searching agent memory/past conversations, use memory_search instead.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -34,19 +34,17 @@ export function createVaultSearchTool(app) {
                 }
 
                 const searchIn = args.searchIn || 'both';
-                const limit = Math.min(args.limit || 20, 50); // Max 50
+                const limit = Math.min(args.limit || 20, 50);
                 const queryLower = query.toLowerCase();
 
                 const allFiles = app.vault.getMarkdownFiles();
 
-                // Filter by folder if requested
                 let candidates = allFiles;
                 if (folder) {
                     candidates = candidates.filter(f => f.path.startsWith(folder));
                 }
 
                 const results = [];
-                let count = 0;
 
                 for (const file of candidates) {
                     if (results.length >= limit) break;
@@ -54,30 +52,21 @@ export function createVaultSearchTool(app) {
                     let matchType = null;
                     let snippet = null;
 
-                    // Check filename
                     if (searchIn === 'filename' || searchIn === 'both') {
                         if (file.basename.toLowerCase().includes(queryLower)) {
                             matchType = 'filename';
                         }
                     }
 
-                    // Check content if not matched yet or if searching in content explicitly
-                    // If matched in filename and we only care about if there is a match, we might skip content unless we want to show snippet?
-                    // "Zbierz wyniki: { path, matchType: 'filename'|'content'|'both', snippet?: string }"
-                    // If it matches both, we should probably mark it as both or prioritize one? 
-                    // Let's check logic: "Jeśli searchIn includes filename... Jeśli searchIn includes content..."
-
                     let contentMatch = false;
-                    let content = '';
 
                     if (searchIn === 'content' || searchIn === 'both') {
-                        content = await app.vault.cachedRead(file);
+                        const content = await app.vault.cachedRead(file);
                         const contentLower = content.toLowerCase();
                         const idx = contentLower.indexOf(queryLower);
 
                         if (idx !== -1) {
                             contentMatch = true;
-                            // Generate snippet
                             const start = Math.max(0, idx - 75);
                             const end = Math.min(content.length, idx + query.length + 75);
                             snippet = content.substring(start, end).replace(/\n/g, ' ');
@@ -93,12 +82,7 @@ export function createVaultSearchTool(app) {
                     }
 
                     if (matchType) {
-                        results.push({
-                            path: file.path,
-                            matchType,
-                            snippet
-                        });
-                        count++;
+                        results.push({ path: file.path, matchType, snippet });
                     }
                 }
 
@@ -106,15 +90,12 @@ export function createVaultSearchTool(app) {
                     success: true,
                     query,
                     results,
-                    count
+                    count: results.length
                 };
 
             } catch (error) {
                 console.error('[VaultSearchTool] Error:', error);
-                return {
-                    success: false,
-                    error: error.message
-                };
+                return { success: false, error: error.message };
             }
         }
     };

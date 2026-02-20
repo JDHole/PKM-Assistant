@@ -1,10 +1,7 @@
-import { EmbeddingHelper } from './EmbeddingHelper.js';
-
 export class RAGRetriever {
     constructor(options) {
         this.embeddingHelper = options.embeddingHelper;
-        this.sessionManager = options.sessionManager;
-        this.vault = options.vault;
+        this.agentMemory = options.agentMemory;
         this.settings = options.settings;
 
         // Cache embeddingów sesji
@@ -62,18 +59,18 @@ export class RAGRetriever {
 
     /**
      * Indeksuje sesję (dodaje do cache)
-     * @param {TFile} file
+     * @param {{path: string, name: string}} session - Session object from AgentMemory.listSessions()
      */
-    async indexSession(file) {
-        if (!this.sessionManager || !this.embeddingHelper) return;
+    async indexSession(session) {
+        if (!this.agentMemory || !this.embeddingHelper) return;
 
         try {
-            console.log('[RAG] Indexing session:', file.path);
-            const sessionData = await this.sessionManager.loadSession(file);
+            console.log('[RAG] Indexing session:', session.path);
+            const sessionData = await this.agentMemory.loadSession(session);
 
             // Prepare content for embedding
             if (!sessionData || !sessionData.messages || sessionData.messages.length === 0) {
-                console.log('[RAG] Session empty, skipping:', file.path);
+                console.log('[RAG] Session empty, skipping:', session.path);
                 return;
             }
 
@@ -83,26 +80,26 @@ export class RAGRetriever {
             const embedding = await this.embeddingHelper.embed(content);
             console.log('[RAG] Session embedded, vector length:', embedding?.length);
 
-            this.sessionEmbeddings.set(file.path, {
+            this.sessionEmbeddings.set(session.path, {
                 embedding,
                 content
             });
             console.log('[RAG] Session indexed successfully');
 
         } catch (error) {
-            console.error(`RAGRetriever: Error indexing session ${file.path}:`, error);
+            console.error(`RAGRetriever: Error indexing session ${session.path}:`, error);
         }
     }
 
     /**
-     * Indeksuje wszystkie sesje
+     * Indeksuje wszystkie sesje z AgentMemory
      */
     async indexAllSessions() {
-        if (!this.sessionManager) return;
+        if (!this.agentMemory) return;
 
-        const files = await this.sessionManager.listSessions();
-        for (const file of files) {
-            await this.indexSession(file);
+        const sessions = await this.agentMemory.listSessions();
+        for (const session of sessions) {
+            await this.indexSession(session);
         }
     }
 
@@ -119,25 +116,4 @@ export class RAGRetriever {
         ).join('\n\n');
     }
 
-    /**
-     * Calculates cosine similarity between two vectors
-     * @private
-     */
-    _cosineSimilarity(vecA, vecB) {
-        if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
-
-        for (let i = 0; i < vecA.length; i++) {
-            dotProduct += vecA[i] * vecB[i];
-            normA += vecA[i] * vecA[i];
-            normB += vecB[i] * vecB[i];
-        }
-
-        if (normA === 0 || normB === 0) return 0;
-
-        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-    }
 }

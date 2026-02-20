@@ -33,7 +33,18 @@ export function createVaultListTool(app) {
                 }
 
                 if (!targetFolder) {
-                    return { success: false, error: `Folder not found: ${folderPath}` };
+                    // Fallback: try adapter for hidden/unindexed folders (e.g. .pkm-assistant)
+                    try {
+                        const listed = await app.vault.adapter.list(folderPath);
+                        const files = [
+                            ...(listed.folders || []).map(f => ({ name: f.split('/').pop(), path: f, isFolder: true })),
+                            ...(listed.files || []).map(f => ({ name: f.split('/').pop(), path: f, isFolder: false }))
+                        ];
+                        console.log(`[VaultListTool] Listed ${files.length} items in hidden folder '${folderPath}'`);
+                        return { success: true, folder: folderPath, files, count: files.length, totalCount: files.length };
+                    } catch (adapterErr) {
+                        return { success: false, error: `Folder not found: ${folderPath}` };
+                    }
                 }
 
                 if (!(targetFolder instanceof TFolder)) {

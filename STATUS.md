@@ -1,7 +1,7 @@
 # Obsek Plugin - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-20
+> Ostatnia aktualizacja: 2026-02-20 (sesja 10)
 
 ---
 
@@ -28,12 +28,48 @@ Cel: System specjalizowanych AI agentow w Obsidianie, ktorzy pomagaja zarzadzac 
 - [x] Multi-provider: Claude Sonnet 4 via API potwierdzone
 - [x] System uprawnien DZIALA - blokuje vault_write az user zatwierdzi
 - [x] MCP narzedzia: vault_list, vault_read, vault_write potwierdzone
-- [x] Build: npm run build -> dist/main.js 882kb, auto-kopia do vaultu
+- [x] Build: npm run build -> dist/main.js **6.5MB**, auto-kopia do vaultu
+- [x] src/main.js zawiera wszystkie komponenty Obsek (ChatView, AgentManager, MCP, itd.)
+- [x] brain.md tworzony automatycznie przy starcie (.pkm-assistant/agents/jaskier/memory/brain.md)
+- [x] Tresc brain.md jest wstrzykiwana do system promptu przy kazdej wiadomosci
+- [x] vault_read/vault_list/vault_write dzialaja na ukryte foldery (.pkm-assistant)
+- [x] Agent zna sciezke do swojego brain.md i moze go aktualizowac via vault_write
+- [x] Fazy 0+1+2 systemu pamieci zaimplementowane (streamHelper, brain boot-up, session lifecycle)
+- [x] Session dropdown dziala - widzi sesje z AgentMemory, ladowanie sesji dziala
+- [x] memory_search - nowy MCP tool do przeszukiwania pamieci agenta (sesje, brain, podsumowania)
+- [x] Ribbon icon Obsek (zamiast 3 ikon Smart Connections) - otwiera chat
+- [x] RAG indexuje z AgentMemory (nie z pustego SessionManager)
+- [x] Faza 3: Memory Extraction DZIALA - consolidateSession() wyciaga fakty po sesji
+- [x] MemoryExtractor.js - automatyczna ekstrakcja faktow z rozmow (przetestowane)
+- [x] memoryWrite() + applyBrainUpdates() w AgentMemory - centralna funkcja zapisu pamieci
+- [x] Minion Model - ustawienie w settings (tanszy model do operacji pamieci)
+- [x] audit.log - kazda zmiana pamieci logowana
+- [x] brain_archive.md - overflow z brain.md (gdy > 2000 znakow)
+- [x] Prompt ekstrakcji wymusza 3. osobe ("User ma..." nie "Mam...")
+- [x] Fuzzy dedup w _applyAppend() - wykrywa duplikaty po slowach kluczowych/liczbach
+- [x] Prompt instruuje AI zeby sprawdzal istniejacy brain przed dodaniem faktow
+- [x] Faza 4: Summarizer DZIALA - automatyczne podsumowanie rozmowy przy 70% limitu tokenow
+- [x] Summarizer uzywa streamToComplete() (nie crashuje jak wczesniej)
+- [x] RollingWindow: rozdzielony baseSystemPrompt od conversationSummary (brak layer collision)
+- [x] Faza 7: RAG polish - RAGRetriever uzywa AgentMemory natywnie (nie przez workaround)
+- [x] Faza 6: MCP tools pamieciowe - memory_update (zapamiętaj/zapomnij/czytaj brain) + memory_status (info o pamieci)
+- [x] Voice commands - system prompt agenta rozpoznaje komendy: "zapamiętaj", "zapomnij", "co o mnie wiesz", "pokaż pamięć"
+- [x] MCP narzedzia: 9 total (vault: read/list/write/delete/search + memory: search/update/status)
+- [x] data.json: usunieta stara sekcja smart_chat_threads z adapterem ollama (powodowala crash)
+- [x] Faza 5: L1/L2 konsolidacja DZIALA - automatyczna kompresja sesji (5 sesji -> L1, 5 L1 -> L2)
+- [x] 10 plikow L1 + 2 pliki L2 utworzone z 48 sesji Jaskiera
+- [x] L1 summaries wstrzykiwane do system promptu via getMemoryContext()
+- [x] Frontmatter tracking - L1 pamięta które sesje zawiera, L2 pamięta które L1
+- [x] Migracja folderow: weekly/monthly/yearly -> summaries/L1 + summaries/L2
+- [x] memory_update read_brain nie wymaga juz uprawnien vault.write (fix permission)
+- [x] Settings persistence: custom ustawienia Obsek w osobnym namespace `obsek` (nie giną po restarcie)
+- [x] Minion model (Haiku) dziala - tańszy model do ekstrakcji pamieci, sumaryzacji, konsolidacji L1/L2
+- [x] Platform auto-detection z nazw kluczy API (SC nie zapisuje `platform` explicite)
+- [x] Wyczyszczone debug logi z konsoli (handle_chunk, handle_done, get_chat_model)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
 - [ ] Pozostale agenty (Iris, Dexter, Ezra, Silas, Lexie) - Jaskier dziala!
-- [ ] System pamieci (rolling window, summarizer, RAG)
 - [ ] MCP narzedzia: vault_search, vault_delete
 - [ ] Agent Creator Modal (tworzenie agentow z UI)
 - [ ] Strefy vaulta (VaultZones - konfiguracja jest w .pkm-assistant/config.yaml)
@@ -42,13 +78,24 @@ Cel: System specjalizowanych AI agentow w Obsidianie, ktorzy pomagaja zarzadzac 
 
 ## Co jest PLANOWANE (pelna wizja w WIZJA.md)
 
-- [ ] Ciagloa pamiec agentow (hierarchiczna: sesja -> tydzien -> miesiac -> rok)
+- [x] Faza 4: Naprawa Summarizera - DONE (sesja 7)
+- [x] Faza 7: RAG polish - DONE (sesja 8)
+- [x] Faza 6: Voice commands / MCP tools - DONE (sesja 8)
+- [x] Faza 5: Konsolidacja L1/L2 - DONE (sesja 9) - WSZYSTKIE FAZY PAMIECI GOTOWE!
+- [x] Minion model fix - DONE (sesja 10) - settings persistence + platform detection
 - [ ] Rebranding UI: "Smart Connections" -> "Obsek"
-- [ ] Przelaczanie agentow w sidebar
-- [ ] Agent Creator Modal
-- [ ] Token tracking i limity
-- [ ] Miniony (male lokalne modele)
 - [ ] Ollama one-click setup
+
+## Wazne sciezki
+
+- **Vault:** `C:/Users/jdziu/Mój dysk/JDHole_OS_2.0/`
+- **Plugin w vaultcie:** `.obsidian/plugins/obsek/`
+- **Pamiec Jaskiera:** `.pkm-assistant/agents/jaskier/memory/`
+- **Brain Jaskiera:** `.pkm-assistant/agents/jaskier/memory/brain.md`
+- **Sesje Jaskiera:** `.pkm-assistant/agents/jaskier/memory/sessions/`
+- **Podsumowania L1:** `.pkm-assistant/agents/jaskier/memory/summaries/L1/`
+- **Podsumowania L2:** `.pkm-assistant/agents/jaskier/memory/summaries/L2/`
+- **Build:** `npm run build` w `C:\Users\jdziu\Desktop\Obsek\Obsek Plugin\`
 
 ---
 

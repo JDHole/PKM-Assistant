@@ -10,13 +10,11 @@ import { SmartEnv } from 'obsidian-smart-env';
 import { smart_env_config } from "../smart_env.config.js";
 import { open_note } from "obsidian-smart-env/utils/open_note.js";
 
-import { ScEarlySettingsTab } from "./views/settings_tab.js";
-
 import { ReleaseNotesView }    from "./views/release_notes_view.js";
 
 import { StoryModal } from 'obsidian-smart-env/src/modals/story.js';
 import { get_random_connection } from "./utils/get_random_connection.js";
-import { add_smart_dice_icon } from "./utils/add_icons.js";
+import { add_smart_dice_icon, add_obsek_icon } from "./utils/add_icons.js";
 
 // v4
 import { SmartPlugin } from "obsidian-smart-env/smart_plugin.js";
@@ -24,6 +22,26 @@ import { ConnectionsItemView } from "./views/connections_item_view.js";
 import { LookupItemView } from "./views/lookup_item_view.js";
 import { register_smart_connections_codeblock } from "./views/connections_codeblock.js";
 import { build_connections_codeblock } from "./utils/build_connections_codeblock.js";
+
+// Obsek custom components
+import { ObsekSettingsTab } from "./views/obsek_settings_tab.js";
+import { ChatView } from "./views/chat_view.js";
+import { AgentManager } from "./core/AgentManager.js";
+import { VaultZones } from "./core/VaultZones.js";
+import { PermissionSystem } from "./core/PermissionSystem.js";
+import { ApprovalManager } from "./core/ApprovalManager.js";
+import { ToolRegistry } from "./mcp/ToolRegistry.js";
+import { MCPClient } from "./mcp/MCPClient.js";
+import { ToolLoader } from "./mcp/ToolLoader.js";
+import { createVaultReadTool } from "./mcp/VaultReadTool.js";
+import { createVaultListTool } from "./mcp/VaultListTool.js";
+import { createVaultWriteTool } from "./mcp/VaultWriteTool.js";
+import { createVaultDeleteTool } from "./mcp/VaultDeleteTool.js";
+import { createVaultSearchTool } from "./mcp/VaultSearchTool.js";
+import { createMemorySearchTool } from "./mcp/MemorySearchTool.js";
+import { createMemoryUpdateTool } from "./mcp/MemoryUpdateTool.js";
+import { createMemoryStatusTool } from "./mcp/MemoryStatusTool.js";
+import { registerAgentSidebar } from "./views/AgentSidebar.js";
 
 export default class SmartConnectionsPlugin extends SmartPlugin {
   SmartEnv = SmartEnv;
@@ -33,13 +51,14 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
     }
     return this._smart_env_config;
   }
-  ConnectionsSettingsTab = ScEarlySettingsTab;
+  ConnectionsSettingsTab = ObsekSettingsTab;
 
   get item_views() {
     return {
       ConnectionsItemView,
       LookupItemView,
       ReleaseNotesView,
+      ChatView,
     };
   }
 
@@ -48,17 +67,15 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
   get api() { return this._api; }
   onload() {
     this.app.workspace.onLayoutReady(this.initialize.bind(this)); // initialize when layout is ready
-    // this.SmartEnv.create(this); // IMPORTANT: works on mobile without this.smart_env_config as second arg (appears to be fixed 2025-12-03)
     this.SmartEnv.create(this, this.smart_env_config);
-    // SmartChatView.register_view(this);
     this.addSettingTab(new this.ConnectionsSettingsTab(this.app, this)); // add settings tab
     add_smart_dice_icon();
+    add_obsek_icon();
     this.register_commands(); // from SmartPlugin
     this.register_item_views(); // from SmartPlugin
     this.register_ribbon_icons(); // from SmartPlugin
-    // this.register_views(); // replace with register_item_views from SmartPlugin
+    registerAgentSidebar(this);
   }
-  // async onload() { this.app.workspace.onLayoutReady(this.initialize.bind(this)); } // initialize when layout is ready
   onunload() {
     console.log("Unloading Smart Connections plugin");
     this.notices?.unload();
@@ -67,6 +84,8 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
 
   async initialize() {
     this.smart_connections_view = null;
+
+    // New-user onboarding (non-blocking)
     this.is_new_user().then(async (is_new) => {
       if (!is_new) return;
       setTimeout(() => {
@@ -82,7 +101,47 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
       }, 1000);
       this.add_to_gitignore("\n\n# Ignore Smart Environment folder\n.smart-env");
     });
+
     await this.SmartEnv.wait_for({ loaded: true });
+
+    // AgentManager
+    try {
+      this.agentManager = new AgentManager(this.app.vault, this.env?.settings || {});
+      await this.agentManager.initialize();
+    } catch (e) {
+      console.error('[Obsek] Failed to initialize AgentManager:', e);
+    }
+
+    // MCP system
+    try {
+      this.vaultZones = new VaultZones(this.app.vault);
+      await this.vaultZones.initialize();
+
+      this.permissionSystem = new PermissionSystem(this.app.vault, this.settings);
+      this.permissionSystem.setVaultZones(this.vaultZones);
+
+      this.approvalManager = new ApprovalManager(this.app);
+      this.toolRegistry = new ToolRegistry();
+      this.mcpClient = new MCPClient(this.app, this, this.toolRegistry);
+
+      this.toolRegistry.registerTool(createVaultReadTool(this.app));
+      this.toolRegistry.registerTool(createVaultListTool(this.app));
+      this.toolRegistry.registerTool(createVaultWriteTool(this.app));
+      this.toolRegistry.registerTool(createVaultDeleteTool(this.app));
+      this.toolRegistry.registerTool(createVaultSearchTool(this.app));
+      this.toolRegistry.registerTool(createMemorySearchTool(this.app));
+      this.toolRegistry.registerTool(createMemoryUpdateTool(this.app));
+      this.toolRegistry.registerTool(createMemoryStatusTool(this.app));
+
+      this.toolLoader = new ToolLoader(this.app.vault);
+      const customTools = await this.toolLoader.loadAllTools();
+      for (const tool of customTools) {
+        this.toolRegistry.registerTool(tool);
+      }
+    } catch (e) {
+      console.error('[Obsek] Failed to initialize MCP system:', e);
+    }
+
     register_smart_connections_codeblock(this);
     await this.check_for_updates();
   }
@@ -93,21 +152,24 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
 
   get ribbon_icons () {
     return {
-      connections: {
-        icon_name: "smart-connections",
-        description: "Smart Connections: Open connections view",
-        callback: () => { this.open_connections_view(); }
-      },
-      lookup: {
-        icon_name: "smart-lookup",
-        description: "Smart Lookup: Open lookup view",
-        callback: () => { this.open_lookup_view(); }
-      },
-      random_note: {
-        icon_name: "smart-dice",
-        description: "Smart Connections: Open random connection",
-        callback: () => { this.open_random_connection(); }
+      chat: {
+        icon_name: "obsek-icon",
+        description: "Obsek: Open chat",
+        callback: () => { this.open_chat_view(); }
       }
+    }
+  }
+
+  open_chat_view() {
+    const leaves = this.app.workspace.getLeavesOfType('pkm-assistant-chat');
+    if (leaves.length > 0) {
+      this.app.workspace.revealLeaf(leaves[0]);
+    } else {
+      const leaf = this.app.workspace.getRightLeaf(false);
+      leaf.setViewState({ type: 'pkm-assistant-chat', active: true });
+    }
+    if (this.app.workspace.rightSplit.collapsed) {
+      this.app.workspace.rightSplit.toggle();
     }
   }
 

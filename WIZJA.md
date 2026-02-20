@@ -77,7 +77,7 @@ Kazdy agent moze uzywac INNEGO modelu.
 ---
 
 ## Wbudowani agenci - osobowosci
-
+--- NIE! To jest kwestia usera. To co tu wypisałeś jest moje prywatne --- 
 ### Jaskier (orkiestrator)
 - Empatyczny przyjaciel i organizator
 - Pierwszy kontakt - kieruje do specjalistow gdy trzeba
@@ -134,7 +134,7 @@ Kazdy agent moze uzywac INNEGO modelu.
 9. **RAG na notatkach** - AI odpowiada na podstawie notatek
 10. **Token tracking** - widac ile kosztuje rozmowa
 11. **Obsluga bledow** - eleganckie komunikaty gdy cos nie dziala
-12. **Rebranding** - "Obsek" zamiast "Smart Connections"
+12. **Rebranding** - "PKM Assistant" zamiast "Smart Connections"
 
 ### NICE TO HAVE (v2, po publikacji)
 
