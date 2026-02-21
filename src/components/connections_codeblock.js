@@ -63,7 +63,7 @@ export async function build_html(connections_list, opts = {}) {
     <div class="connections-top-bar">
       <div class="connections-actions">
         ${top_bar_buttons}
-        <span>Smart Connections</span>
+        <span>Obsek Connections</span>
       </div>
     </div>
     <div class="connections-list-container"></div>
@@ -179,14 +179,11 @@ export async function post_process(connections_list, container, opts = {}) {
     const settings_button = container.querySelector('[data-action="open-settings"]');
     settings_button?.addEventListener('click', () => {
       app.setting.open();
-      app.setting.openTabById('smart-connections');
+      app.setting.openTabById('obsek');
     });
 
     const open_help = () => {
-      StoryModal.open(env.plugin, {
-        title: 'Getting Started With Smart Connections',
-        url: 'https://smartconnections.app/story/smart-connections-getting-started/?utm_source=connections-view-help#page=understanding-connections-1'
-      });
+      window.open('https://github.com/JDHole/PKM-Assistant', '_external');
     };
 
     const help_button = container.querySelector('[data-action="open-help"]');

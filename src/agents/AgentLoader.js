@@ -23,7 +23,6 @@ export class AgentLoader {
      * @returns {Agent[]} Array of built-in agents
      */
     loadBuiltInAgents() {
-        console.log('[AgentLoader] Loading built-in agents');
         return [
             createJaskier(),
             createDexter(),
@@ -36,22 +35,18 @@ export class AgentLoader {
      * @returns {Promise<Agent[]>} Array of custom agents
      */
     async loadCustomAgents() {
-        console.log('[AgentLoader] Loading custom agents from:', this.agentsPath);
         const agents = [];
 
         try {
             // Check if agents folder exists
             const exists = await this.vault.adapter.exists(this.agentsPath);
             if (!exists) {
-                console.log('[AgentLoader] Agents folder does not exist, creating...');
                 await this.vault.adapter.mkdir(this.agentsPath);
                 return agents;
             }
 
             // List all files in agents folder
             const listed = await this.vault.adapter.list(this.agentsPath);
-            console.log('[AgentLoader] Found files:', listed?.files);
-
             if (!listed || !listed.files) {
                 return agents;
             }
@@ -63,7 +58,6 @@ export class AgentLoader {
                         const agent = await this.loadAgentFromFile(filePath);
                         if (agent) {
                             agents.push(agent);
-                            console.log('[AgentLoader] Loaded custom agent:', agent.name);
                         }
                     } catch (error) {
                         console.error('[AgentLoader] Error loading agent from', filePath, error);
@@ -129,7 +123,6 @@ export class AgentLoader {
         const builtIn = this.loadBuiltInAgents();
         const custom = await this.loadCustomAgents();
 
-        console.log('[AgentLoader] Loaded', builtIn.length, 'built-in and', custom.length, 'custom agents');
         return [...builtIn, ...custom];
     }
 
@@ -149,7 +142,6 @@ export class AgentLoader {
         const content = stringifyYaml(data);
 
         await this.vault.adapter.write(filePath, content);
-        console.log('[AgentLoader] Saved agent to:', filePath);
 
         return filePath;
     }
@@ -172,7 +164,6 @@ export class AgentLoader {
 
         try {
             await this.vault.adapter.remove(agent.filePath);
-            console.log('[AgentLoader] Deleted agent:', agent.filePath);
             return true;
         } catch (error) {
             console.error('[AgentLoader] Error deleting agent:', error);
@@ -189,7 +180,6 @@ export class AgentLoader {
         // Note: Obsidian doesn't have a direct file watcher API
         // This would need to be implemented using vault events
         // For now, return a no-op unsubscribe
-        console.log('[AgentLoader] Agent watching not yet implemented');
         return () => { };
     }
 }

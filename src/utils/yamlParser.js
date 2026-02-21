@@ -108,6 +108,18 @@ export function validateAgentSchema(agentData) {
         errors.push('"default_permissions" must be an object');
     }
 
+    if (agentData.skills && !Array.isArray(agentData.skills)) {
+        errors.push('"skills" must be an array of strings');
+    }
+
+    if (agentData.minion && typeof agentData.minion !== 'string') {
+        errors.push('"minion" must be a string (minion config name)');
+    }
+
+    if (agentData.minion_enabled !== undefined && typeof agentData.minion_enabled !== 'boolean') {
+        errors.push('"minion_enabled" must be a boolean');
+    }
+
     return {
         valid: errors.length === 0,
         errors

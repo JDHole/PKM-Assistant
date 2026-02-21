@@ -31,6 +31,9 @@ export class AgentMemory {
         this.safeName = agentName.toLowerCase().replace(/[^a-z0-9]/g, '_');
         this.basePath = `.pkm-assistant/agents/${this.safeName}/memory`;
 
+        // Track active session to prevent duplicate files
+        this.activeSessionPath = null;
+
         // Paths
         this.paths = {
             sessions: `${this.basePath}/sessions`,
@@ -45,7 +48,6 @@ export class AgentMemory {
      * Initialize memory structure - create folders if needed
      */
     async initialize() {
-        console.log(`[AgentMemory:${this.agentName}] Initializing memory structure`);
 
         const folders = [
             this.basePath,
@@ -58,7 +60,6 @@ export class AgentMemory {
         for (const folder of folders) {
             if (!(await this.vault.adapter.exists(folder))) {
                 await this.vault.adapter.mkdir(folder);
-                console.log(`[AgentMemory:${this.agentName}] Created folder: ${folder}`);
             }
         }
 
@@ -83,9 +84,7 @@ export class AgentMemory {
                 const content = await this.vault.adapter.read(filePath);
                 await this.vault.adapter.write(newPath, content);
                 await this.vault.adapter.remove(filePath);
-                console.log(`[AgentMemory:${this.agentName}] Migrated ${fileName} → summaries/L1/`);
             }
-            console.log(`[AgentMemory:${this.agentName}] Migration from weekly/ complete`);
         } catch (e) {
             console.warn(`[AgentMemory:${this.agentName}] Migration failed (non-fatal):`, e);
         }
@@ -98,8 +97,15 @@ export class AgentMemory {
      * @returns {Promise<string>} Path to saved session
      */
     async saveSession(messages, metadata = {}) {
-        const filename = this._generateSessionFilename();
-        const path = `${this.paths.sessions}/${filename}`;
+        // Reuse existing session file if already saved (prevents duplicates)
+        let path;
+        if (this.activeSessionPath) {
+            path = this.activeSessionPath;
+        } else {
+            const filename = this._generateSessionFilename();
+            path = `${this.paths.sessions}/${filename}`;
+            this.activeSessionPath = path;
+        }
 
         const enrichedMetadata = {
             ...metadata,
@@ -111,8 +117,14 @@ export class AgentMemory {
         const content = formatToMarkdown(messages, enrichedMetadata);
         await this.vault.adapter.write(path, content);
 
-        console.log(`[AgentMemory:${this.agentName}] Saved session: ${filename}`);
         return path;
+    }
+
+    /**
+     * Reset active session tracker (call when starting a new conversation)
+     */
+    startNewSession() {
+        this.activeSessionPath = null;
     }
 
     /**
@@ -249,7 +261,6 @@ export class AgentMemory {
      */
     async updateBrain(content) {
         await this.vault.adapter.write(this.paths.brain, content);
-        console.log(`[AgentMemory:${this.agentName}] Updated brain`);
     }
 
     /**
@@ -476,7 +487,6 @@ ${summaryText}
 `;
 
         await this.vault.adapter.write(path, content);
-        console.log(`[AgentMemory:${this.agentName}] Created L1 summary: ${filename} (${sessionNames.length} sessions)`);
         return path;
     }
 
@@ -550,7 +560,6 @@ ${summaryText}
 `;
 
         await this.vault.adapter.write(path, content);
-        console.log(`[AgentMemory:${this.agentName}] Created L2 summary: ${filename} (${l1Names.length} L1s)`);
         return path;
     }
 
@@ -576,7 +585,6 @@ ${summaryText}
         // Save active context summary
         if (activeContextSummary && activeContextSummary.trim()) {
             await this.vault.adapter.write(this.paths.activeContext, activeContextSummary);
-            console.log(`[AgentMemory:${this.agentName}] Saved active context summary`);
         }
 
         // Audit log
@@ -615,7 +623,6 @@ ${summaryText}
         }
 
         await this.vault.adapter.write(this.paths.brain, newBrain);
-        console.log(`[AgentMemory:${this.agentName}] Brain updated with ${updates.length} changes`);
     }
 
     /**
@@ -703,7 +710,6 @@ ${summaryText}
         if (!isDuplicate) {
             items.push(`- ${update.content}`);
         } else {
-            console.log(`[AgentMemory:${this.agentName}] Skipped duplicate: ${update.content}`);
         }
     }
 
@@ -832,7 +838,6 @@ ${summaryText}
             });
             if (idx >= 0) {
                 items.splice(idx, 1);
-                console.log(`[AgentMemory:${this.agentName}] Deleted fact from ${secKey}: ${update.content}`);
                 return;
             }
         }
@@ -873,7 +878,6 @@ ${summaryText}
                 : `# ${this.agentName} - Brain Archive\n\n` + archived.join('\n');
 
             await this.vault.adapter.write(archivePath, archiveContent);
-            console.log(`[AgentMemory:${this.agentName}] Archived ${archived.length} facts to brain_archive.md`);
         }
 
         return this._buildBrainFromSections(parsed);

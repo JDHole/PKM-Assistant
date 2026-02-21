@@ -33,25 +33,19 @@ export class SessionManager {
     async saveSession(messages, metadata = {}) {
         try {
             const content = formatToMarkdown(messages, metadata);
-            console.log('[SessionManager] saveSession called, activeSessionFile:', this.activeSessionFile?.path || 'null');
 
             let path;
             if (!this.activeSessionFile) {
                 const filename = await this._generateFilename();
                 path = `${this.sessionsPath}/${filename}`;
-                console.log('[SessionManager] Creating new file:', path);
                 this.activeSessionFile = { path, name: filename };
             } else {
                 path = this.activeSessionFile.path;
-                console.log('[SessionManager] Updating existing file:', path);
             }
 
-            // Use adapter.write directly - it handles both create and update
             await this.vault.adapter.write(path, content);
-            console.log('[SessionManager] File saved successfully:', path);
-
         } catch (error) {
-            console.error('SessionManager: Error saving session:', error);
+            console.error('[SessionManager] Error saving session:', error);
             throw error;
         }
     }
@@ -76,15 +70,12 @@ export class SessionManager {
             let path;
 
             if (typeof fileOrPath === 'string') {
-                // Direct path string
                 path = fileOrPath;
                 content = await this.vault.adapter.read(path);
             } else if (fileOrPath instanceof TFile) {
-                // TFile object
                 path = fileOrPath.path;
                 content = await this.vault.read(fileOrPath);
             } else if (fileOrPath && fileOrPath.path) {
-                // Object with path property (from listSessions)
                 path = fileOrPath.path;
                 content = await this.vault.adapter.read(path);
             } else {
@@ -92,14 +83,10 @@ export class SessionManager {
             }
 
             const parsed = parseSessionFile(content);
-
-            // Store reference as object with path (compatible with our new format)
             this.activeSessionFile = { path, name: path.split('/').pop() || path };
-
-            console.log('[SessionManager] Loaded session from:', path);
             return parsed;
         } catch (error) {
-            console.error('SessionManager: Error loading session:', error);
+            console.error('[SessionManager] Error loading session:', error);
             throw error;
         }
     }
@@ -110,46 +97,26 @@ export class SessionManager {
      * @returns {Promise<Array<{path: string, name: string, stat: {mtime: number}}>>}
      */
     async listSessions() {
-        console.log('[SessionManager] listSessions called, sessionsPath:', this.sessionsPath);
-
         try {
-            // Use adapter.list which is more reliable for newly created folders
             const listed = await this.vault.adapter.list(this.sessionsPath);
-            console.log('[SessionManager] adapter.list result:', listed);
-            console.log('[SessionManager] listed.files:', listed?.files);
+            if (!listed?.files) return [];
 
-            if (!listed || !listed.files) {
-                return [];
-            }
-
-            // Build file info using adapter.stat() to bypass TFile cache issues
             const files = [];
             for (const filePath of listed.files) {
-                console.log('[SessionManager] Processing filePath:', filePath);
                 if (filePath.endsWith('.md')) {
                     try {
-                        // Use adapter.stat to get file metadata directly from filesystem
                         const stat = await this.vault.adapter.stat(filePath);
                         if (stat) {
-                            // Extract filename from path
                             const name = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
-                            files.push({
-                                path: filePath,
-                                name: name,
-                                stat: { mtime: stat.mtime }
-                            });
-                            console.log('[SessionManager] Added file:', name, 'mtime:', stat.mtime);
+                            files.push({ path: filePath, name, stat: { mtime: stat.mtime } });
                         }
                     } catch (statError) {
-                        console.warn('[SessionManager] Could not stat file:', filePath, statError);
+                        // skip files we can't stat
                     }
                 }
             }
 
-            // Sort by modification time (newest first)
             files.sort((a, b) => b.stat.mtime - a.stat.mtime);
-            console.log('[SessionManager] listSessions found:', files.length, 'files');
-
             return files;
         } catch (error) {
             console.error('[SessionManager] listSessions error:', error);
@@ -162,9 +129,8 @@ export class SessionManager {
      * @returns {Promise<string>}
      */
     async _generateFilename() {
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const today = new Date().toISOString().slice(0, 10);
         const files = await this.listSessions();
-        console.log('[SessionManager] _generateFilename - found files:', files.map(f => f.name));
 
         let maxNum = 0;
         const regex = new RegExp(`^${today}_(\\d{3})\\.md$`);
@@ -173,15 +139,11 @@ export class SessionManager {
             const match = file.name.match(regex);
             if (match) {
                 const num = parseInt(match[1], 10);
-                console.log('[SessionManager] Found matching file:', file.name, 'num:', num);
                 if (num > maxNum) maxNum = num;
             }
         }
 
-        const nextNum = (maxNum + 1).toString().padStart(3, '0');
-        const filename = `${today}_${nextNum}.md`;
-        console.log('[SessionManager] Generated filename:', filename);
-        return filename;
+        return `${today}_${(maxNum + 1).toString().padStart(3, '0')}.md`;
     }
 
     /**

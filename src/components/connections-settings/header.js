@@ -1,13 +1,10 @@
-import { StoryModal } from 'obsidian-smart-env/src/modals/story.js';
 async function build_html(scope_plugin) {
   return `
     <div>
       <div data-user-agreement></div>
       <div class="actions-container">
-        <button class="sc-getting-started-button">Getting started guide</button>
         <button class="sc-report-bug-button">Report a bug</button>
         <button class="sc-request-feature-button">Request a feature</button>
-        <button class="sc-share-workflow-button">Share workflow ⭐</button>
       </div>
     </div>
   `;
@@ -42,34 +39,16 @@ export async function post_process(scope_plugin, frag) {
   }
 
   /* buttons */
-  frag.querySelector('.sc-getting-started-button')?.addEventListener('click', () => {
-    StoryModal.open(scope_plugin, {
-      title: 'Getting Started With Smart Connections',
-      url: 'https://smartconnections.app/story/smart-connections-getting-started/?utm_source=sc-op-settings'
-    });
-  });
-
   frag.querySelector('.sc-report-bug-button')?.addEventListener('click', () => {
-    if (scope_plugin.env?.is_pro) {
-      new ScProSupportModal(scope_plugin.app).open();
-      return;
-    }
     window.open(
-      'https://github.com/brianpetro/obsidian-smart-connections/issues/new?template=bug_report.yml',
+      'https://github.com/JDHole/PKM-Assistant/issues/new',
       '_external'
     );
   });
 
   frag.querySelector('.sc-request-feature-button')?.addEventListener('click', () => {
     window.open(
-      'https://github.com/brianpetro/obsidian-smart-connections/issues/new?template=feature_request.yml',
-      '_external'
-    );
-  });
-
-  frag.querySelector('.sc-share-workflow-button')?.addEventListener('click', () => {
-    window.open(
-      'https://github.com/brianpetro/obsidian-smart-connections/discussions/new?category=showcase',
+      'https://github.com/JDHole/PKM-Assistant/issues/new',
       '_external'
     );
   });
@@ -82,16 +61,15 @@ import { Modal } from 'obsidian';
 export class ScProSupportModal extends Modal {
   open() {
     super.open();
-    this.titleEl.setText('Need help and support?');
+    this.titleEl.setText('Need help?');
     const content = this.contentEl.createDiv({ cls: 'sc-pro-support-modal' });
     content.createEl('p', {
-      text: 'Reply to your Smart Environment Pro welcome email for priority support.',
+      text: 'Report issues on our GitHub repository.',
     });
-    // continue to report a bug button
     const reportBugButton = content.createEl('button', { text: 'Report a bug', cls: 'mod-warning' });
     reportBugButton.addEventListener('click', () => {
       window.open(
-        'https://github.com/brianpetro/obsidian-smart-connections/issues/new?template=bug_report.yml',
+        'https://github.com/JDHole/PKM-Assistant/issues/new',
         '_external'
       );
     });

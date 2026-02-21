@@ -35,6 +35,7 @@ Komunikuję się po polsku, technicznie ale przystępnie.`,
     focus_folders: [
         '.pkm-assistant/**'
     ],
+    minion: 'ezra-config-scout',
     default_permissions: {
         read_notes: true,
         edit_notes: true,

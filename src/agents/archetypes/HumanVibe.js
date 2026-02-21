@@ -28,6 +28,8 @@ Specjalizacje:
 - Ogólne pytania i rozmowy
 
 Komunikuję się naturalnie, po polsku, z lekkim poczuciem humoru.`,
+    skills: ['daily-review', 'vault-organization', 'note-from-idea', 'weekly-review'],
+    minion: 'jaskier-prep',
     default_permissions: {
         read_notes: true,
         edit_notes: false,

@@ -46,6 +46,9 @@ export class Agent {
         this.role = config.role || 'specialist';
         this.focusFolders = config.focus_folders || [];
         this.permissions = { ...DEFAULT_PERMISSIONS, ...(config.default_permissions || {}) };
+        this.skills = config.skills || [];
+        this.minion = config.minion || null; // minion config name (e.g. 'jaskier-prep')
+        this.minionEnabled = config.minion_enabled !== false; // default: true
         this.isBuiltIn = config.isBuiltIn || false;
         this.filePath = config.filePath || null;
 
@@ -96,28 +99,69 @@ export class Agent {
 
         // MCP Tool usage instructions - CRITICAL for making AI actually use tools
         if (this.permissions.mcp) {
-            parts.push(`\n--- WAŻNE: Używanie narzędzi ---`);
-            parts.push(`Masz dostęp do narzędzi (functions/tools) do interakcji z vaultem użytkownika.`);
-            parts.push(`Narzędzia do notatek użytkownika (vault):`);
-            parts.push(`- vault_list — zawartość folderu`);
-            parts.push(`- vault_read — odczyt notatki`);
-            parts.push(`- vault_search — szukanie w notatkach użytkownika`);
-            parts.push(`- vault_write — tworzenie/edycja notatek`);
-            parts.push(`Narzędzia do TWOJEJ pamięci:`);
-            parts.push(`- memory_search — przeszukaj swoje poprzednie rozmowy, brain i podsumowania`);
-            parts.push(`- memory_update — zarządzaj swoją pamięcią (zapamiętaj/zapomnij/aktualizuj fakty)`);
-            parts.push(`- memory_status — pokaż stan swojej pamięci (ile sesji, rozmiar brain itp.)`);
-            parts.push(`KOMENDY PAMIĘCIOWE - reaguj na te frazy użytkownika:`);
-            parts.push(`- "zapamiętaj że..." / "pamiętaj że..." → memory_update(operation: "update_brain", content: fakt)`);
-            parts.push(`- "zapomnij o..." / "usuń z pamięci..." → memory_update(operation: "delete_from_brain", content: co usunąć)`);
-            parts.push(`- "co o mnie wiesz?" / "co pamiętasz?" → memory_update(operation: "read_brain")`);
-            parts.push(`- "pokaż swoją pamięć" / "ile pamiętasz?" → memory_status`);
-            parts.push(`- "czy pamiętasz...?" / "co mówiliśmy o...?" → memory_search`);
-            parts.push(`ZASADY:`);
-            parts.push(`1. NIE odpowiadaj tekstem że "zaraz sprawdzisz" - WYWOŁAJ narzędzie`);
-            parts.push(`2. Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników`);
-            parts.push(`3. Gdy user mówi "zapamiętaj" → od razu memory_update, nie czekaj`);
-            parts.push(`--- Koniec instrukcji narzędzi ---`);
+            if (context.isLocalModel) {
+                // Shorter instructions for local models (save ~150 tokens)
+                parts.push(`\n--- Narzędzia ---`);
+                parts.push(`Vault: vault_list, vault_read, vault_search, vault_write, vault_delete`);
+                parts.push(`Pamięć: memory_search, memory_update, memory_status`);
+                parts.push(`Skille: skill_list, skill_execute`);
+                if (this.minion && this.minionEnabled !== false) {
+                    parts.push(`Minion: minion_task(task: "konkretne zadanie od usera")`);
+                    parts.push(`ZASADA: szukanie/analiza → minion_task, NIE vault_search!`);
+                }
+                parts.push(`ZASADY: Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj.`);
+                parts.push(`---`);
+            } else {
+                parts.push(`\n--- WAŻNE: Używanie narzędzi ---`);
+                parts.push(`Masz dostęp do narzędzi (functions/tools) do interakcji z vaultem użytkownika.`);
+                parts.push(`Narzędzia do notatek użytkownika (vault):`);
+                parts.push(`- vault_list — zawartość folderu`);
+                parts.push(`- vault_read — odczyt notatki`);
+                parts.push(`- vault_search — szukanie w notatkach użytkownika`);
+                parts.push(`- vault_write — tworzenie/edycja notatek`);
+                parts.push(`Narzędzia do TWOJEJ pamięci:`);
+                parts.push(`- memory_search — przeszukaj swoje poprzednie rozmowy, brain i podsumowania`);
+                parts.push(`- memory_update — zarządzaj swoją pamięcią (zapamiętaj/zapomnij/aktualizuj fakty)`);
+                parts.push(`- memory_status — pokaż stan swojej pamięci (ile sesji, rozmiar brain itp.)`);
+                parts.push(`KOMENDY PAMIĘCIOWE - reaguj na te frazy użytkownika:`);
+                parts.push(`- "zapamiętaj że..." / "pamiętaj że..." → memory_update(operation: "update_brain", content: fakt)`);
+                parts.push(`- "zapomnij o..." / "usuń z pamięci..." → memory_update(operation: "delete_from_brain", content: co usunąć)`);
+                parts.push(`- "co o mnie wiesz?" / "co pamiętasz?" → memory_update(operation: "read_brain")`);
+                parts.push(`- "pokaż swoją pamięć" / "ile pamiętasz?" → memory_status`);
+                parts.push(`- "czy pamiętasz...?" / "co mówiliśmy o...?" → memory_search`);
+                parts.push(`ZASADY:`);
+                parts.push(`1. NIE odpowiadaj tekstem że "zaraz sprawdzisz" - WYWOŁAJ narzędzie`);
+                parts.push(`2. Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników`);
+                parts.push(`3. Gdy user mówi "zapamiętaj" → od razu memory_update, nie czekaj`);
+                parts.push(`Umiejętności (skille):`);
+                parts.push(`- skill_list — pokaż dostępne skille (instrukcje krok-po-kroku)`);
+                parts.push(`- skill_execute — aktywuj skill po nazwie (zwraca pełne instrukcje)`);
+                parts.push(`Masz dostępne umiejętności. Użyj skill_list żeby zobaczyć jakie, skill_execute żeby aktywować.`);
+                parts.push(`Możesz tworzyć nowe skille: vault_write do .pkm-assistant/skills/{nazwa}/skill.md`);
+                parts.push(`Format: frontmatter YAML (name, description, category) + treść markdown z instrukcjami.`);
+                // Minion info (only if agent has a minion assigned)
+                if (this.minion && this.minionEnabled !== false) {
+                    parts.push(`\n--- MINION (WAŻNE!) ---`);
+                    parts.push(`Masz miniona - tańszy model AI z narzędziami do ciężkiej roboty.`);
+                    parts.push(`Narzędzie: minion_task(task: "konkretne zadanie")`);
+                    parts.push(`JAK UŻYWAĆ:`);
+                    parts.push(`- W polu "task" wpisz KONKRETNE zadanie, np: "Znajdź wszystkie notatki o projekcie X i podsumuj ich treść"`);
+                    parts.push(`- NIE pisz ogólników typu "przetestuj się" - podaj DOKŁADNIE co ma znaleźć/zrobić`);
+                    parts.push(`- Przekaż pytanie/zadanie usera swoimi słowami, precyzyjnie`);
+                    parts.push(`- Przykład: user pyta "co mam o wakacjach?" → minion_task(task: "Przeszukaj vault i pamięć pod kątem wakacji, podróży, urlopów. Podsumuj co znalazłeś.")`);
+                    parts.push(`KIEDY DELEGOWAĆ DO MINIONA:`);
+                    parts.push(`- Wyszukiwanie/szukanie czegokolwiek → minion_task`);
+                    parts.push(`- Analiza/przegląd wielu plików → minion_task`);
+                    parts.push(`- Zbieranie informacji z różnych miejsc → minion_task`);
+                    parts.push(`CO ROBISZ SAM (bez miniona):`);
+                    parts.push(`- Odczyt JEDNEGO konkretnego pliku (vault_read)`);
+                    parts.push(`- Zapis/edycja notatki (vault_write)`);
+                    parts.push(`- Pamięć (memory_update), skille (skill_execute)`);
+                    parts.push(`ZASADA: NIE używaj sam vault_search ani memory_search - to robi minion!`);
+                    parts.push(`---`);
+                }
+                parts.push(`--- Koniec instrukcji narzędzi ---`);
+            }
         }
 
         return parts.join('\n');
@@ -164,6 +208,9 @@ export class Agent {
         if (this.temperature !== 0.7) data.temperature = this.temperature;
         if (this.role !== 'specialist') data.role = this.role;
         if (this.focusFolders.length > 0) data.focus_folders = this.focusFolders;
+        if (this.skills.length > 0) data.skills = this.skills;
+        if (this.minion) data.minion = this.minion;
+        if (this.minionEnabled === false) data.minion_enabled = false;
 
         // Only save non-default permissions
         const customPermissions = {};
@@ -195,7 +242,8 @@ export class Agent {
     update(updates) {
         const allowedFields = [
             'name', 'emoji', 'personality', 'model',
-            'temperature', 'role', 'focus_folders', 'default_permissions'
+            'temperature', 'role', 'focus_folders', 'default_permissions', 'skills',
+            'minion', 'minion_enabled'
         ];
 
         for (const [key, value] of Object.entries(updates)) {
@@ -204,6 +252,8 @@ export class Agent {
                     this.focusFolders = value;
                 } else if (key === 'default_permissions') {
                     this.permissions = { ...DEFAULT_PERMISSIONS, ...value };
+                } else if (key === 'minion_enabled') {
+                    this.minionEnabled = value;
                 } else {
                     this[key] = value;
                 }

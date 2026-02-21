@@ -53,7 +53,6 @@ export class RollingWindow {
      * Wykonuje proces podsumowania historii
      */
     async performSummarization() {
-        console.log('RollingWindow: Performing summarization...');
         const summary = await this.summarizer.summarize(this.messages);
 
         if (summary) {
@@ -64,7 +63,6 @@ export class RollingWindow {
             // Nadpisz summary (nie doklejaj do base!)
             this.conversationSummary = summary;
 
-            console.log('RollingWindow: Summarization complete. History compressed.');
         }
     }
 
@@ -82,7 +80,7 @@ export class RollingWindow {
         }
 
         for (const msg of this.messages) {
-            if (!msg.content && !msg.tool_calls?.length) continue;
+            if (!msg.content && !msg.tool_calls?.length && !msg.tool_call_id && !msg.reasoning_content) continue;
 
             const apiMsg = { role: msg.role, content: msg.content };
 
@@ -92,6 +90,11 @@ export class RollingWindow {
 
             if (msg.tool_calls) {
                 apiMsg.tool_calls = msg.tool_calls;
+            }
+
+            // DeepSeek Reasoner: pass reasoning_content back for tool call continuations
+            if (msg.reasoning_content) {
+                apiMsg.reasoning_content = msg.reasoning_content;
             }
 
             apiMessages.push(apiMsg);

@@ -11,13 +11,13 @@ import { createToolCallDisplay } from '../components/ToolCallDisplay.js';
 import { openPermissionsModal } from './PermissionsModal.js';
 
 /**
- * ChatView - Main chat interface for PKM Assistant
+ * ChatView - Main chat interface for Obsek
  * Provides a simple chat UI with streaming support
  */
 export class ChatView extends SmartItemView {
     static get view_type() { return 'pkm-assistant-chat'; }
-    static get display_text() { return 'PKM Chat'; }
-    static get icon_name() { return 'message-circle'; }
+    static get display_text() { return 'PKM Assistant'; }
+    static get icon_name() { return 'obsek-icon'; }
 
     constructor(leaf, plugin) {
         super(leaf, plugin);
@@ -41,15 +41,15 @@ export class ChatView extends SmartItemView {
         this.sessionManager = new SessionManager(this.app.vault, this.env?.settings?.obsek || {});
         await this.sessionManager.initialize();
 
-        // Auto-save callback (agent name resolved at save time, not at init time)
-        this.sessionManager.startAutoSave(() => ({
-            messages: this.rollingWindow.messages,
-            metadata: {
-                created: new Date().toISOString(),
-                agent: this.plugin?.agentManager?.getActiveAgent()?.name || 'default',
-                tokens_used: this.rollingWindow.getCurrentTokenCount()
-            }
-        }));
+        // Auto-save: route through handleSaveSession() which uses AgentMemory first
+        const autoSaveInterval = this.env?.settings?.obsek?.autoSaveInterval;
+        if (autoSaveInterval && autoSaveInterval > 0) {
+            this._autoSaveTimer = setInterval(() => {
+                if (this.rollingWindow?.messages?.length > 0) {
+                    this.handleSaveSession();
+                }
+            }, autoSaveInterval * 60 * 1000);
+        }
 
         await this.updateSessionDropdown();
     }
@@ -69,10 +69,15 @@ export class ChatView extends SmartItemView {
     }
 
     async render_view(params = {}, container = this.container) {
+        // Adopt chat styles (CSSStyleSheet from import)
+        if (chat_view_styles && !document.adoptedStyleSheets.includes(chat_view_styles)) {
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, chat_view_styles];
+        }
+
         container.empty();
         container.addClass('pkm-chat-view');
 
-        // Header with agent selector, session controls and token counter
+        // Header
         const header = container.createDiv({ cls: 'pkm-chat-header' });
 
         // Agent selector
@@ -81,7 +86,7 @@ export class ChatView extends SmartItemView {
         this.updateAgentDropdown();
         this.agentDropdown.addEventListener('change', (e) => this.handleAgentChange(e.target.value));
 
-        // Permissions button - add this AFTER agentDropdown creation
+        // Permissions button
         const permissionsBtn = header.createEl('button', {
             cls: 'chat-permissions-btn',
             attr: { 'aria-label': 'Uprawnienia agenta' }
@@ -91,24 +96,31 @@ export class ChatView extends SmartItemView {
             const activeAgent = this.plugin.agentManager?.getActiveAgent();
             if (activeAgent) {
                 openPermissionsModal(this.app, activeAgent, (newPermissions) => {
-                    console.log('[ChatView] Permissions updated for', activeAgent.name);
                     this.updatePermissionsBadge();
                 });
             }
         };
         this.permissionsBtn = permissionsBtn;
 
-        // Session controls
+        // Session controls (right side)
         const sessionControls = header.createDiv({ cls: 'session-controls' });
 
         this.sessionDropdown = sessionControls.createEl('select', { cls: 'session-dropdown' });
         this.sessionDropdown.createEl('option', { value: '', text: '-- Sesja --' });
         this.sessionDropdown.addEventListener('change', (e) => this.handleLoadSession(e.target.value));
 
-        const newBtn = sessionControls.createEl('button', { cls: 'session-new', text: 'New' });
+        const newBtn = sessionControls.createEl('button', {
+            cls: 'session-new',
+            attr: { 'aria-label': 'Nowa rozmowa' }
+        });
+        newBtn.textContent = '⟳';
         newBtn.addEventListener('click', () => this.handleNewSession());
 
-        const saveBtn = sessionControls.createEl('button', { cls: 'session-save', text: 'Save' });
+        const saveBtn = sessionControls.createEl('button', {
+            cls: 'session-save',
+            attr: { 'aria-label': 'Zapisz sesje' }
+        });
+        saveBtn.textContent = '💾';
         saveBtn.addEventListener('click', () => this.handleSaveSession());
 
         this.autosaveStatus = sessionControls.createDiv({ cls: 'autosave-status', text: '' });
@@ -116,7 +128,7 @@ export class ChatView extends SmartItemView {
         // Token counter
         header.createDiv({
             cls: 'token-counter',
-            text: '0 / 100,000 tokens'
+            text: '0 / 100 000'
         });
         this.updateTokenCounter();
 
@@ -127,28 +139,33 @@ export class ChatView extends SmartItemView {
         this.messages_container = chat_container.createDiv({ cls: 'pkm-chat-messages' });
         this.render_messages();
 
+        // Skill buttons bar
+        this.skillButtonsBar = chat_container.createDiv({ cls: 'pkm-skill-buttons' });
+        this.renderSkillButtons();
+
         // Input area
         const input_container = chat_container.createDiv({ cls: 'pkm-chat-input-container' });
+        const input_wrapper = input_container.createDiv({ cls: 'pkm-chat-input-wrapper' });
 
-        this.input_area = input_container.createEl('textarea', {
+        this.input_area = input_wrapper.createEl('textarea', {
             cls: 'pkm-chat-input',
             attr: {
-                placeholder: 'Type your message... (Enter to send, Shift+Enter for new line)',
-                rows: '3'
+                placeholder: 'Napisz wiadomosc...',
+                rows: '1'
             }
         });
 
-        const button_container = input_container.createDiv({ cls: 'pkm-chat-buttons' });
+        const button_container = input_wrapper.createDiv({ cls: 'pkm-chat-buttons' });
 
         this.send_button = button_container.createEl('button', {
-            text: 'Send',
             cls: 'pkm-chat-send-button'
         });
+        this.send_button.textContent = '➤';
 
         this.stop_button = button_container.createEl('button', {
-            text: 'Stop',
             cls: 'pkm-chat-stop-button hidden'
         });
+        this.stop_button.textContent = '■';
 
         // Event listeners
         this.input_area.addEventListener('input', this.handleInputResize.bind(this));
@@ -176,7 +193,7 @@ export class ChatView extends SmartItemView {
         const max = this.rollingWindow.maxTokens;
         const el = this.container.querySelector('.token-counter');
         if (el) {
-            el.textContent = `${current.toLocaleString()} / ${max.toLocaleString()} tokens`;
+            el.textContent = `${current.toLocaleString('pl-PL')} / ${max.toLocaleString('pl-PL')}`;
 
             // Visual warning if close to limit (optional)
             if (current > max * 0.9) {
@@ -188,27 +205,51 @@ export class ChatView extends SmartItemView {
     }
 
     add_welcome_message() {
-        const welcome = this.messages_container.createDiv({ cls: 'pkm-chat-message assistant' });
-
-        // Get active agent info
         const agentManager = this.plugin?.agentManager;
         const activeAgent = agentManager?.getActiveAgent();
         const agentName = activeAgent?.name || 'PKM Assistant';
-        const agentEmoji = activeAgent?.emoji || '👋';
+        const agentEmoji = activeAgent?.emoji || '🤖';
 
-        // Message row (avatar + bubble)
-        const row = welcome.createDiv({ cls: 'pkm-chat-message-row' });
-        row.createDiv({ cls: 'pkm-chat-avatar', text: agentEmoji });
-
-        const bubble = row.createDiv({ cls: 'pkm-chat-bubble' });
-        const content = bubble.createDiv({ cls: 'pkm-chat-content' });
-        content.createEl('p', {
-            text: `Cześć! Jestem ${agentName}. W czym mogę Ci dzisiaj pomóc?`
+        const welcome = this.messages_container.createDiv({ cls: 'pkm-welcome-container' });
+        welcome.createDiv({ cls: 'pkm-welcome-avatar', text: agentEmoji });
+        welcome.createDiv({ cls: 'pkm-welcome-name', text: agentName });
+        welcome.createDiv({
+            cls: 'pkm-welcome-text',
+            text: `W czym moge Ci dzisiaj pomoc?`
         });
     }
 
-    showTypingIndicator() {
-        if (this.typingIndicator) return;
+    renderSkillButtons() {
+        if (!this.skillButtonsBar) return;
+        this.skillButtonsBar.empty();
+
+        const agentManager = this.plugin?.agentManager;
+        if (!agentManager) return;
+
+        const skills = agentManager.getActiveAgentSkills();
+        if (!skills || skills.length === 0) return;
+
+        for (const skill of skills) {
+            const btn = this.skillButtonsBar.createEl('button', {
+                cls: 'pkm-skill-btn',
+                attr: { title: skill.description }
+            });
+            btn.createSpan({ cls: 'pkm-skill-btn-icon', text: '🎯' });
+            btn.createSpan({ text: skill.name });
+            btn.addEventListener('click', () => {
+                if (this.is_generating) return;
+                this.input_area.value = `Użyj skilla: ${skill.name}`;
+                this.send_message();
+            });
+        }
+    }
+
+    showTypingIndicator(statusText = 'Myślę...') {
+        if (this.typingIndicator) {
+            // Already showing - just update text
+            this.updateTypingStatus(statusText);
+            return;
+        }
 
         this.typingIndicator = this.messages_container.createDiv({ cls: 'pkm-chat-message assistant' });
 
@@ -223,7 +264,15 @@ export class ChatView extends SmartItemView {
         typing.createEl('span');
         typing.createEl('span');
         typing.createEl('span');
+        this.typingStatusEl = typing.createEl('span', { cls: 'pkm-chat-typing-text', text: statusText });
 
+        this.scrollToBottom();
+    }
+
+    updateTypingStatus(statusText) {
+        if (this.typingStatusEl) {
+            this.typingStatusEl.textContent = statusText;
+        }
         this.scrollToBottom();
     }
 
@@ -231,6 +280,7 @@ export class ChatView extends SmartItemView {
         if (this.typingIndicator) {
             this.typingIndicator.remove();
             this.typingIndicator = null;
+            this.typingStatusEl = null;
         }
     }
 
@@ -293,14 +343,14 @@ export class ChatView extends SmartItemView {
         if (!this.input_area) return;
         const textarea = this.input_area;
         textarea.style.height = 'auto'; // Reset to count scrollHeight correctly
-        const newHeight = Math.min(Math.max(textarea.scrollHeight, 60), 200);
+        const newHeight = Math.min(Math.max(textarea.scrollHeight, 40), 160);
         textarea.style.height = newHeight + 'px';
     }
 
     resetInputArea() {
         if (!this.input_area) return;
         this.input_area.value = '';
-        this.input_area.style.height = '60px'; // Reset to min-height
+        this.input_area.style.height = '40px'; // Reset to min-height
         this.historyIndex = -1;
     }
 
@@ -375,7 +425,6 @@ export class ChatView extends SmartItemView {
         const timeoutMs = (this.env?.settings?.sessionTimeoutMinutes || 30) * 60 * 1000;
         if (this.lastMessageTimestamp && this.rollingWindow.messages.length > 0) {
             if (Date.now() - this.lastMessageTimestamp > timeoutMs) {
-                console.log('[ChatView] Session timeout detected, consolidating and starting new session');
                 await this.consolidateSession();
                 if (this.sessionManager) this.sessionManager.startNewSession();
                 this.rollingWindow = this._createRollingWindow();
@@ -423,7 +472,9 @@ export class ChatView extends SmartItemView {
         // Get system prompt from active agent (includes memory: brain + active context)
         const agentManager = this.plugin?.agentManager;
         if (agentManager) {
-            const basePrompt = await agentManager.getActiveSystemPromptWithMemory();
+            const platform = this.env?.settings?.smart_chat_model?.platform || '';
+            const isLocalModel = (platform === 'ollama' || platform === 'lm_studio');
+            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel });
             this.rollingWindow.setSystemPrompt(basePrompt);
         }
 
@@ -443,12 +494,49 @@ export class ChatView extends SmartItemView {
             }
         }
 
+        // === MINION AUTO-PREP (first message in session only) ===
+        const activeAgent = this.plugin?.agentManager?.getActiveAgent();
+        if (activeAgent?.minionEnabled !== false && activeAgent?.minion) {
+            const isFirstMessage = this.rollingWindow.messages.filter(m => m.role === 'user').length <= 1;
+            if (isFirstMessage) {
+                const minionConfig = this.plugin?.agentManager?.minionLoader?.getMinion(activeAgent.minion);
+                if (minionConfig) {
+                    const minionModel = this._getMinionModel(activeAgent, minionConfig);
+                    const prepModel = minionModel || this.get_chat_model?.();
+                    if (prepModel?.stream && this.plugin?.toolRegistry) {
+                        try {
+                            this.showTypingIndicator('Minion przygotowuje kontekst...');
+                            if (!this._minionRunner) {
+                                const { MinionRunner } = await import('../core/MinionRunner.js');
+                                this._minionRunner = new MinionRunner({
+                                    toolRegistry: this.plugin.toolRegistry,
+                                    app: this.app,
+                                    plugin: this.plugin
+                                });
+                            }
+                            const prepResult = await this._minionRunner.runAutoPrep(
+                                text, activeAgent, minionConfig, prepModel
+                            );
+                            if (prepResult.context && prepResult.context !== 'Brak dodatkowego kontekstu.') {
+                                const currentBase = this.rollingWindow.baseSystemPrompt || '';
+                                this.rollingWindow.setSystemPrompt(
+                                    `${currentBase}\n\n--- Kontekst przygotowany przez miniona ---\n${prepResult.context}\n--- Koniec kontekstu miniona ---`
+                                );
+                            }
+                        } catch (minionError) {
+                            console.warn('[Obsek] Minion auto-prep failed (non-fatal):', minionError);
+                        }
+                    }
+                }
+            }
+        }
+        // === END MINION AUTO-PREP ===
+
         // Prepare request
         const messages = this.rollingWindow.getMessagesForAPI();
 
         // Get tools from MCP registry if agent has mcp permission
         let tools = [];
-        const activeAgent = this.plugin?.agentManager?.getActiveAgent();
         if (activeAgent?.permissions?.mcp && this.plugin?.toolRegistry) {
             tools = this.plugin.toolRegistry.getToolDefinitions();
         }
@@ -521,6 +609,9 @@ export class ChatView extends SmartItemView {
         this.hideTypingIndicator();
         const content = response?.choices?.[0]?.message?.content || '';
 
+        // DeepSeek Reasoner: capture reasoning_content for tool call continuations
+        const reasoningContent = response?.choices?.[0]?.message?.reasoning_content || null;
+
         // Parse tool calls from response (supports both OpenAI and Anthropic formats)
         const toolCalls = this.plugin?.mcpClient?.parseToolCalls(response) || [];
 
@@ -552,7 +643,25 @@ export class ChatView extends SmartItemView {
             const toolResults = [];
             const agentName = this.plugin?.agentManager?.getActiveAgent()?.name || 'unknown';
 
+            // Tool status messages in Polish
+            const TOOL_STATUS = {
+                vault_search: '🔍 Szukam w vaultcie...',
+                vault_read: '📖 Czytam notatkę...',
+                vault_list: '📁 Przeglądam foldery...',
+                vault_write: '✏️ Zapisuję...',
+                vault_delete: '🗑️ Usuwam...',
+                memory_search: '🧠 Przeszukuję pamięć...',
+                memory_update: '🧠 Aktualizuję pamięć...',
+                memory_status: '🧠 Sprawdzam pamięć...',
+                skill_list: '📚 Sprawdzam umiejętności...',
+                skill_execute: '🎯 Aktywuję skill...',
+            };
+
             for (const toolCall of toolCalls) {
+                // Show status in typing indicator during tool execution
+                const statusMsg = TOOL_STATUS[toolCall.name] || `🔧 ${toolCall.name}...`;
+                this.showTypingIndicator(statusMsg);
+
                 // Show pending state
                 const toolDisplay = createToolCallDisplay({
                     name: toolCall.name,
@@ -584,6 +693,18 @@ export class ChatView extends SmartItemView {
                     }));
                 }
 
+                // Auto-reload skills/minions if written to their folders
+                if (toolCall.name === 'vault_write') {
+                    const writePath = toolCall.arguments?.path || '';
+                    if (writePath.includes('/skills/')) {
+                        await this.plugin?.agentManager?.reloadSkills();
+                        this.renderSkillButtons();
+                    }
+                    if (writePath.includes('/minions/')) {
+                        await this.plugin?.agentManager?.reloadMinions();
+                    }
+                }
+
                 toolResults.push({
                     tool_call_id: toolCall.id,
                     role: 'tool',
@@ -591,9 +712,14 @@ export class ChatView extends SmartItemView {
                 });
             }
 
-            // Save assistant message with tool calls to history (MUST include tool_calls for Anthropic!)
+            // Save assistant message with tool calls to history
+            // MUST include tool_calls for Anthropic, reasoning_content for DeepSeek Reasoner
             const rawToolCalls = response?.choices?.[0]?.message?.tool_calls || [];
-            await this.rollingWindow.addMessage('assistant', content || '', { tool_calls: rawToolCalls });
+            const toolMsgMeta = { tool_calls: rawToolCalls };
+            if (reasoningContent) {
+                toolMsgMeta.reasoning_content = reasoningContent;
+            }
+            await this.rollingWindow.addMessage('assistant', content || '', toolMsgMeta);
 
             // Add tool results to conversation and continue
             for (const tr of toolResults) {
@@ -604,6 +730,9 @@ export class ChatView extends SmartItemView {
             this.current_message_container = null;
             this.current_message_bubble = null;
             this.current_message_text = null;
+
+            // Show thinking indicator while model processes tool results
+            this.showTypingIndicator('Analizuję wyniki...');
 
             // Continue conversation with tool results
             await this.continueWithToolResults();
@@ -939,33 +1068,22 @@ export class ChatView extends SmartItemView {
      * Lazy RAG initialization - called before sending message
      */
     async ensureRAGInitialized() {
-        if (this.ragRetriever) return; // Already initialized
-
-        console.log('[Obsek] ensureRAGInitialized called');
+        if (this.ragRetriever) return;
 
         const chatSettings = this.env?.settings?.smart_chat_model || {};
         try {
             this.embeddingHelper = new EmbeddingHelper(this.env);
-            const isReady = this.embeddingHelper.isReady();
-            console.log('[Obsek] embeddingHelper.isReady():', isReady);
+            if (!this.embeddingHelper.isReady()) return;
 
-            if (isReady) {
-                const agentMemory = this.plugin?.agentManager?.getActiveMemory();
-                if (!agentMemory) {
-                    console.log('[Obsek] No active agent memory, RAG skipped');
-                    return;
-                }
+            const agentMemory = this.plugin?.agentManager?.getActiveMemory();
+            if (!agentMemory) return;
 
-                this.ragRetriever = new RAGRetriever({
-                    embeddingHelper: this.embeddingHelper,
-                    agentMemory: agentMemory,
-                    settings: this.env?.settings?.obsek || {}
-                });
-                await this.ragRetriever.indexAllSessions();
-                console.log('[Obsek] RAG initialized and sessions indexed.');
-            } else {
-                console.log('[Obsek] Embed model not ready, RAG skipped');
-            }
+            this.ragRetriever = new RAGRetriever({
+                embeddingHelper: this.embeddingHelper,
+                agentMemory: agentMemory,
+                settings: this.env?.settings?.obsek || {}
+            });
+            await this.ragRetriever.indexAllSessions();
         } catch (ragError) {
             console.warn('[Obsek] RAG initialization failed:', ragError);
         }
@@ -982,6 +1100,10 @@ export class ChatView extends SmartItemView {
         // Cleanup if needed
         if (this.is_generating) {
             this.stop_generation();
+        }
+        if (this._autoSaveTimer) {
+            clearInterval(this._autoSaveTimer);
+            this._autoSaveTimer = null;
         }
         if (this.sessionManager) {
             this.sessionManager.stopAutoSave();
@@ -1002,9 +1124,15 @@ export class ChatView extends SmartItemView {
             await this.consolidateSession();
         }
 
+        // Reset session trackers so next save creates a new file
         if (this.sessionManager) {
             this.sessionManager.startNewSession();
         }
+        const agentMemory = this.plugin?.agentManager?.getActiveMemory();
+        if (agentMemory) {
+            agentMemory.startNewSession();
+        }
+
         this.rollingWindow = this._createRollingWindow();
         this.render_messages();
         this.add_welcome_message();
@@ -1031,7 +1159,6 @@ export class ChatView extends SmartItemView {
                     metadata
                 );
                 if (savedPath) {
-                    console.log('[ChatView] Saved session to agent memory:', savedPath);
                     this.autosaveStatus.textContent = `Saved to ${activeAgentName}!`;
                     setTimeout(() => { this.autosaveStatus.textContent = ''; }, 2000);
                     await this.updateSessionDropdown();
@@ -1120,22 +1247,12 @@ export class ChatView extends SmartItemView {
 
         const minionModel = this._getMinionModel();
         const chatModel = minionModel || this.get_chat_model();
-        console.log(`[ChatView] consolidateSession model: ${minionModel ? 'MINION (' + (chatModel.model_key || '?') + ')' : 'MAIN (' + (chatModel?.model_key || '?') + ')'}`);
 
         // Try memory extraction (graceful: skip if no model available)
         try {
-            if (!chatModel?.stream) {
-                console.log('[ChatView] No chat model for memory extraction, skipping');
-            } else if (!agentMemory) {
-                console.log('[ChatView] No agent memory available, skipping extraction');
-            } else {
-                // Only extract if conversation has substance (at least 2 user messages)
+            if (chatModel?.stream && agentMemory) {
                 const userMessages = messages.filter(m => m.role === 'user');
-                if (userMessages.length < 2) {
-                    console.log('[ChatView] Too few messages for extraction, skipping');
-                } else {
-                    console.log('[ChatView] Starting memory extraction...');
-
+                if (userMessages.length >= 2) {
                     const currentBrain = await agentMemory.getBrain();
                     const extractor = new MemoryExtractor();
                     const { brainUpdates, activeContextSummary } = await extractor.extract(
@@ -1143,37 +1260,33 @@ export class ChatView extends SmartItemView {
                         currentBrain,
                         chatModel
                     );
-
-                    console.log(`[ChatView] Extraction result: ${brainUpdates.length} updates, summary: ${activeContextSummary ? 'yes' : 'no'}`);
-
-                    // Apply updates through central memoryWrite
                     await agentMemory.memoryWrite(brainUpdates, activeContextSummary);
-
-                    console.log('[ChatView] Memory consolidation complete');
                 }
             }
         } catch (error) {
-            // Graceful degradation: session is already saved, extraction failure is non-fatal
             console.error('[ChatView] Memory extraction failed (session saved, extraction skipped):', error);
         }
 
         // L1/L2 consolidation trigger (runs independently of extraction)
         if (agentMemory && chatModel?.stream) {
             try {
-                // Process ALL pending L1 batches in one pass (catch-up)
                 let unconsolidated = await agentMemory.getUnconsolidatedSessions();
                 while (unconsolidated.length >= 5) {
-                    console.log(`[ChatView] ${unconsolidated.length} unconsolidated sessions, creating L1...`);
-                    const batch = unconsolidated.slice(0, 5);
-                    await agentMemory.createL1Summary(batch, chatModel);
+                    const l1Result = await agentMemory.createL1Summary(unconsolidated.slice(0, 5), chatModel);
+                    if (!l1Result) {
+                        console.warn('[ChatView] L1 creation failed, stopping consolidation (will retry next session)');
+                        break;
+                    }
                     unconsolidated = await agentMemory.getUnconsolidatedSessions();
                 }
 
-                // Process ALL pending L2 batches
                 let unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
                 while (unconsolidatedL1s.length >= 5) {
-                    console.log(`[ChatView] ${unconsolidatedL1s.length} L1s ready, creating L2...`);
-                    await agentMemory.createL2Summary(unconsolidatedL1s.slice(0, 5), chatModel);
+                    const l2Result = await agentMemory.createL2Summary(unconsolidatedL1s.slice(0, 5), chatModel);
+                    if (!l2Result) {
+                        console.warn('[ChatView] L2 creation failed, stopping consolidation (will retry next session)');
+                        break;
+                    }
                     unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
                 }
             } catch (l1l2Error) {
@@ -1183,20 +1296,28 @@ export class ChatView extends SmartItemView {
     }
 
     /**
-     * Get the minion model for background memory operations.
-     * If minionModel setting is configured, creates a separate model instance.
-     * Otherwise returns null (caller falls back to main model).
+     * Get the minion model for an agent.
+     * Resolution chain: minionConfig.model → agent minion config → global obsek.minionModel → null
+     * Cache per agent to avoid recreating models.
+     *
+     * @param {Object} [agent] - Agent instance (default: active agent)
+     * @param {Object} [minionConfig] - Minion config from MinionLoader
      * @returns {Object|null} SmartChatModel instance or null
      */
-    _getMinionModel() {
-        const minionModelId = this.env?.settings?.obsek?.minionModel;
+    _getMinionModel(agent, minionConfig) {
+        const targetAgent = agent || this.plugin?.agentManager?.getActiveAgent();
+
+        // Check if minion disabled for this agent
+        if (targetAgent?.minionEnabled === false) return null;
+
+        // Resolution chain: minion config model → global setting
+        const configModel = minionConfig?.model;
+        const globalModel = this.env?.settings?.obsek?.minionModel;
+        const minionModelId = configModel || globalModel;
+
         if (!minionModelId || !minionModelId.trim()) return null;
 
-        // Return cached minion model if available
-        if (this._minionModel?.stream) return this._minionModel;
-
         const scSettings = this.env?.settings?.smart_chat_model || {};
-        // Infer platform from available keys (SC doesn't persist 'platform' explicitly)
         let platform = scSettings.platform;
         if (!platform) {
             for (const p of ['anthropic', 'openai', 'open_router', 'gemini', 'groq', 'deepseek']) {
@@ -1205,6 +1326,14 @@ export class ChatView extends SmartItemView {
         }
         if (!platform) return null;
 
+        // Cache per agent + platform + model
+        const agentName = targetAgent?.name || '_global';
+        const cacheKey = `${agentName}:${platform}:${minionModelId.trim()}`;
+
+        if (!this._minionCache) this._minionCache = new Map();
+        const cached = this._minionCache.get(cacheKey);
+        if (cached?.stream) return cached;
+
         const api_key = scSettings[`${platform}_api_key`];
         if (!api_key && platform !== 'ollama') return null;
 
@@ -1212,7 +1341,7 @@ export class ChatView extends SmartItemView {
         if (!module_config?.class) return null;
 
         try {
-            this._minionModel = new module_config.class({
+            const minionModel = new module_config.class({
                 ...module_config,
                 class: null,
                 env: this.env,
@@ -1221,8 +1350,8 @@ export class ChatView extends SmartItemView {
                 api_key: api_key,
                 model_key: minionModelId.trim(),
             });
-            console.log('[ChatView] Minion model created:', minionModelId.trim());
-            return this._minionModel;
+            this._minionCache.set(cacheKey, minionModel);
+            return minionModel;
         } catch (e) {
             console.warn('[ChatView] Failed to create minion model:', e);
             return null;
@@ -1280,10 +1409,16 @@ export class ChatView extends SmartItemView {
             await this.consolidateSession();
         }
 
+        // Reset session tracker for the old agent before switching
+        const oldMemory = agentManager.getActiveMemory();
+        if (oldMemory) {
+            oldMemory.startNewSession();
+        }
+
         const switched = agentManager.switchAgent(agentName);
         if (switched) {
-            console.log('[ChatView] Switched to agent:', agentName);
             this.updatePermissionsBadge();
+            this.renderSkillButtons();
             // Re-render welcome if no messages
             if (this.rollingWindow.messages.length === 0) {
                 this.messages_container.empty();

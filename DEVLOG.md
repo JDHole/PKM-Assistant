@@ -23,6 +23,460 @@
 
 ---
 
+## 2026-02-21 (sesja 17) - Testy miniona + fixy + copy buttons
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Testy miniona w Obsidianie (4 rundy)
+Przetestowano minion_task w Obsidianie. Kazdy test ujawnil problem, kazdy naprawiony na biezaco.
+
+### Fix 1: streamHelper.js - minion podsumowuje wyniki
+- Problem: po 3 iteracjach narzedzi minion zwracal statyczny blad "(osiagnieto limit)" zamiast podsumowania
+- Fix: dodano ostatnie wywolanie modelu BEZ narzedzi + user message "podsumuj TEKSTEM"
+- Minion teraz musi podsumowac co znalazl zanim skonczy
+
+### Fix 2: Agent.js system prompt - 3 iteracje ulepszania
+- v1: slabe "masz miniona" - agent robil sam vault_search zamiast delegowac
+- v2: wyrazna sekcja `--- MINION (WAZNE!) ---` z listami kiedy delegowac
+- v3: KONKRETNY PRZYKLAD (`user pyta "co mam o wakacjach?" -> minion_task(task: "Przeszukaj vault...")`)
+- v3 zadzialo - agent od razu delegowal z precyzyjnym zadaniem
+
+### Fix 3: XML hallucination cleanup
+- Problem: tanie modele (DeepSeek-chat) halucynuja tagi XML (`<|DSML|function_calls>`) zamiast tool calls
+- Fix: regex w streamHelper.js usuwa wzorce DSML, function_calls, invoke z tekstu
+- Plus: user message "NIE wywoluj narzedzi" przed ostatnim wywolaniem
+
+### Copy buttons w ToolCallDisplay
+- Kopiuj input (clipboard icon per sekcja)
+- Kopiuj output (clipboard icon per sekcja)
+- "Kopiuj calosc" (guzik na dole rozwinietego tool call)
+- Feedback: ikona zmienia sie na checkmark na 1.5s
+- Dodano etykiete "Zadanie miniona" do TOOL_INFO map
+
+**Pliki zmienione:**
+- `src/memory/streamHelper.js` - final call bez narzedzi + XML cleanup regex
+- `src/agents/Agent.js` - system prompt sekcja minion v3 (z przykladem)
+- `src/components/ToolCallDisplay.js` - copy buttons + minion_task w TOOL_INFO
+- `src/views/chat_view.css` - style dla copy buttons
+
+**Decyzje podjete:**
+- Agent musi dostac PRZYKLAD uzycia minion_task (nie ogolne instrukcje) - to jest klucz
+- XML hallucination to znany problem tanich modeli - regex cleanup wystarczy
+- Copy buttons potrzebne do debugowania (user kopiuje wyniki z Obsidian do Claude Code)
+
+**Uwaga usera na koniec:**
+- Agent moze jeszcze lepiej formulowac komendy dla miniona - do dalszego dopracowania przy nastepnych testach
+
+**Build:** 6.6MB - SUKCES
+
+**Nastepne kroki:**
+- Dalsze testy minion_task z roznymi pytaniami
+- Ewentualne dopracowanie system promptu agenta (jak formuluje komendy)
+- Stabilnosc codziennego uzytku
+
+---
+
+## 2026-02-21 (sesja 16) - FAZA 2: Minion per Agent
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Notatka o Prompt Caching
+- Sekcja 7.6 w PLAN.md: dodano informacje ze prompt caching jest NIEISTOTNY dla projektu
+- User uzywa DeepSeek (tanszy niz caching u Anthropic) - AI nie powinno o tym przypominac
+
+### FAZA 2: Minion per Agent (CALA FAZA)
+
+System minionow - kazdy agent moze delegowac ciezka prace do tanszego modelu AI ("miniona").
+
+**Dwa tryby pracy miniona:**
+1. **Auto-prep** - TYLKO przy 1. wiadomosci w sesji. Minion skanuje vault i pamiec, daje agentowi kontekst na start rozmowy ("poranna kawa").
+2. **minion_task** - MCP tool. Agent SWIADOMIE decyduje kiedy i co delegowac. Daje minionowi dowolne zadanie + narzedzia, minion pracuje i zwraca wynik.
+
+**Podzial pracy agent vs minion (analogia CEO/asystent):**
+- Agent robi sam: proste lookup'y (vault_read jednego pliku), interakcje z userem, operacje pamieci
+- Agent deleguje minionowi: ciazka praca (przeszukanie wielu plikow), analiza zbiorcza, zbieranie danych z wielu zrodel
+
+**Nowe pliki (3):**
+- `src/core/MinionLoader.js` - ladowanie konfiguracji minionow z .pkm-assistant/minions/{name}/minion.md, wzor: SkillLoader. 3 starter miniony w kodzie (jaskier-prep, dexter-vault-builder, ezra-config-scout). Kazdy minion.md ma sekcje: ROLA, NARZEDZIA, PROCEDURA, FORMAT ODPOWIEDZI, OGRANICZENIA.
+- `src/core/MinionRunner.js` - silnik wykonania: runAutoPrep() + runTask(). Petla tool-calling (model -> tool_calls -> execute -> feedback -> powtorz). Max iteracji z konfiguracji. Graceful failure (minion padnie -> pusty wynik). Truncowanie wynikow narzedzi (3000 znakow).
+- `src/mcp/MinionTaskTool.js` - MCP tool minion_task. Agent podaje zadanie (string) + opcjonalne dodatkowe narzedzia. Standalone _createMinionModel() (nie zalezy od ChatView). Lazy-initialized MinionRunner singleton.
+
+**Modyfikowane pliki (9):**
+- `src/agents/Agent.js` - +minion (string), +minionEnabled (bool), serialize, update, getSystemPrompt (info o minionie dla agenta)
+- `src/utils/yamlParser.js` - walidacja nowych pol (minion: string, minion_enabled: boolean)
+- `src/agents/archetypes/HumanVibe.js` - minion: 'jaskier-prep'
+- `src/agents/archetypes/ObsidianExpert.js` - minion: 'dexter-vault-builder'
+- `src/agents/archetypes/AIExpert.js` - minion: 'ezra-config-scout'
+- `src/memory/streamHelper.js` - nowa funkcja streamToCompleteWithTools() (petla tool-calling)
+- `src/core/AgentManager.js` - import MinionLoader, init w initialize(), reloadMinions(), getActiveMinionConfig()
+- `src/views/chat_view.js` - _getMinionModel() per agent z cache Map, auto-prep w send_message() (1. wiadomosc), hot-reload minionow
+- `src/main.js` - import + rejestracja MinionTaskTool (12. MCP tool)
+
+**Inne:**
+- `manifest.json` + `package.json` - wersja 1.0.2
+- `PLAN.md` - FAZA 2 checkboxy [x], sekcja 7.6 (prompt caching), tabela wersji, podsumowanie 50/176 (28%)
+
+**Kluczowe decyzje architektoniczne:**
+- Miniony to PLIKI na dysku (.pkm-assistant/minions/{name}/minion.md) - nie inline stringi w JS
+- YAML frontmatter (name, description, model, tools, max_iterations, enabled) + pelen prompt markdown
+- Agent SWIADOMIE deleguje przez minion_task (nie slepy autopilot)
+- Auto-prep TYLKO 1. wiadomosc (nie kazda)
+- Brak konfliktu z pamiecia: extraction/L1/L2 = post-session, auto-prep = pre-first-msg, minion_task = on-demand
+- Model resolution: minionConfig.model -> global obsek.minionModel -> main model
+- Graceful failure: minion padnie -> agent odpowiada normalnie
+
+**Bledy naprawione w trakcie:**
+- MinionTaskTool: plugin.chatView nie istnieje (ChatView to workspace view). Fix: standalone _createMinionModel() w MinionTaskTool.js
+
+**Build:** npm run build -> 6.6MB - SUKCES
+
+**Wersja po sesji:** 1.0.2
+
+**PLAN.md stan:** 50/176 (28%), FAZA 2 kompletna
+
+**Nastepne kroki:**
+- Test w Obsidianie: reload, auto-prep na 1. wiadomosc, minion_task delegowanie
+- Sprawdzenie .pkm-assistant/minions/ z 3 starter minionami
+- Codzienne uzywanie i lapanie bledow
+- Nastepna faza do ustalenia z userem
+
+---
+
+## 2026-02-21 (sesja 15) - FAZA 1: Skill Engine + Reset wersjonowania
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Reset wersjonowania
+- Zmiana z odziedziczonej wersji 4.1.7 (Smart Connections) na wlasne wersjonowanie
+- manifest.json + package.json: 4.1.7 -> 1.0.0, potem bump do 1.0.1
+- Tabela wersji w PLAN.md z historia zmian
+- Daty stabilnosci w PLAN.md (start: 2026-02-21, deadline: 2026-02-24)
+
+### FAZA 1: Skill Engine (CALA FAZA - 15/17 checkboxow)
+
+Centralna biblioteka skilli - agent moze uzywac, tworzyc i edytowac "umiejetnosci" (pliki Markdown z instrukcjami).
+
+**Nowe pliki (3):**
+- `src/skills/SkillLoader.js` - centralna biblioteka skilli (.pkm-assistant/skills/), cache, walidacja, 4 starter skille, auto-reload
+- `src/mcp/SkillListTool.js` - MCP tool: lista skilli agenta z filtrem po kategorii
+- `src/mcp/SkillExecuteTool.js` - MCP tool: aktywacja skilla po nazwie, zwraca pelny prompt
+
+**Modyfikowane pliki (8):**
+- `src/agents/Agent.js` - pole skills[], info o skillach w system prompcie, instrukcje tworzenia skilli
+- `src/core/AgentManager.js` - SkillLoader init, getActiveAgentSkills(), reloadSkills()
+- `src/agents/archetypes/HumanVibe.js` - domyslne skille Jaskiera (4 sztuki)
+- `src/views/chat_view.js` - guziki skilli w UI, TOOL_STATUS, auto-reload po vault_write do /skills/, refresh przy zmianie agenta
+- `src/views/chat_view.css` - style paska guzikow (pill/chip, hover efekt, scrollowanie)
+- `src/main.js` - import + rejestracja skill_list i skill_execute
+- `src/mcp/MCPClient.js` - skill_list + skill_execute w ACTION_TYPE_MAP
+- `src/components/ToolCallDisplay.js` - polskie nazwy: "Lista umiejetnosci", "Aktywacja skilla"
+- `src/utils/yamlParser.js` - walidacja pola skills w validateAgentSchema()
+
+**Kluczowe decyzje architektoniczne:**
+- CENTRALNA biblioteka skilli (.pkm-assistant/skills/) - NIE per-agent
+- Agent NIE dostaje listy skilli w system prompcie - wie tylko ze ma skill_list i skill_execute
+- Aktywacja: guziki w UI + agent sam decyduje przez MCP tool
+- Przypisanie skilli do agenta: skills[] w konfiguracji (JS built-in + YAML custom)
+- Skille z internetu wymagaja minimalnej adaptacji (~2 min, dodanie naglowka YAML)
+
+**Build:** npm run build -> 6.5MB - SUKCES
+
+**Test w Obsidianie:** SUKCES
+- daily-review: Jaskier dokladnie przeszedl notatki z dzisiaj, zadania, zaproponowal priorytety
+- vault-organization: mega dokladna analiza struktury vaulta z konkretnymi propozycjami
+- Guziki skilli widoczne nad polem do pisania
+- User: "To jest rozpierdol mordko jak to dobrze dziala"
+
+**Wersja po sesji:** 1.0.1
+
+**Nastepne kroki:**
+- Codzienne uzywanie i testowanie skilli
+- Tworzenie wlasnych skilli (user moze sam lub przez agenta)
+- FAZA 2: Minion per Agent (po zamknieciu FAZY 0)
+
+---
+
+## 2026-02-21 (sesja 14) - UI feedback + DeepSeek + Optymalizacja lokalnych modeli
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Nowy wskaznik statusu (typing indicator)
+- Wieksze kropki (10px), kolor akcentu, wyzsza opacity (0.5 zamiast 0.25)
+- Tekst statusu obok kropek: "Mysle...", "Szukam w vaultcie...", "Czytam notatke..." itp.
+- Status zmienia sie dynamicznie podczas tool calls
+- "Analizuje wyniki..." po wykonaniu narzedzia, przed odpowiedzia
+- Metoda `updateTypingStatus()` pozwala zmieniac tekst bez usuwania wskaznika
+
+### Polskie nazwy narzedzi w Tool Call Display
+- vault_search -> "Wyszukiwanie w vaultcie", vault_read -> "Odczyt notatki" itp.
+- Wszystkie 9 narzedzi z polskimi etykietami
+- Usuniety spam log z ToolCallDisplay
+
+### Optymalizacja systemu promptu dla lokalnych modeli
+- Krotsze instrukcje narzedzi gdy platforma = Ollama/LM Studio (~150 tokenow mniej)
+- Nowy toggle "Pamiec w prompcie" w ustawieniach (wylacz = -500-800 tokenow)
+- Context `isLocalModel` przekazywany do Agent.getSystemPrompt()
+
+### Obsluga DeepSeek (nowy dostawca)
+- DeepSeek V3.2 (`deepseek-chat`) przetestowany i dzialajacy
+- DeepSeek Reasoner (`deepseek-reasoner`) obslugiwany z reasoning_content
+- RollingWindow.getMessagesForAPI() przekazuje `reasoning_content` dla DeepSeek Reasoner
+- Fix filtrowania wiadomosci w getMessagesForAPI() (nie pomija tool results i reasoning messages)
+- **Fix Reasoner + tool calls:** SC adapter nie zbieralreasonng_content ze streamu -> 400 error
+  - Response adapter: `handle_chunk()` teraz akumuluje `delta.reasoning_content` z chunków
+  - Response adapter: `_transform_message_to_openai()` dodaje reasoning_content do odpowiedzi
+  - Request adapter: `_transform_single_message_to_openai()` wysyla reasoning_content z powrotem do API
+  - Plik: `external-deps/jsbrains/smart-chat-model/adapters/deepseek.js`
+
+### Fix nieskonczonej petli L1/L2 konsolidacji
+- **Root cause:** `createL1Summary()` failowal -> zwracal null -> while loop nie mial break -> petla
+- **Fix:** break gdy createL1Summary/createL2Summary zwroci null, retry przy nastepnej sesji
+- Dodano invalidacja cache minion modelu gdy zmienia sie platforma/model
+
+### PLAN.md + WIZJA.md - optymalizacja lokalna
+- Nowa podsekcja 7.3 w PLAN.md: "Optymalizacja lokalnych modeli" (8 checkboxow)
+- Rozbudowana sekcja 13 w WIZJA.md: strategia adaptive prompt, fallback tool calling, rekomendacje GPU
+
+**Pliki zmienione:**
+- `src/views/chat_view.js` - typing indicator, tool call status, DeepSeek reasoning_content, L1/L2 break, minion cache
+- `src/views/chat_view.css` - nowe style wskaznika statusu
+- `src/components/ToolCallDisplay.js` - polskie nazwy narzedzi
+- `src/agents/Agent.js` - krotszy prompt dla lokalnych modeli
+- `src/views/obsek_settings_tab.js` - toggle "Pamiec w prompcie"
+- `src/core/AgentManager.js` - toggle injectMemoryToPrompt
+- `src/memory/RollingWindow.js` - reasoning_content, lepsze filtrowanie wiadomosci
+- `external-deps/jsbrains/smart-chat-model/adapters/deepseek.js` - reasoning_content w request + response adapter
+- `PLAN.md` - sekcja 7.3 (8 nowych checkboxow)
+- `WIZJA.md` - sekcja 13 rozbudowana
+
+**Build:** npm run build -> 6.5MB - SUKCES
+
+**Decyzje podjete:**
+- DeepSeek V3.2 jako tanszy zamiennik Claude Sonnet (~17x taniej)
+- Optymalizacja lokalnych modeli w FAZA 7 (przed release v1.0)
+- deepseek-chat jako rekomendowany model (reasoner opcjonalny)
+
+**Nastepne kroki:**
+- Testowanie DeepSeek (chat + reasoner) w codziennym uzyciu
+- Codzienne uzywanie i lapanie bledow (3 dni stabilnosci)
+- Po zamknieciu FAZY 0 -> FAZA 1 (Skill Engine)
+
+---
+
+## 2026-02-21 (sesja 13) - Auto-foldery + Fix duplikatow sesji + Czysty log konsoli
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Auto-foldery pamieci agentow
+- `AgentManager.createAgent()` teraz tworzy AgentMemory + initialize() dla nowego agenta
+- Nowy agent od razu ma gotowa strukture: sessions/, summaries/L1/, summaries/L2/
+- Wczesniej foldery tworzone dopiero po restarcie pluginu
+
+### Naprawa duplikatow sesji
+**Root cause:** Dwa problemy powodujace tworzenie zduplikowanych plikow sesji:
+1. `AgentMemory.saveSession()` zawsze tworzyl nowy plik (nowy timestamp) zamiast nadpisywac istniejacy
+2. Auto-save szedl przez SessionManager (shared folder `.pkm-assistant/sessions/`) zamiast AgentMemory
+
+**Fix:**
+- Dodano `activeSessionPath` w AgentMemory - kolejne zapisy nadpisuja ten sam plik
+- Dodano `startNewSession()` w AgentMemory - resetuje tracker przy nowej sesji/zmianie agenta
+- Auto-save przekierowany przez `handleSaveSession()` ktory uzywa AgentMemory (nie SessionManager)
+- Czyszczenie timera auto-save w onClose()
+
+### Czysty log konsoli (~70 logow usunietych)
+Glowni sprawcy spamu:
+- RAGRetriever (9 logow na kazde zapytanie, w petli po sesjach!)
+- SessionManager (11 logow na kazdy auto-save co 5 min)
+- MCPClient (4 logi na kazdy tool call)
+- AgentMemory (13 logow - save, brain update, L1/L2, archive)
+- MCP tools (8 plikow, 12 logow na kazde wywolanie narzedzia)
+- chat_view.js (12 logow - RAG init, consolidation, permissions)
+- AgentManager/Loader (14 logow - startup, switch, reload)
+- PermissionSystem, RollingWindow, ToolRegistry, ToolLoader (7 logow)
+
+**Przed:** ~90+ console.log w src/ | **Po:** 24 (jednorazowe, startowe) + 29 console.warn/error (uzasadnione)
+
+**Pliki zmienione:**
+- `src/core/AgentManager.js` - createAgent() z AgentMemory, usuniete logi
+- `src/memory/AgentMemory.js` - activeSessionPath tracking, startNewSession(), usuniete logi
+- `src/memory/SessionManager.js` - usuniete logi (11 sztuk)
+- `src/views/chat_view.js` - auto-save przez handleSaveSession(), reset trackera sesji, usuniete logi
+- `src/memory/RAGRetriever.js` - usuniete 9 logow
+- `src/memory/EmbeddingHelper.js` - usuniety log embed result
+- `src/mcp/MCPClient.js` - usuniete 4 logi
+- `src/mcp/Vault*.js` (5 plikow) - usuniete logi execute
+- `src/mcp/Memory*.js` (3 pliki) - usuniete logi execute
+- `src/core/PermissionSystem.js` - usuniety log permission check
+- `src/core/ToolRegistry.js` - usuniety log rejestracji
+- `src/core/ToolLoader.js` - usuniete 3 logi
+- `src/memory/RollingWindow.js` - usuniete 2 logi summarization
+- `src/agents/AgentLoader.js` - usuniete 8 logow
+- `PLAN.md` - zaktualizowany (14/16 Faza 0)
+- `STATUS.md` - zaktualizowany (sesja 13)
+- `DEVLOG.md` - ten wpis
+
+**Build:** npm run build -> 6.5MB - SUKCES
+
+**PLAN.md stan:** FAZA 0: 14/16 (zostaly: ikona pluginu + 3 dni stabilnosci)
+
+**Nastepne kroki:**
+- Wlasna ikona pluginu
+- Codzienne uzywanie i lapanie bledow
+- Po zamknieciu FAZY 0 -> FAZA 1 (Skill Engine)
+
+---
+
+## 2026-02-21 (sesja 12) - Rebranding finalny + Chat UI redesign + CSS fix
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Rebranding "PKM Assistant" (finalny)
+- `chat_view.js`: display_text "PKM Assistant", fallback agent name
+- `main.js`: komendy "PKM Assistant: Open chat" / "Random note" / "Insert connections"
+- `main.js`: ribbon tooltip "PKM Assistant: Open chat"
+- `obsek_settings_tab.js`: nazwa taba "PKM Assistant", header, polskie opisy
+
+### Ustawienia po polsku
+- Cala zakladka ustawien przepisana: polskie nazwy i opisy
+- Sekcje: "Model AI", "Pamiec", "RAG (wyszukiwanie kontekstu)", "Informacje"
+- Czytelne nazwy zamiast camelCase: "Platforma", "Temperatura", "Minion (model pomocniczy)"
+- Sekcja Informacje: wersja, autor, link do GitHuba
+
+### Chat UI redesign
+- Nowy welcome screen: wycentrowany avatar (56px) + nazwa agenta + tekst powitalny
+- Header: kompaktowy, ikony zamiast tekstu (⟳ nowa sesja, 💾 zapisz)
+- Input area styl ChatGPT: textarea + send button (➤) w jednym zaokraglonym polu
+- Babielki: wieksze (85% max-width), zaokraglone (16px), user z accent color + cien
+- Avatar asystenta: zaokraglony kwadrat z gradientem
+- Timestamp ukryty domyslnie, widoczny na hover
+- Tool calls: zaokraglone 10px, czytelniejsze statusy
+- Placeholder po polsku: "Napisz wiadomosc..."
+- Token counter: subtelny, bez napisu "tokens"
+
+### KRYTYCZNY BUG FIX: CSS nie byl ladowany!
+- `chat_view.css` importowany jako CSSStyleSheet ale NIGDY adoptowany do dokumentu
+- Chat dzialal caly czas BEZ naszego CSS!
+- Fix: `document.adoptedStyleSheets` w `render_view()`
+
+### PLAN.md aktualizacja
+- vault_search i vault_delete odznaczone (potwierdzone dzialanie)
+- Nazwa PKM Assistant odznaczona
+- Testy agentow (Dexter/Ezra) przeniesione do FAZY 3 (Agent Manager)
+- Nowy stan: 11/16 w Fazie 0
+
+**Pliki zmienione:**
+- `src/views/chat_view.js` - rebranding, redesign UI, CSS adoption fix
+- `src/views/chat_view.css` - kompletny redesign (nowoczesny styl)
+- `src/views/obsek_settings_tab.js` - polskie nazwy, lepszy layout
+- `src/main.js` - rebranding komend i ribbon
+- `PLAN.md` - zaktualizowany (11/16 Faza 0, testy agentow -> Faza 3)
+- `STATUS.md` - zaktualizowany (sesja 12)
+- `DEVLOG.md` - ten wpis
+
+**Build:** npm run build -> 6.5MB - SUKCES
+
+**Nastepne kroki (FAZA 0 - 5 zadan do zamkniecia):**
+- Wlasna ikona pluginu
+- Kazdy agent auto-tworzy folder pamieci
+- Naprawa duplikatow sesji
+- Stabilnosc codziennego uzytku (3 dni bez bledow)
+- Czysty log konsoli
+
+---
+
+## 2026-02-21 (sesja 11) - Rebranding UI + WIZJA.md + PLAN.md
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Co zrobiono:**
+
+### Rebranding UI (Smart Connections -> PKM Assistant / Obsek)
+
+Przegladniecie calego src/ pod katem widocznych referencji "Smart Connections".
+Zmienione:
+- `src/main.js`: klasa `SmartConnectionsPlugin` -> `ObsekPlugin`, komendy z prefiksem "Obsek:", usuniety SC onboarding (StoryModal), update checker -> JDHole/PKM-Assistant
+- `src/views/chat_view.js`: display_text "Obsek", fallback agent name "Obsek"
+- `src/components/connections_codeblock.js`: "Obsek Connections", settings tab ID "obsek"
+- `src/components/connections-view/v3.js`: link help -> nasz GitHub
+- `src/components/connections-settings/header.js`: usuniete "Getting started"/"Share workflow", linki bug/feature -> nasz GitHub
+- `package.json`: name, description, author, repo, bugs, homepage
+
+Build: 6.5MB - SUKCES.
+
+### WIZJA.md - pelna wizja produktu (21 sekcji)
+
+Kompletna przebudowa WIZJA.md na podstawie:
+- Stara WIZJA.md (nic nie stracone)
+- Masywny dump wizji od usera (onboarding, agenci, skille, miniony, marketplace, monetyzacja, mobile, PLLM, multi-modal)
+- Badania PLLM (AI PERSONA, PRIME, SimpleMem, Knoll, NoteBar)
+- Analiza Pinokio (orkiestrator lokalnych AI)
+- Eksploracja vaulta usera (13 agentow, gamifikacja, pracownie)
+- 2 rundy Q&A z userem
+
+Sekcje: nazwa, onboarding, agenci, skille, miniony, pamiec, komunikator, agent manager, vault integration, inline, creation plans, mobile, prywatnosc, multi-modal, deep personalization, marketplace, monetyzacja, target users, architektura, milestones, current status.
+
+Weryfikacja: 32/32 punktow z inputu usera pokryte.
+
+### PLAN.md - Master Plan realizacji wizji
+
+Stworzony kompletny plan od FAZY 0 (stabilizacja) do FAZY 14 (multi-modal):
+- 15 faz, 154 checkboxy
+- Diagram zaleznosci miedzy fazami
+- Podzial na wersje: v0.x, v1.0, v1.5, v2.0
+- Tabela podsumowujaca postep
+
+### Krytyczny review wizji
+
+Sprawdzona cala WIZJA.md pod katem sensu, wykonalnosci i wewnetrznej spojnosci:
+- Skill-based intelligence: MOCNE (realne wyrownanie miedzy modelami)
+- Model niezaleznosc: obietnica lekko za mocna (11B nie zrobi glebekiego myslenia)
+- Debata agentow: technicznie najtrudniejszy punkt
+- Mobile offline: wymaga osobnego frameworka (llama.cpp), nie natywnie w Obsidian
+- Zmiana ustawien Obsidiana: brak publicznego API, potrzeba bezposredniego dostepu do .obsidian/
+- Brak wewnetrznych sprzecznosci
+
+**Pliki zmienione:**
+- `src/main.js` - rebranding (klasa, komendy, onboarding, update checker)
+- `src/views/chat_view.js` - rebranding (display_text, fallback name)
+- `src/components/connections_codeblock.js` - rebranding (label, settings ID, help link)
+- `src/components/connections-view/v3.js` - rebranding (help link)
+- `src/components/connections-settings/header.js` - rebranding (buttons, links, modal)
+- `package.json` - rebranding (name, desc, author, repo)
+- `WIZJA.md` - PRZEBUDOWA (211 -> 668 linii, 21 sekcji)
+- `PLAN.md` - NOWY PLIK (Master Plan, 15 faz, 154 checkboxy)
+- `STATUS.md` - zaktualizowany (sesja 11)
+- `DEVLOG.md` - zaktualizowany (ten wpis)
+
+**Build:** npm run build -> 6.5MB - SUKCES
+
+**Decyzje podjete:**
+- WIZJA.md i PLAN.md to "Swiete Grale" projektu - najwazniejsze pliki
+- HANDOFF.md zastapiony przez PLAN.md (lepszy format do sledzenia postepu)
+- Easy mode onboardingu POZNIEJ (wymaga gotowego SaaS)
+- Jaskier jedyny wbudowany agent, reszta to szablony/marketplace
+
+**Nastepne kroki (FAZA 0 - Stabilizacja):**
+- Nazwa "PKM Assistant" w tytule chatu i ustawieniach
+- Wlasna ikona pluginu
+- Test Dextera i Ezry
+- Naprawa duplikatow sesji
+- Weryfikacja vault_search i vault_delete
+- Stabilnosc codziennego uzytku
+
+---
+
 ## 2026-02-20 (sesja 10) - Fix: Settings persistence + Minion model
 
 **Sesja z:** Claude Code (Opus 4.6)

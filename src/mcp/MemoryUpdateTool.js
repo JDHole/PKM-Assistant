@@ -32,7 +32,6 @@ export function createMemoryUpdateTool(app) {
             required: ['operation']
         },
         execute: async (args, app, plugin) => {
-            console.log('[MemoryUpdateTool] Executing:', args);
             try {
                 const { operation, content, section, old_content } = args;
 

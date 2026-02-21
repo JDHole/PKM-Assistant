@@ -4,6 +4,8 @@
  */
 import { AgentLoader } from '../agents/AgentLoader.js';
 import { AgentMemory } from '../memory/AgentMemory.js';
+import { SkillLoader } from '../skills/SkillLoader.js';
+import { MinionLoader } from './MinionLoader.js';
 
 /**
  * AgentManager class - manages all agents and their state
@@ -17,6 +19,8 @@ export class AgentManager {
         this.vault = vault;
         this.settings = settings;
         this.loader = new AgentLoader(vault);
+        this.skillLoader = new SkillLoader(vault);
+        this.minionLoader = new MinionLoader(vault);
 
         /** @type {Map<string, Agent>} */
         this.agents = new Map();
@@ -39,8 +43,6 @@ export class AgentManager {
      * @returns {Promise<void>}
      */
     async initialize() {
-        console.log('[AgentManager] Initializing...');
-
         try {
             const allAgents = await this.loader.loadAllAgents();
 
@@ -58,8 +60,13 @@ export class AgentManager {
             const defaultAgentName = this.settings?.defaultAgent || 'Jaskier';
             this.activeAgent = this.agents.get(defaultAgentName) || allAgents[0] || null;
 
-            console.log('[AgentManager] Loaded', this.agents.size, 'agents');
-            console.log('[AgentManager] Active agent:', this.activeAgent?.name || 'none');
+            // Load skills
+            await this.skillLoader.ensureStarterSkills();
+            await this.skillLoader.loadAllSkills();
+
+            // Load minions
+            await this.minionLoader.ensureStarterMinions();
+            await this.minionLoader.loadAllMinions();
 
             this._emit('agents:loaded', { count: this.agents.size });
 
@@ -125,7 +132,6 @@ export class AgentManager {
         this.activeAgent = agent;
         this.activeAgent.lastActivity = Date.now();
 
-        console.log('[AgentManager] Switched to agent:', name);
         this._emit('agent:switched', {
             previous: previousAgent?.name,
             current: agent.name
@@ -191,6 +197,40 @@ export class AgentManager {
     }
 
     /**
+     * Get skills assigned to the active agent
+     * @returns {Object[]} Array of skill objects
+     */
+    getActiveAgentSkills() {
+        if (!this.activeAgent) return [];
+        return this.skillLoader.getSkillsForAgent(this.activeAgent.skills);
+    }
+
+    /**
+     * Reload all skills from disk
+     * @returns {Promise<void>}
+     */
+    async reloadSkills() {
+        await this.skillLoader.reloadSkills();
+    }
+
+    /**
+     * Reload all minions from disk
+     * @returns {Promise<void>}
+     */
+    async reloadMinions() {
+        await this.minionLoader.reloadMinions();
+    }
+
+    /**
+     * Get minion config for the active agent
+     * @returns {Object|null} Minion config or null
+     */
+    getActiveMinionConfig() {
+        if (!this.activeAgent?.minion) return null;
+        return this.minionLoader.getMinion(this.activeAgent.minion);
+    }
+
+    /**
      * Save current session to active agent's memory
      * @param {Array} messages - Current conversation
      * @param {Object} metadata - Additional metadata
@@ -212,10 +252,11 @@ export class AgentManager {
             return 'You are a helpful AI assistant.';
         }
 
-        // Get memory context
+        // Get memory context (unless disabled in settings)
         const memory = this.getActiveMemory();
         let memoryContext = '';
-        if (memory) {
+        const injectMemory = this.env?.settings?.obsek?.injectMemoryToPrompt !== false;
+        if (memory && injectMemory) {
             try {
                 memoryContext = await memory.getMemoryContext();
             } catch (e) {
@@ -281,7 +322,11 @@ export class AgentManager {
         this.agents.set(agent.name, agent);
         this.agentHistories.set(agent.name, []);
 
-        console.log('[AgentManager] Created new agent:', agent.name);
+        // Create memory folders for the new agent (sessions/, summaries/L1/, L2/, brain.md)
+        const memory = new AgentMemory(this.vault, agent.name, this.settings);
+        await memory.initialize();
+        this.agentMemories.set(agent.name, memory);
+
         this._emit('agent:created', { agent: agent.name });
 
         return agent;
@@ -321,7 +366,6 @@ export class AgentManager {
      * @returns {Promise<void>}
      */
     async reload() {
-        console.log('[AgentManager] Reloading agents...');
         const activeAgentName = this.activeAgent?.name;
 
         // Clear and reload

@@ -12,7 +12,6 @@ export function createMemoryStatusTool(app) {
             required: []
         },
         execute: async (args, app, plugin) => {
-            console.log('[MemoryStatusTool] Executing');
             try {
                 const agentManager = plugin?.agentManager;
                 const activeAgent = agentManager?.getActiveAgent();

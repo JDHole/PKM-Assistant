@@ -144,9 +144,6 @@ export class PermissionSystem {
             this.accessLog = this.accessLog.slice(-this.maxLogSize / 2);
         }
 
-        // Console log for debugging
-        const emoji = allowed ? '✅' : '❌';
-        console.log(`[PermissionSystem] ${emoji} ${agent.name}: ${action}${targetPath ? ` → ${targetPath}` : ''} (${reason})`);
     }
 
     /**

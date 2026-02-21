@@ -7,7 +7,9 @@ const ACTION_TYPE_MAP = {
     'vault_search': 'vault.read',
     'memory_search': 'vault.read',
     'memory_update': 'vault.write',  // overridden below for read_brain
-    'memory_status': 'vault.read'
+    'memory_status': 'vault.read',
+    'skill_list': 'vault.read',
+    'skill_execute': 'vault.read'
 };
 
 /**
@@ -23,7 +25,6 @@ export class MCPClient {
         this.app = app;
         this.plugin = plugin;
         this.toolRegistry = toolRegistry;
-        console.log('[MCPClient] Initialized');
     }
 
     /**
@@ -36,7 +37,6 @@ export class MCPClient {
      * @returns {Promise<Object>} The result of the tool execution or an error object.
      */
     async executeToolCall(toolCall, agentName) {
-        console.log(`[MCPClient] Executing tool call: ${toolCall.name} by agent: ${agentName}`);
 
         try {
             // 1. Parse arguments
@@ -75,7 +75,6 @@ export class MCPClient {
                 targetPath = args.folder;
             }
 
-            console.log(`[MCPClient] Checking permission: Agent=${agentName}, Action=${actionType}, Target=${targetPath}`);
 
             let permResult = { allowed: true, requiresApproval: false };
             if (agent) {
@@ -89,7 +88,6 @@ export class MCPClient {
 
             // 5. Handle approval if required
             if (permResult.requiresApproval) {
-                console.log(`[MCPClient] Approval required for ${toolCall.name}`);
                 const approved = await this.plugin.approvalManager.requestApproval({
                     type: actionType,
                     description: tool.description,
@@ -105,7 +103,6 @@ export class MCPClient {
             }
 
             // 6. Execute tool (pass plugin as 3rd arg for tools that need it, e.g. memory_search)
-            console.log(`[MCPClient] Executing tool logic for ${toolCall.name}`);
             const result = await tool.execute(args, this.app, this.plugin);
             return result;
 

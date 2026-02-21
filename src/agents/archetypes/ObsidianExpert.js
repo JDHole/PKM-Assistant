@@ -31,6 +31,7 @@ Komunikuję się po polsku, rzeczowo i z konkretnymi przykładami.`,
         'Templates/**',
         '.obsidian/**'
     ],
+    minion: 'dexter-vault-builder',
     default_permissions: {
         read_notes: true,
         edit_notes: true,

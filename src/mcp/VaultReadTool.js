@@ -26,7 +26,6 @@ export function createVaultReadTool(app) {
                     // Fallback: try adapter for hidden/unindexed paths (e.g. .pkm-assistant)
                     try {
                         const content = await app.vault.adapter.read(args.path);
-                        console.log(`[VaultReadTool] Read hidden file: ${args.path}`);
                         return { success: true, content, path: args.path };
                     } catch (adapterErr) {
                         return { success: false, error: `File not found: ${args.path}` };
@@ -38,7 +37,6 @@ export function createVaultReadTool(app) {
                 }
 
                 const content = await app.vault.read(file);
-                console.log(`[VaultReadTool] Read content of ${args.path}`);
 
                 return { success: true, content, path: file.path };
 

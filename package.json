@@ -1,8 +1,8 @@
 {
-  "name": "smart-connections-obsidian",
-  "version": "4.1.7",
+  "name": "obsek-plugin",
+  "version": "1.0.2",
   "type": "module",
-  "description": "Link and chat with your notes using ChatGPT and embedding artificial intelligence from OpenAI.",
+  "description": "AI Agent system for Obsidian - chat with your vault, edit files with AI assistance.",
   "scripts": {
     "build": "node esbuild.js",
     "release": "node release.js",
@@ -10,23 +10,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/brianpetro/obsidian-smart-connections.git"
+    "url": "git+https://github.com/JDHole/PKM-Assistant.git"
   },
   "keywords": [
     "Obsidian",
-    "Smart",
-    "Connections",
     "AI",
-    "ChatGPT",
-    "Embeddings",
-    "Notes"
+    "Agents",
+    "PKM",
+    "Chat",
+    "Memory"
   ],
-  "author": "🌴 Brian (Brian Petro)",
+  "author": "JDHole",
   "license": "SEE LICENSE IN LICENSE",
   "bugs": {
-    "url": "https://github.com/brianpetro/obsidian-smart-connections/issues"
+    "url": "https://github.com/JDHole/PKM-Assistant/issues"
   },
-  "homepage": "https://smartconnections.app",
+  "homepage": "https://github.com/JDHole/PKM-Assistant",
   "devDependencies": {
     "@xenova/transformers": "latest",
     "archiver": "^6.0.1",

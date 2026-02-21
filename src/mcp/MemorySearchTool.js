@@ -26,7 +26,6 @@ export function createMemorySearchTool(app) {
             required: ['query']
         },
         execute: async (args, app, plugin) => {
-            console.log('[MemorySearchTool] Executing with args:', args);
             try {
                 const { query } = args;
                 if (!query || typeof query !== 'string') {
@@ -83,7 +82,7 @@ export function createMemorySearchTool(app) {
                             }
                         }
                     } catch (e) {
-                        console.log('[MemorySearchTool] Sessions folder not found');
+                        // Sessions folder not found
                     }
                 }
 

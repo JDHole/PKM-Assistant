@@ -40,7 +40,6 @@ export function createVaultListTool(app) {
                             ...(listed.folders || []).map(f => ({ name: f.split('/').pop(), path: f, isFolder: true })),
                             ...(listed.files || []).map(f => ({ name: f.split('/').pop(), path: f, isFolder: false }))
                         ];
-                        console.log(`[VaultListTool] Listed ${files.length} items in hidden folder '${folderPath}'`);
                         return { success: true, folder: folderPath, files, count: files.length, totalCount: files.length };
                     } catch (adapterErr) {
                         return { success: false, error: `Folder not found: ${folderPath}` };
@@ -90,8 +89,6 @@ export function createVaultListTool(app) {
                 if (files.length > MAX_RESULTS) {
                     files = files.slice(0, MAX_RESULTS);
                 }
-
-                console.log(`[VaultListTool] Listed ${files.length} items in '${folderPath}' (recursive: ${recursive})`);
 
                 return {
                     success: true,

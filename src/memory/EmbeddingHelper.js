@@ -48,7 +48,6 @@ export class EmbeddingHelper {
 
         // SmartEmbedModel.embed() expects just the text string, not {input: text}
         const result = await this._embedModel.embed(text);
-        console.log('[EmbeddingHelper] embed result:', result);
 
         // Handle various result formats
         if (Array.isArray(result)) {

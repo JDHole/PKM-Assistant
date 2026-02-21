@@ -19,7 +19,6 @@ export function createVaultDeleteTool(app) {
             required: ['path']
         },
         execute: async (args, app) => {
-            console.log('[VaultDeleteTool] Executing with args:', args);
             try {
                 const { path } = args;
                 if (!path || typeof path !== 'string') {

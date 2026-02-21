@@ -24,7 +24,6 @@ export function createVaultWriteTool(app) {
             required: ['path', 'content']
         },
         execute: async (args, app) => {
-            console.log('[VaultWriteTool] Executing with args:', args);
             try {
                 const { path, content } = args;
                 if (!path || typeof path !== 'string') {
@@ -59,7 +58,6 @@ export function createVaultWriteTool(app) {
                         finalContent = mode === 'append' ? oldContent + content : content + oldContent;
                     }
                     await app.vault.adapter.write(path, finalContent);
-                    console.log(`[VaultWriteTool] Wrote hidden file: ${path}`);
                     return { success: true, path, mode, bytesWritten: finalContent.length };
                 }
 

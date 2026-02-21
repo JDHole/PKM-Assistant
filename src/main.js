@@ -12,7 +12,6 @@ import { open_note } from "obsidian-smart-env/utils/open_note.js";
 
 import { ReleaseNotesView }    from "./views/release_notes_view.js";
 
-import { StoryModal } from 'obsidian-smart-env/src/modals/story.js';
 import { get_random_connection } from "./utils/get_random_connection.js";
 import { add_smart_dice_icon, add_obsek_icon } from "./utils/add_icons.js";
 
@@ -41,9 +40,12 @@ import { createVaultSearchTool } from "./mcp/VaultSearchTool.js";
 import { createMemorySearchTool } from "./mcp/MemorySearchTool.js";
 import { createMemoryUpdateTool } from "./mcp/MemoryUpdateTool.js";
 import { createMemoryStatusTool } from "./mcp/MemoryStatusTool.js";
+import { createSkillListTool } from "./mcp/SkillListTool.js";
+import { createSkillExecuteTool } from "./mcp/SkillExecuteTool.js";
+import { createMinionTaskTool } from "./mcp/MinionTaskTool.js";
 import { registerAgentSidebar } from "./views/AgentSidebar.js";
 
-export default class SmartConnectionsPlugin extends SmartPlugin {
+export default class ObsekPlugin extends SmartPlugin {
   SmartEnv = SmartEnv;
   get smart_env_config() {
     if(!this._smart_env_config){
@@ -77,27 +79,18 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
     registerAgentSidebar(this);
   }
   onunload() {
-    console.log("Unloading Smart Connections plugin");
+    console.log("Unloading Obsek plugin");
     this.notices?.unload();
     this.env?.unload_main?.(this);
   }
 
   async initialize() {
-    this.smart_connections_view = null;
-
-    // New-user onboarding (non-blocking)
+    // New-user onboarding: open Obsek chat on first run
     this.is_new_user().then(async (is_new) => {
       if (!is_new) return;
-      setTimeout(() => {
-        StoryModal.open(this, {
-          title: 'Getting Started With Smart Connections',
-          url: 'https://smartconnections.app/story/smart-connections-getting-started/?utm_source=sc-op-new-user',
-        });
-      }, 1000);
       await this.SmartEnv.wait_for({ loaded: true });
       setTimeout(() => {
-        this.open_connections_view();
-        if(this.app.workspace.rightSplit.collapsed) this.app.workspace.rightSplit.toggle();
+        this.open_chat_view();
       }, 1000);
       this.add_to_gitignore("\n\n# Ignore Smart Environment folder\n.smart-env");
     });
@@ -132,6 +125,9 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
       this.toolRegistry.registerTool(createMemorySearchTool(this.app));
       this.toolRegistry.registerTool(createMemoryUpdateTool(this.app));
       this.toolRegistry.registerTool(createMemoryStatusTool(this.app));
+      this.toolRegistry.registerTool(createSkillListTool(this.app));
+      this.toolRegistry.registerTool(createSkillExecuteTool(this.app));
+      this.toolRegistry.registerTool(createMinionTaskTool(this.app));
 
       this.toolLoader = new ToolLoader(this.app.vault);
       const customTools = await this.toolLoader.loadAllTools();
@@ -154,7 +150,7 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
     return {
       chat: {
         icon_name: "obsek-icon",
-        description: "Obsek: Open chat",
+        description: "PKM Assistant: Open chat",
         callback: () => { this.open_chat_view(); }
       }
     }
@@ -192,7 +188,7 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
   async check_for_update() {
     try {
       const {json: response} = await requestUrl({
-        url: "https://api.github.com/repos/brianpetro/obsidian-smart-connections/releases/latest",
+        url: "https://api.github.com/repos/JDHole/PKM-Assistant/releases/latest",
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -225,25 +221,22 @@ export default class SmartConnectionsPlugin extends SmartPlugin {
     return {
       ...super.commands,
       random_connection: {
-        id: "smart-connections-random",
-        name: "Open: Random note from connections",
+        id: "obsek-random-connection",
+        name: "PKM Assistant: Random note",
         callback: async () => {
           await this.open_random_connection();
         }
       },
-      getting_started: {
-        id: "smart-connections-getting-started",
-        name: "Show: Getting started slideshow",
+      open_chat: {
+        id: "obsek-open-chat",
+        name: "PKM Assistant: Open chat",
         callback: () => {
-          StoryModal.open(this, {
-            title: 'Getting Started With Smart Connections',
-            url: 'https://smartconnections.app/story/smart-connections-getting-started/?utm_source=sc-op-command',
-          });
+          this.open_chat_view();
         }
       },
       insert_connections_codeblock: {
-        id: 'insert-connections-codeblock',
-        name: 'Insert: Connections codeblock',
+        id: 'obsek-insert-connections',
+        name: 'PKM Assistant: Insert connections codeblock',
         editorCallback: (editor) => {
           editor.replaceSelection(build_connections_codeblock());
         }

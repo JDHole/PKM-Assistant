@@ -26,7 +26,6 @@ export function createVaultSearchTool(app) {
             required: ['query']
         },
         execute: async (args, app) => {
-            console.log('[VaultSearchTool] Executing with args:', args);
             try {
                 const { query, folder } = args;
                 if (!query || typeof query !== 'string') {

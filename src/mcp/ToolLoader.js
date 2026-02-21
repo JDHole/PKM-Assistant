@@ -17,7 +17,6 @@ export class ToolLoader {
         const toolsFolder = this.vault.getAbstractFileByPath(this.toolsPath);
 
         if (!toolsFolder || !(toolsFolder instanceof TFolder)) {
-            console.log(`[ToolLoader] Tools directory not found at ${this.toolsPath}`);
             return [];
         }
 
@@ -33,7 +32,6 @@ export class ToolLoader {
             }
         }
 
-        console.log(`[ToolLoader] Loaded ${loadedTools.length} custom tools`);
         return loadedTools;
     }
 
@@ -88,7 +86,6 @@ export class ToolLoader {
             inputSchema: toolDef.input_schema,
             execute: async (args, app) => {
                 // Custom tools nie mają execute - zwróć info
-                console.log(`[ToolLoader] Custom tool ${toolDef.name} called with:`, args);
                 return {
                     success: false,
                     error: `Custom tool "${toolDef.name}" requires external MCP server: ${toolDef.mcp_server || 'not specified'}`

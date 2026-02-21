@@ -98,10 +98,7 @@ export async function post_process(view, container, opts = {}) {
     });
 
     const open_help = () => {
-      StoryModal.open(view.plugin, {
-        title: 'Getting Started With Smart Connections',
-        url: 'https://smartconnections.app/story/smart-connections-getting-started/?utm_source=connections-view-help#page=understanding-connections-1'
-      });
+      window.open('https://github.com/JDHole/PKM-Assistant', '_external');
     };
 
     const menu_button = container.querySelector('[data-action="open-menu"]');

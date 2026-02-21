@@ -2,24 +2,23 @@ import { SmartPluginSettingsTab } from "obsidian-smart-env";
 import { Setting } from "obsidian";
 
 /**
- * ObsekSettingsTab - Clean settings for PKM Assistant
- * Simple, working settings with native Obsidian controls
+ * ObsekSettingsTab - Settings for PKM Assistant
  */
 export class ObsekSettingsTab extends SmartPluginSettingsTab {
     constructor(app, plugin) {
         super(app, plugin);
         this.plugin = plugin;
-        this.name = 'Obsek';
-        this.icon = 'message-circle';
+        this.name = 'PKM Assistant';
+        this.icon = 'bot';
     }
 
     async render_header(container) {
         if (!container) return;
         container.empty();
 
-        container.createEl('h1', { text: '🤖 Obsek - PKM Assistant' });
+        container.createEl('h1', { text: 'PKM Assistant' });
         container.createEl('p', {
-            text: 'AI Agent system for Obsidian - chat with your vault, edit files with AI assistance.',
+            text: 'Zespol AI agentow w Obsidianie - chat z vaultem, edycja plikow, system pamieci.',
             cls: 'setting-item-description'
         });
     }
@@ -27,7 +26,6 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
     async render_plugin_settings(container) {
         if (!container) return;
         container.empty();
-        // No custom plugin settings for now
     }
 
     async render_global_settings(container) {
@@ -35,35 +33,32 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         container.empty();
 
         if (!this.env) {
-            container.createEl('p', { text: 'Environment not loaded yet...' });
+            container.createEl('p', { text: 'Ladowanie srodowiska...' });
             return;
         }
 
-        // Initialize settings if needed
         if (!this.env.settings.smart_chat_model) {
             this.env.settings.smart_chat_model = {};
         }
         const settings = this.env.settings.smart_chat_model;
 
-        // Obsek-specific settings (persisted under own key, not smart_chat_model)
         if (!this.env.settings.obsek) {
             this.env.settings.obsek = {};
         }
         const obsek = this.env.settings.obsek;
 
-        // Chat Model Section
-        container.createEl('h2', { text: 'Chat Model' });
+        // ── Model AI ──────────────────────────────
+        container.createEl('h2', { text: 'Model AI' });
 
-        // Provider/Platform selection
         new Setting(container)
-            .setName('Chat Model Platform')
-            .setDesc('Select a platform/provider for chat models')
+            .setName('Platforma')
+            .setDesc('Dostawca modeli AI')
             .addDropdown(dropdown => {
                 dropdown
                     .addOption('anthropic', 'Anthropic (Claude)')
                     .addOption('openai', 'OpenAI (GPT)')
                     .addOption('open_router', 'OpenRouter')
-                    .addOption('ollama', 'Ollama (Local)')
+                    .addOption('ollama', 'Ollama (lokalny)')
                     .addOption('gemini', 'Google Gemini')
                     .addOption('groq', 'Groq')
                     .addOption('deepseek', 'DeepSeek')
@@ -71,17 +66,16 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                     .onChange(async (value) => {
                         settings.platform = value;
                         await this.save_settings();
-                        this.display(); // Re-render for platform-specific options
+                        this.display();
                     });
             });
 
         const platform = settings.platform || 'anthropic';
 
-        // API Key (not for Ollama)
         if (platform !== 'ollama') {
             new Setting(container)
-                .setName('API Key')
-                .setDesc(`Enter your ${this.get_platform_name(platform)} API key`)
+                .setName('Klucz API')
+                .setDesc(`Klucz API dla ${this.get_platform_name(platform)}`)
                 .addText(text => {
                     text
                         .setPlaceholder('sk-...')
@@ -95,11 +89,10 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 });
         }
 
-        // Ollama host
         if (platform === 'ollama') {
             new Setting(container)
-                .setName('Ollama Host')
-                .setDesc('URL of your Ollama server')
+                .setName('Adres Ollama')
+                .setDesc('URL serwera Ollama')
                 .addText(text => {
                     text
                         .setPlaceholder('http://localhost:11434')
@@ -112,10 +105,9 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 });
         }
 
-        // Model selection
         new Setting(container)
             .setName('Model')
-            .setDesc('Enter the model name to use')
+            .setDesc('Nazwa modelu do rozmow')
             .addText(text => {
                 text
                     .setPlaceholder(this.get_default_model(platform))
@@ -127,12 +119,9 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 text.inputEl.style.width = '250px';
             });
 
-        // Advanced Settings
-        container.createEl('h3', { text: 'Advanced' });
-
         new Setting(container)
-            .setName('Temperature')
-            .setDesc('Creativity level (0 = focused, 1 = creative)')
+            .setName('Temperatura')
+            .setDesc('0 = precyzyjny, 1 = kreatywny')
             .addSlider(slider => {
                 slider
                     .setLimits(0, 1, 0.1)
@@ -145,8 +134,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             });
 
         new Setting(container)
-            .setName('Max Tokens')
-            .setDesc('Maximum response length')
+            .setName('Max tokenow odpowiedzi')
+            .setDesc('Maksymalna dlugosc jednej odpowiedzi AI')
             .addText(text => {
                 text
                     .setPlaceholder('4096')
@@ -158,12 +147,37 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 text.inputEl.style.width = '100px';
             });
 
-        // Memory System Section
-        container.createEl('h3', { text: 'Memory System' });
+        // ── Pamiec ──────────────────────────────
+        container.createEl('h2', { text: 'Pamiec' });
 
         new Setting(container)
-            .setName('maxContextTokens')
-            .setDesc('Maximum tokens in conversation context')
+            .setName('Pamiec w prompcie')
+            .setDesc('Wstrzykuj pamiec (brain, podsumowania) do system promptu. Wylacz dla szybszych odpowiedzi z lokalnymi modelami.')
+            .addToggle(toggle => toggle
+                .setValue(obsek.injectMemoryToPrompt !== false) // default: true
+                .onChange(async (value) => {
+                    obsek.injectMemoryToPrompt = value;
+                    await this.save_settings();
+                })
+            );
+
+        new Setting(container)
+            .setName('Minion (model pomocniczy)')
+            .setDesc('Tanszy model do operacji pamieci (ekstrakcja, kompresja, L1/L2). Pusty = glowny model.')
+            .addText(text => {
+                text
+                    .setPlaceholder('claude-haiku-4-5-20251001')
+                    .setValue(obsek.minionModel || '')
+                    .onChange(async (value) => {
+                        obsek.minionModel = value;
+                        await this.save_settings();
+                    });
+                text.inputEl.style.width = '250px';
+            });
+
+        new Setting(container)
+            .setName('Limit kontekstu')
+            .setDesc('Max tokenow w oknie rozmowy (10k - 2M)')
             .addText(text => {
                 text
                     .setPlaceholder('100000')
@@ -177,11 +191,12 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
+                text.inputEl.style.width = '120px';
             });
 
         new Setting(container)
-            .setName('enableAutoSummarization')
-            .setDesc('Automatically summarize when context gets large')
+            .setName('Auto-sumaryzacja')
+            .setDesc('Automatycznie kompresuj rozmowe gdy kontekst sie zapelnia')
             .addToggle(toggle => toggle
                 .setValue(obsek.enableAutoSummarization !== false)
                 .onChange(async (value) => {
@@ -190,8 +205,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('summarizationThreshold')
-            .setDesc('Trigger summarization at this % of max tokens')
+            .setName('Prog sumaryzacji')
+            .setDesc('Kompresuj przy tym % limitu kontekstu')
             .addSlider(slider => slider
                 .setLimits(0.5, 0.9, 0.05)
                 .setValue(obsek.summarizationThreshold || 0.7)
@@ -202,8 +217,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('autoSaveInterval')
-            .setDesc('Auto-save session every X minutes (0 = disabled)')
+            .setName('Auto-zapis sesji')
+            .setDesc('Zapisuj sesje co X minut (0 = wylaczone)')
             .addText(text => {
                 text
                     .setPlaceholder('5')
@@ -213,28 +228,15 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
+                text.inputEl.style.width = '80px';
             });
 
-        new Setting(container)
-            .setName('Minion Model')
-            .setDesc('Model AI do automatycznej ekstrakcji pamięci. Pusty = główny model. Polecany: claude-haiku-4-5-20251001')
-            .addText(text => {
-                text
-                    .setPlaceholder('claude-haiku-4-5-20251001')
-                    .setValue(obsek.minionModel || '')
-                    .onChange(async (value) => {
-                        obsek.minionModel = value;
-                        await this.save_settings();
-                    });
-                text.inputEl.style.width = '250px';
-            });
-
-        // RAG (Retrieval) Section
-        container.createEl('h3', { text: 'RAG (Retrieval)' });
+        // ── RAG ──────────────────────────────
+        container.createEl('h2', { text: 'RAG (wyszukiwanie kontekstu)' });
 
         new Setting(container)
-            .setName('enableRAG')
-            .setDesc('Enable semantic search in previous sessions')
+            .setName('Wlacz RAG')
+            .setDesc('Wyszukiwanie semantyczne w poprzednich sesjach')
             .addToggle(toggle => toggle
                 .setValue(obsek.enableRAG !== false)
                 .onChange(async (value) => {
@@ -243,8 +245,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('ragSimilarityThreshold')
-            .setDesc('Minimum similarity score for RAG results')
+            .setName('Prog podobienstwa')
+            .setDesc('Minimalne podobienstwo wynikow (0.5 = luźne, 0.9 = scisle)')
             .addSlider(slider => slider
                 .setLimits(0.5, 0.9, 0.05)
                 .setValue(obsek.ragSimilarityThreshold || 0.7)
@@ -255,8 +257,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('ragMaxResults')
-            .setDesc('Maximum number of RAG results to include')
+            .setName('Max wynikow RAG')
+            .setDesc('Ile wynikow wyszukiwania dolaczyc do kontekstu')
             .addText(text => {
                 text
                     .setPlaceholder('5')
@@ -266,14 +268,33 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
+                text.inputEl.style.width = '80px';
             });
 
-        // About section
-        container.createEl('h2', { text: 'About' });
-        container.createEl('p', {
-            text: 'Version: ' + this.plugin.manifest.version,
+        // ── Info ──────────────────────────────
+        container.createEl('h2', { text: 'Informacje' });
+
+        const infoDiv = container.createDiv({ cls: 'setting-item' });
+        infoDiv.style.display = 'flex';
+        infoDiv.style.flexDirection = 'column';
+        infoDiv.style.gap = '4px';
+        infoDiv.style.padding = '12px 0';
+
+        infoDiv.createEl('span', {
+            text: `Wersja: ${this.plugin.manifest.version}`,
             cls: 'setting-item-description'
         });
+        infoDiv.createEl('span', {
+            text: 'Autor: JDHole',
+            cls: 'setting-item-description'
+        });
+
+        const linkEl = infoDiv.createEl('a', {
+            text: 'GitHub: JDHole/PKM-Assistant',
+            href: 'https://github.com/JDHole/PKM-Assistant',
+            cls: 'setting-item-description'
+        });
+        linkEl.style.color = 'var(--link-color)';
     }
 
     get_platform_name(platform) {
