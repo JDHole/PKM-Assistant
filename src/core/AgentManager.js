@@ -255,7 +255,7 @@ export class AgentManager {
         // Get memory context (unless disabled in settings)
         const memory = this.getActiveMemory();
         let memoryContext = '';
-        const injectMemory = this.env?.settings?.obsek?.injectMemoryToPrompt !== false;
+        const injectMemory = this.settings?.obsek?.injectMemoryToPrompt !== false;
         if (memory && injectMemory) {
             try {
                 memoryContext = await memory.getMemoryContext();
