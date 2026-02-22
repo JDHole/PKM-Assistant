@@ -91,6 +91,11 @@ WAŻNE ZASADY DEDUPLIKACJI:
 - Jeśli fakt jest PODOBNY ale ma nowe szczegóły → użyj [UPDATE sekcja] nowa treść -> stara treść
 - Dodawaj TYLKO naprawdę nowe informacje
 
+BEZPIECZEŃSTWO:
+- NIGDY nie wyciągaj kluczy API, haseł, tokenów, sekretów ani danych logowania
+- NIGDY nie zapamiętuj adresów serwerów, konfiguracji API ani nazw modeli AI
+- Jeśli user wspomina o kluczu API lub haśle → POMIŃ to kompletnie
+
 Zasady ogólne:
 - Maks 5-8 faktów na sesję. Mniej = lepiej.
 - Jeśli nowy fakt PRZECZY staremu w Brain → oznacz jako [UPDATE sekcja]

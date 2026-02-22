@@ -36,6 +36,9 @@
 | 1.0.0 | 2026-02-21 | 15 | Reset wersji - wlasne wersjonowanie Obsek |
 | 1.0.1 | 2026-02-21 | 15 | FAZA 1 Skill Engine - centralna biblioteka skilli, MCP toole, guziki UI |
 | 1.0.2 | 2026-02-21 | 16 | FAZA 2 Minion per Agent - system minionow, MinionLoader, MinionRunner, minion_task MCP tool, auto-prep |
+| 1.0.3 | 2026-02-22 | 19 | FAZA 2.4 Architektura 4 modeli - modelResolver, keySanitizer, MasterTaskTool, reorganizacja ustawien |
+| 1.0.4 | 2026-02-22 | 21 | FAZA 2.5 Playbook + Vault Map - PlaybookManager, starter playbooki/vault mapy, auto-prep z kontekstem |
+| 1.0.5 | 2026-02-22 | 22 | FAZA 3 Agent Manager + Creator - AgentProfileModal, AgentDeleteModal, AgentSidebar rewrite, skill create-agent, tylko Jaskier built-in |
 
 ### Zaleznosci miedzy fazami
 
@@ -46,7 +49,7 @@ FAZA 0 (stabilizacja)
   │     │     └── FAZA 3 (agent manager) ─┐
   │     └────────────────────────────────┘ │
   ├── FAZA 4 (komunikator + delegacja)     │
-  ├── FAZA 5 (inline + creation plans)     │
+  ├── FAZA 5 (rozszerzony chat + inline)   │
   │                                        │
   └── FAZA 6 (onboarding) ← wymaga 1,3    │
         └── FAZA 7 (release) ← wymaga 1-6
@@ -178,19 +181,37 @@ FAZA 0 (stabilizacja)
 - [x] Hot-reload: vault_write do /minions/ przeladowuje konfiguracje
 - [x] Graceful failure: minion padnie -> main model odpowiada normalnie
 
-### 2.4 Playbook + Vault Map *(nowe - sesja 17)*
-- [ ] playbook.md per agent: .pkm-assistant/agents/{name}/playbook.md
-  - [ ] Format: lista narzedzi + skilli + procedur (markdown, czytelny dla miniona)
-  - [ ] Starter playbook tworzony automatycznie dla wbudowanych agentow
-  - [ ] Agent NIE ma playbooka w system prompcie (za duzo tokenow)
-- [ ] vault_map.md per agent: .pkm-assistant/agents/{name}/vault_map.md
-  - [ ] Mapa stref vaulta: foldery + opisy co w nich jest
-  - [ ] Rozni agenci maja rozne mapy (rozne strefy dostepu)
-  - [ ] Starter vault_map tworzony automatycznie (analiza vaulta)
-- [ ] System prompt punkt 4 = lekki (3 linie: pointer do playbooka + uprawnienia)
-- [ ] Auto-prep miniona czyta playbook.md i vault_map.md na starcie sesji
-- [ ] minion_task: agent moze poprosic miniona o sprawdzenie playbooka w trakcie rozmowy
-- [ ] Hot-reload: edycja playbook.md/vault_map.md przeladowuje config
+### 2.4 Architektura 4 modeli *(nowe - sesja 18)*
+
+> 4 modele per agent: Main (rozmowa), Minion (robota w tle), Embedding (wektory), Master (geniusz).
+> Kazdy konfigurowalny globalnie i per agent. Domyslne wartosci dzialaja od razu.
+
+- [x] Ustawienia globalne: 4 pola modelu (Main, Minion, Embedding, Master)
+- [x] Ustawienia per agent: override globalnych modeli w konfiguracji agenta
+- [x] Zmiana domyslnego modelu embeddingów: bge-micro-v2 → Nomic-embed-text v1.5
+  - [x] Zmiana defaulta w konfiguracji SC (external-deps)
+  - [x] Opcja wyboru modelu embeddingów w ustawieniach Obsek
+  - [x] Re-indeksowanie vaulta po zmianie modelu (info dla usera)
+- [x] MCP tool master_task: agent deleguje trudne zadania W GORE do Mastera
+  - [x] master_task automatycznie odpala Miniona po kontekst ZANIM wysle do Mastera
+  - [x] System prompt agenta: instrukcje kiedy uzywac master_task
+  - [x] Typing indicator: "Konsultuje z ekspertem..."
+  - [x] Graceful fallback: brak Mastera → Main odpowiada sam
+- [x] UI: sekcja "Modele" w ustawieniach z 4 polami + opisami po polsku
+
+### 2.5 Playbook + Vault Map *(nowe - sesja 17)*
+- [x] playbook.md per agent: .pkm-assistant/agents/{name}/playbook.md
+  - [x] Format: lista narzedzi + skilli + procedur (markdown, czytelny dla miniona)
+  - [x] Starter playbook tworzony automatycznie dla wbudowanych agentow
+  - [x] Agent NIE ma playbooka w system prompcie (za duzo tokenow)
+- [x] vault_map.md per agent: .pkm-assistant/agents/{name}/vault_map.md
+  - [x] Mapa stref vaulta: foldery + opisy co w nich jest
+  - [x] Rozni agenci maja rozne mapy (rozne strefy dostepu)
+  - [x] Starter vault_map tworzony automatycznie (analiza vaulta)
+- [x] System prompt punkt 4 = lekki (3 linie: pointer do playbooka + uprawnienia)
+- [x] Auto-prep miniona czyta playbook.md i vault_map.md na starcie sesji
+- [x] minion_task: agent moze poprosic miniona o sprawdzenie playbooka w trakcie rozmowy
+- [x] Hot-reload: edycja playbook.md/vault_map.md przeladowuje config
 
 ---
 
@@ -200,29 +221,36 @@ FAZA 0 (stabilizacja)
 > Zalezy od: FAZA 1 (wyswietlanie skilli), FAZA 2 (konfiguracja miniona).
 
 ### 3.1 Agent Manager Panel
-- [ ] Zakladka/panel w pluginie z lista wszystkich agentow
-- [ ] Profil agenta: imie, emoji, opis, model, temperatura
-- [ ] Podglad brain.md i active_context.md (bez grzebania w .pkm-assistant)
-- [ ] Podglad i edycja uprawnien (read/write/delete/execute/mcp)
-- [ ] Podglad i edycja stref vaulta
-- [ ] Podglad MCP tools agenta
-- [ ] Podglad i edycja skilli
-- [ ] Konfiguracja miniona (model, instrukcje, zadania)
-- [ ] Historia rozmow (lista sesji z nawigacja)
-- [ ] Statystyki: liczba sesji, zuzycie tokenow, ostatnia aktywnosc
+- [x] Zakladka/panel w pluginie z lista wszystkich agentow
+- [x] Profil agenta: imie, emoji, opis, model, temperatura
+- [x] Podglad brain.md i active_context.md (bez grzebania w .pkm-assistant)
+- [x] Podglad i edycja uprawnien (read/write/delete/execute/mcp)
+- [x] Podglad i edycja stref vaulta
+- [x] Podglad MCP tools agenta
+- [x] Podglad i edycja skilli
+- [x] Konfiguracja miniona (model, instrukcje, zadania)
+- [x] Historia rozmow (lista sesji z nawigacja)
+- [x] Statystyki: liczba sesji, zuzycie tokenow, ostatnia aktywnosc
 
 ### 3.2 Agent Creator
-- [ ] Formularz: imie, emoji, opis roli
-- [ ] Archetyp (szablon osobowosci) lub custom personality
-- [ ] Preset uprawnien: Safe / Standard / Full
-- [ ] Konfiguracja stref vaulta
-- [ ] Wybor modelu AI + minion
-- [ ] Zapis nowego agenta do .pkm-assistant/agents/
+- [x] Formularz: imie, emoji, opis roli
+- [x] Archetyp (szablon osobowosci) lub custom personality
+- [x] Preset uprawnien: Safe / Standard / Full
+- [x] Konfiguracja stref vaulta
+- [x] Wybor modelu AI + minion
+- [x] Zapis nowego agenta do .pkm-assistant/agents/
+- [x] Tworzenie agenta przez rozmowe z Jaskierem (alternatywa dla formularza)
 
 ### 3.3 Edycja i usuwanie agentow
-- [ ] Edycja profilu istniejacego agenta z UI
-- [ ] Edycja uprawnien i stref z UI
-- [ ] Usuwanie agenta (z potwierdzeniem i opcja archiwizacji pamieci)
+- [x] Edycja profilu istniejacego agenta z UI
+- [x] Edycja uprawnien i stref z UI
+- [x] Usuwanie agenta (z potwierdzeniem i opcja archiwizacji pamieci)
+
+### 3.4 Architektura agentow *(nowe - sesja 22)*
+- [x] Tylko Jaskier jako wbudowany agent (Dexter/Ezra to szablony/archetypy)
+- [x] Built-in overrides: edycja Jaskiera zapisywana do _overrides.yaml
+- [x] Fallback: usuniecie ostatniego agenta -> auto-odtworzenie Jaskiera
+- [ ] Tryb bez agenta (agentless mode) - chat bez systemu agentow *(notatka na przyszlosc)*
 
 ---
 
@@ -232,36 +260,81 @@ FAZA 0 (stabilizacja)
 > Zalezy od: FAZA 0.
 
 ### 4.1 Komunikator
-- [ ] Struktura: .pkm-assistant/komunikator/inbox_{agent}.md
-- [ ] Agent zostawia wiadomosc w skrzynce innego agenta
-- [ ] Agent czyta swoj inbox przy starcie sesji
-- [ ] MCP tool: agent_message (wyslij wiadomosc do agenta)
+- [x] Struktura: .pkm-assistant/komunikator/inbox_{agent}.md
+- [x] Agent zostawia wiadomosc w skrzynce innego agenta
+- [x] Agent czyta swoj inbox przy starcie sesji
+- [x] MCP tool: agent_message (wyslij wiadomosc do agenta)
 
 ### 4.2 Delegacja agentow
-- [ ] Agent proponuje przelaczenie ("Moze przerzucimy na Lexie?")
-- [ ] Przycisk w UI do zatwierdzenia delegacji
-- [ ] Przy delegacji: sesja zapisana, kontekst w Komunikatorze
-- [ ] Nowy agent laduje sie z kontekstem
-- [ ] MCP tool: agent_delegate (przelacz na innego agenta z kontekstem)
+- [x] Agent proponuje przelaczenie ("Moze przerzucimy na Lexie?")
+- [x] Przycisk w UI do zatwierdzenia delegacji
+- [x] Przy delegacji: sesja zapisana, kontekst w Komunikatorze
+- [x] Nowy agent laduje sie z kontekstem
+- [x] MCP tool: agent_delegate (przelacz na innego agenta z kontekstem)
 
 ---
 
-## FAZA 5: INLINE + CREATION PLANS [v1.0]
+## FAZA 5: ROZSZERZONY CHAT + INLINE [v1.0]
 
-> Cel: Interakcja z agentem poza oknem czatu.
+> Cel: Ulepszone funkcje chatu + interakcja z agentem poza oknem czatu.
 > Zalezy od: FAZA 0.
 
-### 5.1 Inline komentarze
-- [ ] Context menu (prawy przycisk w notatce): "Komentarz do Asystenta"
-- [ ] Formularz: user wpisuje uwage do zaznaczonego fragmentu
-- [ ] Agent dostaje: zaznaczony fragment + komentarz + sciezka pliku
-- [ ] Agent poprawia fragment bezposrednio w pliku
+### 5.1 Inline komentarze *(sesja 25)*
+- [x] Context menu (prawy przycisk w notatce): "Komentarz do Asystenta"
+- [x] Formularz: user wpisuje uwage do zaznaczonego fragmentu
+- [x] Agent dostaje: zaznaczony fragment + komentarz + sciezka pliku
+- [x] Agent poprawia fragment bezposrednio w pliku
 
-### 5.2 Creation Plans (artefakty)
-- [ ] Agent tworzy plan krok-po-kroku przed wiekszym zadaniem
-- [ ] Plan widoczny jako artefakt w chacie (lub jako notatka)
-- [ ] User komentuje/poprawia poszczegolne kroki planu
-- [ ] Po akceptacji planu - agent realizuje go z uzyciem skilli
+### 5.2 Creation Plans (artefakty) *(sesja 25)*
+- [x] Agent tworzy plan krok-po-kroku przed wiekszym zadaniem
+- [x] Plan widoczny jako artefakt w chacie (lub jako notatka)
+- [ ] User komentuje/poprawia poszczegolne kroki planu *(backlog: 5.7 manual edit)*
+- [x] Po akceptacji planu - agent realizuje go z uzyciem skilli
+
+### 5.3 Todo listy w chacie *(sesja 25)*
+- [x] Agent tworzy tymczasowa liste zadan w chacie (interaktywny artefakt)
+- [x] Checkboxy odznaczane w trakcie pracy (agent odznacza automatycznie)
+- [ ] User moze dodawac/usuwac/edytowac punkty na liscie *(backlog: 5.7 manual edit)*
+- [x] Dwa tryby: tymczasowy (w chacie, znika po sesji) vs trwaly (zapisany jako notatka w vaultcie)
+- [x] Animacja postępu: pasek / procent ukonczenia
+
+### 5.4 Extended thinking *(sesja 25)*
+
+> Wyswietlanie procesu myslenia AI - chain of thought, reasoning tokens.
+> Dotyczy modeli: DeepSeek Reasoner, Anthropic (extended thinking), OpenAI o-series.
+
+- [x] Odbieranie reasoning_content / thinking z API (DeepSeek juz dziala, rozszerzyc na inne)
+- [x] Zwijany/rozwijalny blok "Myslenie..." w babelku odpowiedzi
+- [x] Animacja "agent mysli" z podgladem chain of thought w czasie rzeczywistym
+- [x] Graceful fallback: model bez thinking → normalny babelek bez bloku myslenia
+- [x] Ustawienie: wlacz/wylacz wyswietlanie myslenia (nie kazdy chce to widziec)
+
+### 5.5 Animacje i UI chatu *(sesja 25)*
+- [x] Plynne animacje ladowania i generowania odpowiedzi
+- [ ] Animacja wpisywania (typing effect) z kursorem
+- [x] Animacje przejsc: todolists, plans, thinking bloki
+- [x] Animacja tool call (rozwijanie/zwijanie, ikony narzedzi)
+- [ ] Responsywny design dla wszystkich nowych elementow chatu
+
+### 5.7 Panel artefaktow *(backlog - sesja 25)*
+- [ ] Zakladka/mini-menu w chacie pokazujace wszystkie artefakty z sesji (todo, plany, pliki)
+- [ ] Szybki dostep do kazdego artefaktu bez scrollowania po chacie
+- [ ] Manualna edycja planow i todo (dodawanie/usuwanie/zmiana bez posrednictwa AI)
+
+### 5.8 Agora - tablica aktywnosci agentow *(backlog - sesja 25)*
+- [ ] Wspolna tablica `.pkm-assistant/agora.md` z wpisami agentow
+- [ ] Kazdy agent po sesji wpisuje co zrobil (broadcast dla wszystkich)
+- [ ] Nowy agent czyta agore przed rozpoczeciem pracy (kontekst "co sie dzialo")
+- [ ] Roznica vs komunikator: komunikator = 1-do-1, agora = broadcast
+
+### 5.6 Tryb Agentic *(notatka - sesja 25)*
+
+> **Juz zaimplementowane** przez nasz system minion/main/master.
+> Natywny "agentic mode" dostawcow (Claude, OpenAI) to w praktyce to samo co nasz
+> streamToCompleteWithTools() - petla: model → tool call → wynik → model → ...
+> Jesli dostawcy dodadza natywny agentic z korzyściami (tansze tokeny, dluzsz kontekst),
+> podepniemy pod istniejaca architekture jako alternatywe dla naszej petli.
+> **Nie wymaga osobnej implementacji - monitorowac API dostawcow.**
 
 ---
 
@@ -273,7 +346,7 @@ FAZA 0 (stabilizacja)
 ### 6.1 Wizard konfiguracji
 - [ ] Ekran wyboru: klucz API lub Ollama
 - [ ] Walidacja klucza API (czy dziala)
-- [ ] Sugestia minion modelu (tanio + dobrze)
+- [ ] Sugestia minion modelu (tanio + dobrze) + pomoc w konfiguracji
 - [ ] One-click Ollama setup (wykrycie lokalnego serwera, rekomendacja modeli)
 
 ### 6.2 Wdrazanie przez Jaskiera
@@ -296,6 +369,10 @@ FAZA 0 (stabilizacja)
 - [ ] Czytelne komunikaty bledow (PL + EN)
 - [ ] Log bledow do pliku (nie tylko konsola)
 
+### 7.1b Alert o tworzeniu/usuwaniu plikow *(backlog - sesja 25)*
+- [ ] Wyrazniejszy UI dla approval systemu (modal z podgladem zamiast console.warn)
+- [ ] Powiadomienie po vault_write/delete z mozliwoscia cofniecia (undo)
+
 ### 7.2 Testowanie
 - [ ] Test kazdego MCP toola
 - [ ] Test kazdego wbudowanego agenta
@@ -312,6 +389,30 @@ FAZA 0 (stabilizacja)
 - [ ] Benchmark local models - testy vault_search/read/write na popularnych modelach
 - [ ] Dokumentacja: ktore modele najlepiej obsluguja tool calling
 - [ ] Tryb "lekki" - mozliwosc wylaczenia RAG, pamieci, minionow dla maksymalnej szybkosci
+
+### 7.3b Bezpieczenstwo *(backlog - sesja 25, audyt)*
+
+> Audyt bezpieczenstwa wykazal brak sanityzacji tresci wstrzykiwanych do promptow AI
+> oraz luki w walidacji sciezek plikow. Przy early access (znajomi) ryzyko niskie,
+> ale przed publicznym release trzeba to ogarnac.
+
+**Path traversal + ochrona plikow:**
+- [ ] Normalizacja sciezek we wszystkich vault toolach (blokada ../, sciezek absolutnych)
+- [ ] Dodac isProtectedPath() do vault_delete (jedyny tool bez tego sprawdzenia!)
+- [ ] Rozszerzyc isProtectedPath() o warianty: .env.local, folder/.env, case-insensitive
+- [ ] Usunac adapter fallback w VaultReadTool (omija zabezpieczenia)
+
+**Prompt injection defense:**
+- [ ] Separatory niezaufanej tresci: oznaczanie danych z vaulta/pamieci/skilli jako "UNTRUSTED CONTENT"
+- [ ] Walidacja brain.md przed wstrzyknieciem (wykrywanie wzorcow injection: IGNORE, OVERRIDE itp.)
+- [ ] Sanityzacja wiadomosci miedzy agentami (KomunikatorManager)
+- [ ] Sanityzacja tresci skilli i playbookow przed wstrzyknieciem do promptu
+- [ ] Ochrona MemoryExtractor przed wyciaganiem zloslliwych "faktow" z rozmow
+
+**Lepszy approval system:**
+- [ ] Modal z podgladem TRESCI (nie tylko "Content length: 123")
+- [ ] Rozroznienie append vs replace w vault_write (replace = destrukcyjne)
+- [ ] Audit log: co dokladnie agent zmienil w kazdym pliku
 
 ### 7.4 Dokumentacja
 - [ ] README.md (instalacja, konfiguracja, podstawy)
@@ -342,6 +443,16 @@ FAZA 0 (stabilizacja)
 - [ ] Test: porownanie kosztow z/bez cache (sprawdzenie `cache_creation_input_tokens` i `cache_read_input_tokens` w odpowiedzi API)
 - [ ] Opcjonalnie: UI indicator zuzycia cache (ile tokenow cached vs fresh)
 
+### 7.7 Optymalizacja zuzycia tokenow (kompresja historii)
+
+> Slabsze modele (lokalne, tanie API) guba sie po 3-4 wiadomosciach przez zbyt duzy kontekst.
+> Dotyczy WSZYSTKICH modeli, nie tylko lokalnych.
+
+- [ ] Wczesniejsza kompresja historii - prog 50% zamiast 70% limitu tokenow (konfigurowalny)
+- [ ] Max wiadomosci w oknie (rolling window np. 10-15) - twarde ciecie zeby kontekst nie puchl
+- [ ] Przycisk "Kompresuj" w UI - reczne odchudzenie rozmowy gdy model sie gubi
+- [ ] Adaptacyjna pamiec - L1 summaries tylko w pierwszej wiadomosci sesji, potem sam brain.md
+
 ---
 
 ═══════════════════════════════════════════
@@ -371,6 +482,11 @@ FAZA 0 (stabilizacja)
 - [ ] User moze opublikowac swojego agenta/skill
 - [ ] Automatyczny scan bezpieczenstwa (JS w skillach!)
 - [ ] Podzial: oficjalne (od nas) vs community
+
+### 8.4 Fix i finalne dopracowanie Agent Managera *(nowe - sesja 22)*
+- [ ] Kosmetyka UI: dopracowanie wygladu Agent Managera, Sidebara, modali
+- [ ] Integracja z Marketplace: instalacja agentow/skilli z poziomu Agent Managera
+- [ ] Przeglad i fix bledow znalezionych podczas uzywania FAZY 3-8
 
 ---
 
@@ -418,6 +534,12 @@ FAZA 0 (stabilizacja)
 - [ ] 👍👎 na odpowiedzi agenta
 - [ ] Feedback poprawia skille i pamiec z czasem
 - [ ] Agent uczy sie preferencji z feedbacku
+
+### 10.5 Poprawa embeddingu dla dlugich notatek
+- [ ] Sliding window z nakladka (overlap miedzy blokami, zeby kontekst na granicy nie ginal)
+- [ ] Hierarchiczny embedding: cala notatka -> rozdzialy -> sekcje (drill-down od ogolu do szczegolu)
+- [ ] Konfigurowalny rozmiar bloku (nie tylko po naglowkach, ale tez po liczbie tokenow)
+- [ ] Obsluga bardzo dlugich notatek (ksiazki, transkrypcje) bez utraty tresci
 
 ---
 
@@ -487,19 +609,45 @@ FAZA 0 (stabilizacja)
 
 ## FAZA 14: MULTI-MODAL [v2.0]
 
-> Cel: Agent nie tylko pisze - tworzy grafike, mowi, slucha.
+> Cel: Agent widzi, slucha, tworzy - nie tylko pisze.
 > Zalezy od: v1.5 wydane.
 
 ### 14.1 Grafika
 - [ ] Integracja z generatorem obrazow (ComfyUI itp.)
 - [ ] Agent tworzy obrazy do notatek/artykulow
+- [ ] Podglad wygenerowanego obrazu w chacie
+- [ ] Zapis obrazu do vaulta (jako attachment)
 
-### 14.2 Voice
-- [ ] Rozmowa glosowa z agentem (TTS + STT)
-- [ ] Transkrypcja notatek glosowych (Whisper)
+### 14.2 Image input (zdjecia w chacie) *(rozbudowane - sesja 18)*
+- [ ] Wklejanie obrazow do chatu (paste, drag & drop, przycisk kamery)
+- [ ] Analiza obrazu przez multimodal model (GPT-4o, Claude, Gemini)
+- [ ] Podglad wklejonego obrazu w historii chatu
+- [ ] Obsluga formatow: PNG, JPG, GIF, WebP, SVG
+- [ ] Graceful fallback: model bez vision → info dla usera ze nie obsluguje obrazow
 
-### 14.3 Muzyka
+### 14.3 Video input *(nowe - sesja 18)*
+- [ ] Upload filmow do chatu (drag & drop, przycisk)
+- [ ] Automatyczna transkrypcja audio z video (Whisper / API)
+- [ ] Analiza kluczowych klatek video (multimodal model)
+- [ ] Streszczenie video: transkrypcja + kluczowe kadry + podsumowanie
+- [ ] Limit dlugosci video (rozsadny dla tokenow)
+
+### 14.4 Voice (rozmowa glosowa) *(rozbudowane - sesja 18)*
+- [ ] Przycisk mikrofonu w chacie: user mowi zamiast pisze (STT)
+- [ ] Agent odpowiada glosem (TTS)
+- [ ] Wybor glosu per agent (rozne glosy dla roznych osobowosci)
+- [ ] Tryb hands-free: cala rozmowa glosowa (bez klawiatury)
+- [ ] Integracja z natywnymi API: Web Speech API, Whisper, ElevenLabs, OpenAI TTS
+
+### 14.5 Transkrypcja *(rozbudowane - sesja 18)*
+- [ ] Drag & drop plikow audio do chatu (.mp3, .wav, .m4a, .ogg)
+- [ ] Automatyczna transkrypcja przez Whisper (lokalny lub API)
+- [ ] Tworzenie notatki z transkrypcja (z formatowaniem, timestamps)
+- [ ] Obsluga dlugich nagrań: chunk-based transcription
+
+### 14.6 Muzyka
 - [ ] Generowanie muzyki / soundscapes
+- [ ] Integracja z lokalnymi narzędziami muzycznymi
 
 ---
 
@@ -513,11 +661,11 @@ FAZA 0 (stabilizacja)
 
 | Wersja | Fazy | Checkboxy | Status |
 |--------|------|-----------|--------|
-| v0.x | 0 | 15/16 | W TRAKCIE |
-| v1.0 | 1-7 | 35/123 | W TRAKCIE (FAZA 2.1-2.3 gotowa, 2.4 playbook do zrobienia) |
-| v1.5 | 8-11 | 0/30 | - |
-| v2.0 | 12-14 | 0/17 | - |
-| **TOTAL** | **0-14** | **50/186** | **27%** |
+| v0.x | 0 | 13/15 | W TRAKCIE |
+| v1.0 | 1-7 | 87/172 | W TRAKCIE (FAZA 1-3 gotowa, 4+ do zrobienia) |
+| v1.5 | 8-11 | 0/40 | - |
+| v2.0 | 12-14 | 0/40 | - |
+| **TOTAL** | **0-14** | **100/267** | **37%** |
 
 ---
 

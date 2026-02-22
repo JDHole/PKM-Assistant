@@ -9,7 +9,12 @@ const ACTION_TYPE_MAP = {
     'memory_update': 'vault.write',  // overridden below for read_brain
     'memory_status': 'vault.read',
     'skill_list': 'vault.read',
-    'skill_execute': 'vault.read'
+    'skill_execute': 'vault.read',
+    'master_task': 'vault.read',
+    'agent_message': 'vault.write',
+    'agent_delegate': 'vault.read',
+    'chat_todo': 'vault.read',
+    'plan_action': 'vault.read'
 };
 
 /**

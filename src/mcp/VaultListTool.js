@@ -1,4 +1,5 @@
 import { TFolder, TFile } from 'obsidian';
+import { isProtectedPath } from '../utils/keySanitizer.js';
 
 export function createVaultListTool(app) {
     return {
@@ -22,6 +23,10 @@ export function createVaultListTool(app) {
             try {
                 const folderPath = args.folder || '/';
                 const recursive = args.recursive || false;
+
+                if (isProtectedPath(folderPath)) {
+                    return { success: false, error: 'Brak dostępu do plików konfiguracji systemu' };
+                }
 
                 let files = [];
                 let targetFolder;

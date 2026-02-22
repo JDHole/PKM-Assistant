@@ -10,13 +10,11 @@ export {
 } from './HumanVibe.js';
 
 export {
-    createDexter,
     getObsidianExpertDefaults,
     OBSIDIAN_EXPERT_CONFIG
 } from './ObsidianExpert.js';
 
 export {
-    createEzra,
     getAIExpertDefaults,
     AI_EXPERT_CONFIG
 } from './AIExpert.js';

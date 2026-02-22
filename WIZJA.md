@@ -1,7 +1,7 @@
 # PKM Assistant - Wizja Finalnego Produktu
 
 > **Kopiuj ten plik do czatu z AI** zeby dac kontekst o tym DOKAD zmierzamy.
-> Ostatnia aktualizacja: 2026-02-21 (sesja 11)
+> Ostatnia aktualizacja: 2026-02-22 (sesja 18)
 
 ---
 
@@ -83,8 +83,8 @@ Kazdy ma:
 ### Co jest dostepne od razu
 
 - **Jaskier** - glowny orkiestrator, zna caly system, widzi wszystko
-- **Szablon Iris** - przykladowy specjalistyczny agent (zdrowie/wellness)
-  jako wzor do budowy wlasnych agentow
+- **Dexter** - specjalista techniczny, vault builder (skrypty, szablony, dashboardy)
+- **Ezra** - specjalista od budowy agentow i konfiguracji systemu
 
 ### Jak powstaja nowi agenci
 
@@ -155,14 +155,16 @@ JAK DOKLADNIE wykonac konkretne zadanie.
 **Przyklad: Skill "Napisz artykul na X"**
 
 ```
-.pkm-assistant/agents/lexie/skills/
-└── write_x_article/
-    ├── skill.md          <- Instrukcja: styl usera, format, dlugosc,
-    │                        gdzie szukac materialow, jak kompresowac
-    │                        zrodla, jaki output
-    └── formatter.js      <- Opcjonalny skrypt: formatuje output,
-                             waliduje dlugosc, dodaje hashtagi
+.pkm-assistant/skills/write-x-article/
+├── skill.md          <- Instrukcja: styl usera, format, dlugosc,
+│                        gdzie szukac materialow, jak kompresowac
+│                        zrodla, jaki output
+└── formatter.js      <- Opcjonalny skrypt: formatuje output,
+                         waliduje dlugosc, dodaje hashtagi
 ```
+
+Skille sa w **centralnej bibliotece** (`.pkm-assistant/skills/`),
+nie per agent. Kazdy agent ma liste przypisanych skilli w konfiguracji.
 
 ### Dlaczego skille sa kluczowe
 
@@ -191,15 +193,57 @@ JAK DOKLADNIE wykonac konkretne zadanie.
 
 ---
 
-## 5. System minionow
+## 5. Architektura AI
 
-### Co to jest minion
+### Filozofia 4 modeli
+
+Zaden model AI nie jest najlepszy do WSZYSTKIEGO. Plugin uzywa
+**4 roznych modeli** do roznych zadan - kazdy robi to w czym jest najlepszy.
+
+### 4 modele agenta
+
+```
+┌─────────────────────────────────────────────┐
+│              AGENT (np. Jaskier)             │
+├─────────────┬──────────┬──────────┬─────────┤
+│    MAIN     │  MINION  │ EMBEDDING│ MASTER  │
+│  rozmowa    │  robota  │  szukanie│  geniusz│
+│  codziennie │  w tle   │  wektorow│  rzadko │
+├─────────────┼──────────┼──────────┼─────────┤
+│ DeepSeek    │ DeepSeek │ Nomic    │ Opus 4.6│
+│ Chat        │ Chat     │ (lokalny)│         │
+│ kazda msg   │ co sesje │ indeks   │ 1-2x/msc│
+└─────────────┴──────────┴──────────┴─────────┘
+```
+
+- **Main** - model do codziennej rozmowy z userem. Kazda wiadomosc.
+- **Minion** - tanszy model do pracy w tle (prep, ekstrakcja pamieci, szukanie).
+- **Embedding** - wyspecjalizowany model do zamiany tekstu na wektory (szukanie semantyczne).
+- **Master** - najmocniejszy model, wywoływany TYLKO do trudnych zadan (analiza, planowanie).
+
+Kazdy model konfigurowalny **globalnie** (ustawienia pluginu) i **per agent**.
+User nie musi ustawiac wszystkich 4 - domyslne wartosci dzialaja od razu.
+
+### Jak Main deleguje prace
+
+Main jest "centrum decyzyjnym" agenta:
+- Proste zadania (szukaj pliku, sprawdz pamiec) → **deleguje W DOL do Miniona** (minion_task)
+- Normalne zadania (rozmowa, odpowiedzi) → **robi sam**
+- Trudne zadania (glebokie myslenie, analiza) → **deleguje W GORE do Mastera** (master_task)
+
+Master ZAWSZE dostaje przygotowany kontekst:
+1. Main decyduje ze potrzebny Master
+2. Main → Minion: "przygotuj dane do tego pytania"
+3. Minion zbiera kontekst z vaulta/pamieci
+4. Przygotowany pakiet → Master
+5. Master odpowiada → Main prezentuje userowi
+
+### Minion - tani pracownik w tle
 
 Minion = tanszy/mniejszy model AI pracujacy W TLE dla agenta.
 Agent rozmawia z userem. Minion robi za niego "brudna robote".
 
-### Co robi minion
-
+Co robi minion:
 - **Przeszukuje vault** - zbiera kontekst ZANIM agent odpowie
 - **Przeszukuje pamiec** - wyciaga wspomnienia z sesji/L1/L2
 - **Konsoliduje sesje** - po rozmowie wyciaga fakty do brain.md
@@ -243,10 +287,20 @@ Zamiast tego:
 - Dziala nawet z malym 8B modelem (bo minion robi research)
 - User widzi inteligentnego agenta, ktory wie co robi
 
+### Tryb Agentic (natywny vs nasz)
+
+Dostawcy AI (Claude, OpenAI) oferuja natywny "agentic mode" - model sam uzywa narzedzi
+w petli az skonczy zadanie. Nasz system minion/main/master to DOKLADNIE to samo,
+ale pod nasza pelna kontrola (streamToCompleteWithTools()).
+Jesli dostawcy dodadza korzyści (tansze tokeny, dluzszy kontekst w trybie agentowym),
+podepniemy pod istniejaca architekture. Nie wymaga osobnej implementacji.
+
 ### Minion na mobile
 
 Na telefonie miniony dzialaja na malych lokalnych SLM
 lub najtanszych cloud modelach - oszczednosc tokenow i baterii.
+
+*--- Optymalizacje kosztow i jakosci ---*
 
 ### Prompt Caching (optymalizacja kosztow API)
 
@@ -280,6 +334,27 @@ Jesli cos w srodku sie zmieni, cache od tego miejsca "peka".
 - **70-80% oszczednosci** na kosztach API w typowej sesji (20 wiadomosci)
 - Szybszy czas odpowiedzi (cached tokeny przetwarzane szybciej)
 - Zero wplywu na jakosc odpowiedzi
+
+### Model embeddingów
+
+Model embeddingów zamienia tekst na wektor liczb (embedding). Dwa teksty
+o podobnym znaczeniu maja podobne wektory - to jest serce wyszukiwania semantycznego.
+
+**Dlaczego wybor modelu jest wazny:**
+- **Wymiary** (384 vs 1024) - ile "detali" model widzi w tekscie
+- **Max tokenow** (512 vs 8192) - ile tekstu model moze zobaczyc na raz.
+  Tekst dluzszy niz limit jest UCINANY - model nie widzi reszty!
+- **Jezyki** - model trenowany na angielskim slabo rozumie polski
+
+**Domyslny model: Nomic-embed-text v1.5** (lokalny, 768 dim, 2048 tok, multilingual).
+Sciagany automatycznie przy pierwszym uzyciu (~150MB).
+
+User nie musi o tym myslec - domyslny model "po prostu dziala".
+Power user moze zmienic w ustawieniach na:
+- Lekki (bge-micro, 17MB) - dla slabych komputerow
+- Standardowy (Nomic) - domyslny
+- Zaawansowany (Jina-v2, 8192 tok) - najlepsza jakosc
+- API (OpenAI/Mistral) - najlepsza mozliwa jakosc (platne)
 
 ---
 
@@ -385,7 +460,7 @@ Dla KAZDEGO agenta:
 Formularz do tworzenia nowego agenta:
 - Imie, emoji, opis roli
 - Archetyp (szablon osobowosci) lub pelny custom
-- Uprawnienia (preset: Safe / Standard / YOLO)
+- Uprawnienia (preset: Safe / Standard / Full)
 - Strefy vaulta
 - Model AI
 - Minion (model + instrukcje)
@@ -475,7 +550,9 @@ Lexie dostaje to, poprawia akapit, user widzi zmiane.
 
 ---
 
-## 11. Creation Plans (artefakty)
+## 11. Rozszerzony chat
+
+### Creation Plans (artefakty)
 
 Kiedy agent dostaje wieksze zadanie (np. "napisz artykul"):
 
@@ -487,6 +564,59 @@ Kiedy agent dostaje wieksze zadanie (np. "napisz artykul"):
 
 Creation plan to jak "implementation plan" dla tresci -
 user kontroluje CO agent zrobi zanim zacznie pisac.
+
+### Todo listy w chacie
+
+Agent moze tworzyc **interaktywne listy zadan** w oknie chatu:
+
+```
+┌─ Reorganizacja folderu Projects/ ──────────┐
+│ ✅ Przeskanowac istniejace pliki           │
+│ ✅ Znalezc duplikaty                       │
+│ ⬜ Przeniesc pliki do nowych folderow      │
+│ ⬜ Zaktualizowac linki                     │
+│ ████████░░░░░░░ 50%                        │
+└────────────────────────────────────────────┘
+```
+
+- Agent odznacza kroki automatycznie w trakcie pracy
+- User widzi na zywo co jest gotowe, a co jeszcze trwa
+- User moze dodac/usunac/edytowac punkty
+- Dwa tryby: **tymczasowy** (znika po sesji) lub **trwaly** (zapisany jako notatka)
+
+### Extended thinking (rozszerzone myslenie)
+
+Nowoczesne modele AI maja tryb "glebokiego myslenia" (reasoning):
+- **DeepSeek Reasoner** - reasoning_content (juz obslugujemy!)
+- **Anthropic** - extended thinking
+- **OpenAI o-series** - chain of thought
+
+Plugin wyswietla ten proces myslenia w chacie:
+
+```
+┌─ Agent mysli... ───────────────────────────┐
+│ Najpierw musze sprawdzic jakie pliki sa    │
+│ w folderze Projects/. Potem porownac z     │
+│ tym co user opisal w brain.md...           │
+│                              [Zwin ▲]      │
+└────────────────────────────────────────────┘
+
+Oto co znalazlem w twoich projektach:
+...
+```
+
+- Blok myslenia jest **zwijany** (domyslnie rozwiniety, user moze zwinac)
+- Animacja w czasie rzeczywistym (tekst pojawia sie jak agent mysli)
+- Mozna wylaczyc w ustawieniach (nie kazdy chce widziec myslenie)
+
+### Animacje i UI
+
+Caly chat musi dzialac **plynnie i nowocześnie**:
+- Typing effect z kursorem przy generowaniu odpowiedzi
+- Plynne rozwijanie/zwijanie blokow (thinking, tool calls, todolists)
+- Animacja tool call (ikona narzedzia + nazwa + wynik)
+- Pasek postepu przy dluzszych operacjach
+- Responsywny design - dziala na roznych rozmiarach panelu
 
 ---
 
@@ -571,18 +701,68 @@ Plugin MUSI sie adaptowac do mozliwosci modelu:
 
 ---
 
-## 14. Multi-modal (daleka przyszlosc)
+## 14. Multi-modal
 
-Inspiracja: Pinokio (orkiestrator lokalnych modeli AI)
+### Cel
 
-Mozliwosci:
-- **Generowanie grafiki** - agent tworzy obrazy do notatek/artykulow
-- **Generowanie muzyki** - soundscapes, jingle
-- **Voice** - rozmowa glosowa z agentem
-- **Transkrypcja** - Whisper do notatek glosowych
+Agent nie tylko czyta i pisze tekst - **widzi obrazy, slucha audio,
+analizuje video i odpowiada glosem**. Chat staje sie prawdziwie multimedialny.
 
-Wymaga integracji z zewnetrznymi narzedziami (ComfyUI, TTS, Whisper).
-To jest post-v2.0 funkcjonalnosc.
+### Zdjecia i obrazy w chacie
+
+User wkleja zdjecie/screenshot do chatu:
+- **Paste** (Ctrl+V), **drag & drop**, lub **przycisk kamery**
+- Agent widzi obraz i moze go analizowac (multimodal model: GPT-4o, Claude, Gemini)
+- Obraz widoczny w historii chatu
+
+```
+User: [wkleja zdjecie tablicy z notatkami]
+      "Przepisz to do notatki"
+
+Agent: Widze tablice z 3 sekcjami...
+       [tworzy notatke z zawartoscia tablicy]
+```
+
+**Graceful fallback:** jesli model nie obsluguje obrazow - agent mowi
+o tym userowi i sugeruje model z vision.
+
+### Video w chacie
+
+User uploaduje krotki film:
+- Agent automatycznie **transkrybuje audio** (Whisper)
+- Agent analizuje **kluczowe kadry** (multimodal model)
+- Wynik: streszczenie video z transkrypcja + najwazniejsze momenty
+
+Przydatne do: wyklad na YT, notatki z meetingu, tutorial do opisania.
+
+### Rozmowa glosowa
+
+Przycisk **mikrofonu** w chacie:
+- User mowi zamiast pisze (STT - speech to text)
+- Agent odpowiada **glosem** (TTS - text to speech)
+- Kazdy agent moze miec **inny glos** (dopasowany do osobowosci)
+- **Tryb hands-free** - cala rozmowa bez klawiatury
+
+Technologie: Web Speech API (darmowe), Whisper (lokalny), ElevenLabs/OpenAI TTS (API).
+
+### Transkrypcja audio do notatek
+
+User przeciaga plik audio (.mp3, .wav, .m4a) do chatu:
+- Automatyczna transkrypcja przez Whisper (lokalny lub API)
+- Agent tworzy sformatowana notatke z transkrypcja
+- Timestamps, rozdzielenie mowcow (jesli mozliwe)
+- Obsluga dlugich nagran (dzielenie na chunki)
+
+### Generowanie grafiki
+
+Agent tworzy obrazy do notatek i artykulow:
+- Integracja z ComfyUI, DALL-E, Midjourney API
+- Podglad w chacie, zapis do vaulta jako attachment
+
+### Generowanie muzyki
+
+- Soundscapes, jingle, ambient do pracy
+- Integracja z lokalnymi narzędziami muzycznymi
 
 ---
 
@@ -615,6 +795,16 @@ Inspiracja: badania PLLM (Personalized LLM)
 - Maly encoder do automatycznego tagowania notatek
 - Routing konceptow: jedna notatka -> wiele kategorii
 - User feedback (👍👎) poprawia klasyfikacje z czasem
+
+### Poprawa embeddingu dla dlugich notatek
+SC dzieli notatki na bloki po naglowkach Markdown - to jest sensowne, ale ma limity:
+- Pojedynczy blok (np. dlugi rozdzial) moze przekroczyc okno modelu embeddingów
+- Brak nakladki (overlap) miedzy blokami = kontekst na granicy ginie
+- Brak hierarchicznego wyszukiwania (najpierw znajdz rozdzial, potem sekcje)
+
+Rozwiazanie: sliding window z nakladka + hierarchiczny embedding
+(cala notatka -> rozdzialy -> sekcje). Przydatne do ksiazek, transkrypcji,
+dlugich artykulow. Wymaga lepszego modelu embeddingów (min. 2048 tokenow).
 
 ---
 
@@ -703,27 +893,32 @@ Marketplace: "Salvator - agent finansowy. 4.8/5, 200+ pobranie.
 ├─────────────────────────────────────────────────────┤
 │  UI LAYER                                            │
 │  Chat │ Agent Manager │ Marketplace │ Settings       │
-│  Agent Sidebar │ Creation Plans │ Inline Comments    │
+│  Agent Sidebar │ Inline Comments │ Skill Buttons     │
+│  Todolists │ Creation Plans │ Thinking Block         │
+│  Image/Video Preview │ Voice Input │ Animations      │
 ├─────────────────────────────────────────────────────┤
 │  CORE                                                │
 │  AgentManager │ SkillEngine │ Komunikator            │
 │  PermissionSystem │ VaultZones │ OnboardingWizard    │
+│  MinionRunner │ MinionLoader │ SkillLoader           │
 ├─────────────────────────────────────────────────────┤
 │  NARZEDZIA (MCP)                                     │
 │  vault_read │ vault_write │ vault_search │ ...       │
 │  memory_search │ memory_update │ memory_status       │
-│  obsidian_settings │ skill_execute │ agent_delegate   │
+│  skill_list │ skill_execute │ minion_task             │
+│  master_task │ agent_delegate │ agent_message         │
 ├─────────────────────────────────────────────────────┤
-│  AI LAYER                                            │
-│  Main Model │ Minion Model │ Embedding Model         │
-│  Anthropic │ OpenAI │ Ollama │ OpenRouter │ PKM SaaS │
+│  AI LAYER (4 modele per agent)                       │
+│  Main Model │ Minion Model │ Embedding │ Master      │
+│  Anthropic │ OpenAI │ DeepSeek │ Ollama │ OpenRouter │
 ├─────────────────────────────────────────────────────┤
 │  PAMIEC                                              │
 │  RollingWindow │ Summarizer │ RAG │ Sessions         │
 │  Brain │ L1/L2 │ Komunikator │ Cross-Agent Memory    │
 ├─────────────────────────────────────────────────────┤
-│  SKILLS                                              │
-│  SkillLoader │ SkillRunner │ MarketplaceClient       │
+│  SKILLS + MINIONS                                    │
+│  SkillLoader │ SkillRunner │ MinionLoader            │
+│  MinionRunner │ MarketplaceClient                    │
 └─────────────────────────────────────────────────────┘
          │
          ▼
@@ -743,47 +938,85 @@ Marketplace: "Salvator - agent finansowy. 4.8/5, 200+ pobranie.
 - [x] Fork Smart Connections v4.1.7
 - [x] Chat z AI dziala w Obsidianie
 - [x] System agentow (Jaskier + Dexter + Ezra wbudowani)
-- [x] MCP tools (9 narzedzi: vault + memory)
+- [x] MCP tools (12 narzedzi: vault + memory + skille + minion_task)
 - [x] System uprawnien
 - [x] Pamiec hierarchiczna (fazy 0-7 DONE)
-- [x] Minion model (Haiku, konfigurowalny)
+- [x] Minion model (konfigurowalny per agent)
+- [x] Skill Engine (centralna biblioteka, MCP tools, guziki UI)
+- [x] Minion per agent (auto-prep + minion_task, 3 starter miniony)
 - [x] Rebranding UI (Smart Connections -> PKM Assistant)
-- [ ] Rebranding finalny (nazwa PKM Assistant w calym UI)
-- [ ] Test i naprawienie pozostalych agentow (Dexter, Ezra)
-- [ ] Wyczyszczenie duplikatow sesji
 - [ ] Stabilizacja - codzienne uzytkowanie bez bledow
 
 ### v1.0 - Publiczne wydanie
-- [ ] Onboarding wizard (konfiguracja API/Ollama + Jaskier wdrazanie)
+- [ ] Architektura 4 modeli (Main, Minion, Embedding, Master)
+- [ ] Playbook + Vault Map per agent (minion jako bibliotekarz)
 - [ ] Agent Creator/Manager panel (pelna kontrola nad agentami)
-- [ ] System skilli (ladowanie, edycja, tworzenie)
-- [ ] Minion per agent (konfiguracja, instrukcje)
 - [ ] Komunikator (wiadomosci miedzy agentami)
 - [ ] Delegacja agentow (przelaczanie z kontekstem)
+- [ ] Rozszerzony chat: todo listy, extended thinking, animacje
 - [ ] Inline komentarze (prawy przycisk -> asystent)
 - [ ] Creation plans (artefakty w chacie)
-- [ ] One-click Ollama setup
-- [ ] Solidna obsluga bledow
-- [ ] Dokumentacja dla userow
+- [ ] Onboarding wizard (konfiguracja API/Ollama + Jaskier wdrazanie)
+- [ ] Solidna obsluga bledow + dokumentacja
 
 ### v1.5 - Rozszerzenia
 - [ ] Marketplace (zakladka w pluginie)
 - [ ] Mobile support (Obsidian Mobile z minionami)
-- [ ] Advanced RAG (adaptive retrieval, knowledge modules)
+- [ ] Zaawansowana pamiec (adaptive retrieval, knowledge modules, feedback)
 - [ ] Debata agentow (multi-chat)
-- [ ] Cross-agent memory
-- [ ] Feedback system (👍👎 poprawiaja jakos)
+- [ ] Poprawa embeddingu dla dlugich notatek
 
 ### v2.0 - Deep AI + Monetyzacja
-- [ ] **PKM SaaS (Easy mode)** - konto, kredyty/subskrypcja, wszystkie modele z jednego miejsca
+- [ ] **PKM SaaS (Easy mode)** - konto, kredyty/subskrypcja, wszystkie modele
 - [ ] PLLM personalization (profil usera ewoluujacy w czasie)
 - [ ] Fine-tuning / LoRA adaptery
-- [ ] Multi-modal (grafika, muzyka, voice)
+- [ ] Multi-modal (zdjecia, video, voice, transkrypcja, grafika, muzyka)
 - [ ] Concept routing (automatyczne tagowanie)
 
 ---
 
-## 21. Co JUZ jest zrobione (status 2026-02-21)
+## 21. Pomysly na przyszlosc (backlog - sesja 25)
+
+### Agora (tablica aktywnosci agentow)
+Wspolne miejsce w vaultcie (np. `.pkm-assistant/agora.md`) gdzie kazdy agent wpisuje co zrobil
+z userem. Cos jak publiczny devlog, ale w wersji ludzkiej. Dzieki temu kazdy agent wie co sie
+dzialo - nawet jesli nie uczestniczyl w rozmowie. Roznica vs komunikator: komunikator to 1-do-1,
+agora to broadcast dla wszystkich.
+
+### Panel artefaktow
+Zakladka lub rozwijane mini-menu w chacie, ktore pokazuje wszystkie artefakty z sesji:
+todo listy, plany kreacji, stworzone pliki. User nie gubi sie w dlugim chacie
+i ma szybki dostep do wszystkiego co agent stworzyl.
+
+### Manualna edycja planow i todo
+User moze recznie edytowac kroki planu i elementy todo listy bez posrednictwa AI.
+Dodawanie, usuwanie, zmiana kolejnosci, edycja tekstu - bezposrednio w widgecie.
+Powiazane z panelem artefaktow.
+
+### Alert o tworzeniu/usuwaniu plikow
+Wyrazniejsze powiadomienia gdy agent tworzy lub usuwa notatki w vaultcie.
+Approval system juz istnieje, ale potrzebuje lepszego UI - moze modal z podgladem
+zmian zanim zostaną zastosowane.
+
+### Bezpieczenstwo: Prompt Injection + Path Traversal (audyt sesja 25)
+Audyt wykazal ze plugin nie sanityzuje tresci wstrzykiwanych do promptow AI. Notatki,
+pamiec (brain.md), skille, playbooki, wiadomosci miedzy agentami - wszystko trafia do
+promptu bez zadnej walidacji. Atakujacy (lub przypadkowa tresc w notatce) moze zmanipulowac
+zachowanie agenta. Dodatkowo: vault_delete nie ma ochrony sciezek, adapter fallback omija
+zabezpieczenia, sciezki nie sa normalizowane (../ dziala).
+
+Rozwiazania:
+- Separatory niezaufanej tresci w promptach ("BEGIN UNTRUSTED / END UNTRUSTED")
+- Normalizacja i walidacja sciezek we wszystkich vault toolach
+- Wykrywanie wzorcow injection w brain.md i treściach z vaulta
+- Approval z podgladem tresci (nie tylko dlugosci)
+- Audit log zmian plikow
+
+Priorytet: przed publicznym release (FAZA 7). Przy early access (znajomi) ryzyko minimalne.
+
+---
+
+## 22. Co JUZ jest zrobione (status 2026-02-22, sesja 18)
 
 Pelna lista w STATUS.md. Najwazniejsze:
 - Plugin dziala, chat dziala, Jaskier dziala

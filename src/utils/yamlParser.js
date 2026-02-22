@@ -120,6 +120,24 @@ export function validateAgentSchema(agentData) {
         errors.push('"minion_enabled" must be a boolean');
     }
 
+    if (agentData.models !== undefined) {
+        if (typeof agentData.models !== 'object' || Array.isArray(agentData.models)) {
+            errors.push('"models" must be an object with optional keys: main, minion, master');
+        } else {
+            const allowedRoles = ['main', 'minion', 'master'];
+            for (const [role, cfg] of Object.entries(agentData.models)) {
+                if (!allowedRoles.includes(role)) {
+                    errors.push(`"models.${role}" is not valid. Allowed: ${allowedRoles.join(', ')}`);
+                } else if (typeof cfg !== 'object' || Array.isArray(cfg)) {
+                    errors.push(`"models.${role}" must be an object with optional "platform" and "model" fields`);
+                } else {
+                    if (cfg.platform && typeof cfg.platform !== 'string') errors.push(`"models.${role}.platform" must be a string`);
+                    if (cfg.model && typeof cfg.model !== 'string') errors.push(`"models.${role}.model" must be a string`);
+                }
+            }
+        }
+    }
+
     return {
         valid: errors.length === 0,
         errors

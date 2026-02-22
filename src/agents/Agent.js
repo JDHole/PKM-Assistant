@@ -49,6 +49,7 @@ export class Agent {
         this.skills = config.skills || [];
         this.minion = config.minion || null; // minion config name (e.g. 'jaskier-prep')
         this.minionEnabled = config.minion_enabled !== false; // default: true
+        this.models = config.models || {}; // per-agent model overrides {main: {platform, model}, minion: {...}, master: {...}}
         this.isBuiltIn = config.isBuiltIn || false;
         this.filePath = config.filePath || null;
 
@@ -97,6 +98,17 @@ export class Agent {
             parts.push(`--- Koniec pamięci ---`);
         }
 
+        // Playbook pointer (lightweight - full content is read by minion at auto-prep)
+        if (this.permissions.mcp && this.minion && this.minionEnabled !== false) {
+            const safeName = this.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            parts.push(`\n--- Playbook ---`);
+            parts.push(`Masz playbook z procedurami i instrukcjami: .pkm-assistant/agents/${safeName}/playbook.md`);
+            parts.push(`Masz vault map ze strukturą vaulta: .pkm-assistant/agents/${safeName}/vault_map.md`);
+            parts.push(`Minion czyta te pliki automatycznie na starcie sesji.`);
+            parts.push(`W trakcie rozmowy możesz poprosić: minion_task(task: "Sprawdź w playbooku jak...")`);
+            parts.push(`---`);
+        }
+
         // MCP Tool usage instructions - CRITICAL for making AI actually use tools
         if (this.permissions.mcp) {
             if (context.isLocalModel) {
@@ -109,6 +121,7 @@ export class Agent {
                     parts.push(`Minion: minion_task(task: "konkretne zadanie od usera")`);
                     parts.push(`ZASADA: szukanie/analiza → minion_task, NIE vault_search!`);
                 }
+                parts.push(`Komunikator: agent_message(to, subject, content), agent_delegate(to, reason)`);
                 parts.push(`ZASADY: Zawsze NAJPIERW wywołaj narzędzie, POTEM odpowiadaj.`);
                 parts.push(`---`);
             } else {
@@ -160,6 +173,55 @@ export class Agent {
                     parts.push(`ZASADA: NIE używaj sam vault_search ani memory_search - to robi minion!`);
                     parts.push(`---`);
                 }
+                // Master info (only if master is configured in settings)
+                if (context.hasMaster) {
+                    parts.push(`\n--- MASTER (EKSPERT) ---`);
+                    parts.push(`Masz dostęp do Mastera - potężniejszego modelu AI do trudnych zadań.`);
+                    parts.push(`Narzędzie: master_task(task, context?, skip_minion?, minion_instructions?)`);
+                    parts.push(`3 TRYBY WYWOŁANIA:`);
+                    parts.push(`1. DOMYŚLNY: master_task(task: "pytanie") → minion automatycznie zbiera kontekst → Master odpowiada`);
+                    parts.push(`2. Z INSTRUKCJAMI DLA MINIONA: master_task(task: "pytanie", minion_instructions: "Przeszukaj WSZYSTKIE notatki w folderze Projects/. Szukaj też w pamięci.") → minion szuka wg Twoich wskazówek`);
+                    parts.push(`3. BEZ MINIONA: master_task(task: "pytanie", context: "tu dajesz własny kontekst", skip_minion: true) → sam dostarczasz dane, minion pominięty`);
+                    parts.push(`KIEDY KTÓRY TRYB:`);
+                    parts.push(`- Tryb 1 (domyślny): user zadaje ogólne pytanie, nie wiesz co jest w vaultcie`);
+                    parts.push(`- Tryb 2 (instrukcje): wiesz GDZIE szukać lub chcesz głębsze przeszukanie`);
+                    parts.push(`- Tryb 3 (skip): już zebrałeś dane sam (np. przez minion_task) i chcesz je przesłać do Mastera`);
+                    parts.push(`Przykład tryb 2: master_task(task: "Zaplanuj system organizacji notatek", minion_instructions: "Przeszukaj vault_search po 'organizacja', 'struktura', 'foldery'. Przeszukaj memory_search po 'system notatek'. Zbierz minimum 8 źródeł.")`);
+                    parts.push(`Przykład tryb 3: master_task(task: "Przeanalizuj te dane", context: "Dane z vaulta: ...", skip_minion: true)`);
+                    parts.push(`WAŻNE: Nie przerabiaj odpowiedzi mastera - przekaż ją tak jak jest.`);
+                    parts.push(`---`);
+                }
+                // Komunikator (inter-agent communication)
+                parts.push(`\n--- KOMUNIKATOR ---`);
+                parts.push(`Narzędzia do komunikacji z innymi agentami:`);
+                parts.push(`- agent_message(to_agent, subject, content, context?) — wyślij wiadomość do innego agenta`);
+                parts.push(`- agent_delegate(to_agent, reason?, context_summary?) — zaproponuj przekazanie rozmowy`);
+                parts.push(`KIEDY agent_message: informujesz, prosisz o pomoc, przekazujesz wyniki`);
+                parts.push(`KIEDY agent_delegate: temat poza Twoimi kompetencjami, user prosi o innego agenta`);
+                parts.push(`WAŻNE: agent_delegate NIE przełącza - user musi kliknąć przycisk!`);
+                parts.push(`KRYTYCZNE: ZAWSZE podaj context_summary przy agent_delegate! Bez tego nowy agent nie wie o czym była rozmowa. Napisz streszczenie: co user chciał, co już zrobiłeś, co zostało do zrobienia.`);
+                parts.push(`---`);
+                parts.push(`\n--- LISTA ZADAŃ (chat_todo) ---`);
+                parts.push(`Dla większych zadań z wieloma krokami, użyj chat_todo aby stworzyć interaktywną listę zadań w chacie.`);
+                parts.push(`- chat_todo(action:"create", title:"...", items:["krok 1","krok 2",...]) — stwórz listę`);
+                parts.push(`- chat_todo(action:"update", id:"...", item_index:0, done:true) — odhacz element`);
+                parts.push(`- chat_todo(action:"add_item", id:"...", text:"nowy krok") — dodaj element`);
+                parts.push(`- chat_todo(action:"save", id:"...", path:"folder/lista.md") — zapisz do vaulta`);
+                parts.push(`User widzi interaktywną checklistę z paskiem postępu. Odznaczaj elementy w trakcie pracy.`);
+                parts.push(`---`);
+                parts.push(`\n--- PLAN DZIAŁANIA (plan_action) ---`);
+                parts.push(`Dla większych zadań, zanim zaczniesz działać, stwórz plan i pokaż go userowi do zatwierdzenia.`);
+                parts.push(`- plan_action(action:"create", title:"...", steps:[{label:"...", description:"..."},...]) — stwórz plan`);
+                parts.push(`- plan_action(action:"update_step", id:"...", step_index:0, status:"in_progress"|"done"|"skipped", note:"...") — aktualizuj krok`);
+                parts.push(`- plan_action(action:"get", id:"...") — pobierz aktualny stan planu`);
+                parts.push(`User widzi interaktywny plan z numerowanymi krokami i paskiem postępu. Czekaj na zatwierdzenie planu!`);
+                parts.push(`Po zatwierdzeniu: realizuj kroki po kolei, aktualizując status każdego przez update_step.`);
+                parts.push(`Statusy kroków: pending (oczekuje), in_progress (w trakcie), done (gotowy), skipped (pominięty).`);
+                parts.push(`---`);
+                parts.push(`\n--- KOMENTARZ INLINE ---`);
+                parts.push(`Gdy wiadomość zaczyna się od "KOMENTARZ INLINE", user wybrał fragment tekstu w notatce i chce go zmienić.`);
+                parts.push(`Działanie: 1) vault_read plik, 2) znajdź wskazany fragment, 3) zmodyfikuj go zgodnie z komentarzem, 4) vault_write mode:"replace" z całą zawartością pliku. Odpowiedz krótko co zmieniłeś.`);
+                parts.push(`---`);
                 parts.push(`--- Koniec instrukcji narzędzi ---`);
             }
         }
@@ -211,6 +273,7 @@ export class Agent {
         if (this.skills.length > 0) data.skills = this.skills;
         if (this.minion) data.minion = this.minion;
         if (this.minionEnabled === false) data.minion_enabled = false;
+        if (Object.keys(this.models).length > 0) data.models = this.models;
 
         // Only save non-default permissions
         const customPermissions = {};
@@ -243,7 +306,7 @@ export class Agent {
         const allowedFields = [
             'name', 'emoji', 'personality', 'model',
             'temperature', 'role', 'focus_folders', 'default_permissions', 'skills',
-            'minion', 'minion_enabled'
+            'minion', 'minion_enabled', 'models'
         ];
 
         for (const [key, value] of Object.entries(updates)) {

@@ -1,9 +1,12 @@
 /**
- * AgentSidebar - Panel to display and switch between agents
+ * AgentSidebar - Rich panel for managing agents
+ * Shows agent cards with quick actions (profile, delete, switch)
  */
 import { ItemView } from 'obsidian';
 import agent_sidebar_styles from './AgentSidebar.css' with { type: 'css' };
-import { openAgentCreator } from './AgentCreatorModal.js';
+import { openAgentProfile } from './AgentProfileModal.js';
+import { openAgentDeleteModal } from './AgentDeleteModal.js';
+import { openKomunikatorModal } from './KomunikatorModal.js';
 
 export const AGENT_SIDEBAR_VIEW_TYPE = 'pkm-agent-sidebar';
 
@@ -12,6 +15,7 @@ export class AgentSidebar extends ItemView {
         super(leaf);
         this.plugin = plugin;
         this.unsubscribe = null;
+        this._renderTimer = null;
     }
 
     getViewType() {
@@ -31,9 +35,18 @@ export class AgentSidebar extends ItemView {
 
         // Subscribe to agent changes
         if (this.plugin.agentManager) {
-            this.unsubscribe = this.plugin.agentManager.on((event, data) => {
-                if (event === 'agent:switched' || event === 'agents:loaded' || event === 'agents:reloaded') {
+            this.unsubscribe = this.plugin.agentManager.on((event) => {
+                if (['agent:switched', 'agents:loaded', 'agents:reloaded',
+                     'agent:created', 'agent:deleted', 'agent:updated'].includes(event)) {
                     this.renderSidebar();
+                }
+                // Communicator events: debounce to prevent duplicate renders
+                if (event === 'communicator:message_sent' || event === 'communicator:message_read') {
+                    if (this._renderTimer) clearTimeout(this._renderTimer);
+                    this._renderTimer = setTimeout(() => {
+                        this._renderTimer = null;
+                        this.renderSidebar();
+                    }, 200);
                 }
             });
         }
@@ -43,6 +56,9 @@ export class AgentSidebar extends ItemView {
         if (this.unsubscribe) {
             this.unsubscribe();
         }
+        if (this._renderTimer) {
+            clearTimeout(this._renderTimer);
+        }
     }
 
     renderSidebar() {
@@ -50,16 +66,9 @@ export class AgentSidebar extends ItemView {
         container.empty();
         container.addClass('agent-sidebar');
 
-        // Header
-        const header = container.createDiv({ cls: 'agent-sidebar-header' });
-        header.createEl('h3', { text: '🤖 Agenci' });
-
-        // Agent list
-        const agentList = container.createDiv({ cls: 'agent-list' });
-
         const agentManager = this.plugin.agentManager;
         if (!agentManager) {
-            agentList.createEl('p', {
+            container.createEl('p', {
                 text: 'AgentManager nie jest zainicjalizowany',
                 cls: 'agent-error'
             });
@@ -68,68 +77,157 @@ export class AgentSidebar extends ItemView {
 
         const agents = agentManager.getAgentListForUI();
 
-        // Built-in agents section
-        const builtInAgents = agents.filter(a => a.isBuiltIn);
-        if (builtInAgents.length > 0) {
-            const section = agentList.createDiv({ cls: 'agent-section' });
-            section.createEl('h4', { text: 'Wbudowani' });
+        // Header with count
+        const header = container.createDiv({ cls: 'agent-sidebar-header' });
+        header.createEl('h3', { text: `🤖 Agenci (${agents.length})` });
 
-            for (const agent of builtInAgents) {
-                this.renderAgentItem(section, agent);
+        // Agent cards
+        const agentList = container.createDiv({ cls: 'agent-list' });
+
+        if (agents.length === 0) {
+            agentList.createEl('p', {
+                text: 'Brak agentów',
+                cls: 'agent-error'
+            });
+        } else {
+            for (const agentInfo of agents) {
+                this.renderAgentCard(agentList, agentInfo);
             }
         }
 
-        // Custom agents section
-        const customAgents = agents.filter(a => !a.isBuiltIn);
-        if (customAgents.length > 0) {
-            const section = agentList.createDiv({ cls: 'agent-section' });
-            section.createEl('h4', { text: 'Własni' });
-
-            for (const agent of customAgents) {
-                this.renderAgentItem(section, agent);
-            }
-        }
-
-        // Footer with "Add Agent" button
-        const footer = container.createDiv({ cls: 'agent-sidebar-footer' });
-        const addBtn = footer.createEl('button', {
+        // Add Agent button (above communicator - agent management area)
+        const addSection = container.createDiv({ cls: 'agent-sidebar-add-section' });
+        const addBtn = addSection.createEl('button', {
             cls: 'agent-add-button',
             text: '+ Nowy agent'
         });
         addBtn.addEventListener('click', () => {
-            openAgentCreator(this.plugin, () => {
-                // Refresh sidebar after creating agent
+            openAgentProfile(this.plugin, null, () => {
                 this.renderSidebar();
             });
         });
+
+        // Komunikator section (bottom)
+        this.renderCommunicatorSection(container, agents);
     }
 
-    renderAgentItem(container, agent) {
-        const item = container.createDiv({
-            cls: `agent-item ${agent.isActive ? 'active' : ''}`
+    renderAgentCard(container, agentInfo) {
+        const agent = this.plugin.agentManager.getAgent(agentInfo.name);
+        if (!agent) return;
+
+        const card = container.createDiv({
+            cls: `agent-card ${agentInfo.isActive ? 'active' : ''}`
         });
 
-        // Agent icon/emoji
-        const icon = item.createSpan({ cls: 'agent-emoji', text: agent.emoji });
+        // Top row: emoji + name + active badge
+        const topRow = card.createDiv({ cls: 'agent-card-header' });
+        topRow.createSpan({ cls: 'agent-card-emoji', text: agentInfo.emoji });
 
-        // Agent info
-        const info = item.createDiv({ cls: 'agent-info' });
-        info.createSpan({ cls: 'agent-name', text: agent.name });
+        const nameCol = topRow.createDiv({ cls: 'agent-card-name-col' });
+        nameCol.createSpan({ cls: 'agent-card-name', text: agentInfo.name });
 
-        const roleText = this.getRoleDisplayText(agent.role);
-        info.createSpan({ cls: 'agent-role', text: roleText });
-
-        // Active indicator
-        if (agent.isActive) {
-            item.createSpan({ cls: 'agent-active-badge', text: '●' });
+        const roleText = this.getRoleDisplayText(agentInfo.role);
+        if (roleText) {
+            nameCol.createSpan({ cls: 'agent-card-role', text: roleText });
         }
 
-        // Click to switch
-        item.addEventListener('click', () => {
-            if (!agent.isActive) {
-                this.plugin.agentManager?.switchAgent(agent.name);
+        if (agentInfo.isActive) {
+            topRow.createSpan({ cls: 'agent-card-active', text: '●' });
+        }
+
+        // Action buttons (visible on hover)
+        const actions = card.createDiv({ cls: 'agent-card-actions' });
+
+        // Profile button
+        const profileBtn = actions.createEl('button', {
+            cls: 'agent-card-action-btn',
+            attr: { 'aria-label': 'Profil' }
+        });
+        profileBtn.textContent = '⚙️';
+        profileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openAgentProfile(this.plugin, agent, () => {
+                this.renderSidebar();
+            });
+        });
+
+        // Delete button
+        const deleteBtn = actions.createEl('button', {
+            cls: 'agent-card-action-btn agent-card-delete-btn',
+            attr: { 'aria-label': 'Usuń' }
+        });
+        deleteBtn.textContent = '🗑️';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openAgentDeleteModal(this.plugin, agent, () => {
+                this.renderSidebar();
+            });
+        });
+
+        // Click card to switch agent
+        card.addEventListener('click', () => {
+            if (!agentInfo.isActive) {
+                this.plugin.agentManager?.switchAgent(agentInfo.name);
             }
         });
+    }
+
+    renderCommunicatorSection(container, agents) {
+        const section = container.createDiv({ cls: 'communicator-section' });
+
+        // Header
+        const header = section.createDiv({ cls: 'communicator-section-header' });
+        header.createEl('h4', { text: '💬 Komunikator' });
+
+        const openBtn = header.createEl('button', {
+            cls: 'communicator-open-btn',
+            attr: { 'aria-label': 'Otwórz komunikator' }
+        });
+        openBtn.textContent = '↗';
+        openBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openKomunikatorModal(this.plugin);
+        });
+
+        // Compact agent list with badges
+        const list = section.createDiv({ cls: 'communicator-agent-list' });
+
+        for (const agentInfo of agents) {
+            const agent = this.plugin.agentManager.getAgent(agentInfo.name);
+            if (!agent) continue;
+
+            const row = list.createDiv({ cls: 'communicator-agent-row' });
+            row.createSpan({ text: `${agentInfo.emoji} ${agentInfo.name}` });
+
+            // Badge placeholder (updated async)
+            const badge = row.createSpan({ cls: 'communicator-badge hidden' });
+            badge.dataset.agent = agentInfo.name;
+
+            row.addEventListener('click', () => {
+                openKomunikatorModal(this.plugin, agentInfo.name);
+            });
+        }
+
+        // Async update badges
+        this._updateCommunicatorBadges(section);
+    }
+
+    async _updateCommunicatorBadges(section) {
+        const komunikator = this.plugin.agentManager?.komunikatorManager;
+        if (!komunikator) return;
+
+        const badges = section.querySelectorAll('.communicator-badge');
+        for (const badge of badges) {
+            const name = badge.dataset.agent;
+            if (!name) continue;
+            try {
+                const count = await komunikator.getUnreadCount(name);
+                if (count > 0) {
+                    badge.textContent = String(count);
+                    badge.classList.remove('hidden');
+                }
+            } catch {}
+        }
     }
 
     getRoleDisplayText(role) {
@@ -144,7 +242,7 @@ export class AgentSidebar extends ItemView {
 
 /**
  * Register the sidebar view
- * @param {Plugin} plugin 
+ * @param {Plugin} plugin
  */
 export function registerAgentSidebar(plugin) {
     plugin.registerView(
@@ -155,7 +253,7 @@ export function registerAgentSidebar(plugin) {
 
 /**
  * Open or reveal the agent sidebar
- * @param {Plugin} plugin 
+ * @param {Plugin} plugin
  */
 export async function openAgentSidebar(plugin) {
     const { workspace } = plugin.app;

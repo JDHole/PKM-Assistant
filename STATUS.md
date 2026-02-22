@@ -1,7 +1,7 @@
 # PKM Assistant (Obsek) - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-21 (sesja 17)
+> Ostatnia aktualizacja: 2026-02-22 (sesja 25)
 
 ---
 
@@ -17,7 +17,7 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 
 ---
 
-## Co NAPEWNO dziala (potwierdzone 2026-02-21)
+## Co NAPEWNO dziala (potwierdzone 2026-02-22)
 
 - [x] Plugin laduje sie w Obsidianie bez bledow
 - [x] Plugin indeksuje vault automatycznie
@@ -28,7 +28,7 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Multi-provider: Claude Sonnet 4, DeepSeek V3.2/Reasoner, Ollama potwierdzone
 - [x] System uprawnien DZIALA - blokuje vault_write az user zatwierdzi
 - [x] MCP narzedzia: vault_list, vault_read, vault_write potwierdzone
-- [x] Build: npm run build -> dist/main.js **6.5MB**, auto-kopia do vaultu
+- [x] Build: npm run build -> dist/main.js **6.7MB**, auto-kopia do vaultu
 - [x] src/main.js zawiera wszystkie komponenty Obsek (ChatView, AgentManager, MCP, itd.)
 - [x] brain.md tworzony automatycznie przy starcie (.pkm-assistant/agents/jaskier/memory/brain.md)
 - [x] Tresc brain.md jest wstrzykiwana do system promptu przy kazdej wiadomosci
@@ -67,8 +67,8 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Platform auto-detection z nazw kluczy API (SC nie zapisuje `platform` explicite)
 - [x] Wyczyszczone debug logi z konsoli (handle_chunk, handle_done, get_chat_model)
 - [x] Rebranding UI: "Smart Connections" -> "Obsek / PKM Assistant" (sesja 11)
-- [x] WIZJA.md kompletna - 21 sekcji, pelna wizja produktu (sesja 11)
-- [x] PLAN.md kompletny - Master Plan z 15 fazami, 154 checkboxy (sesja 11)
+- [x] WIZJA.md kompletna - 21 sekcji, pelna wizja produktu (sesja 11, rozbudowana sesja 18)
+- [x] PLAN.md kompletny - Master Plan z 15 fazami, 259 checkboxow (sesja 11, rozbudowany sesja 18)
 - [x] Nazwa "PKM Assistant" w tytule chatu, ustawieniach i komendach (sesja 12)
 - [x] vault_search potwierdzone dzialanie (sesja 12)
 - [x] vault_delete potwierdzone dzialanie (sesja 12)
@@ -117,22 +117,90 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Fix: agent system prompt v3 - konkretne przyklady jak uzywac minion_task (sesja 17)
 - [x] Fix: XML hallucination cleanup - tanie modele halucynuja tagi XML, regex je usuwa (sesja 17)
 - [x] Guziki kopiowania w tool call display: kopiuj input, output, calosc (sesja 17)
+- [x] **FAZA 2.4: Architektura 4 modeli** (sesja 19)
+- [x] Bezpieczenstwo kluczy API: blokada .smart-env/ w VaultRead/List/Write, anti-key prompt w MemoryExtractor (sesja 19)
+- [x] keySanitizer.js: utility do ochrony sciezek i maskowania kluczy (sesja 19)
+- [x] Reorganizacja ustawien: 6 sekcji (Dostawcy AI, Modele, Embedding, Pamiec, RAG, Info) (sesja 19)
+- [x] 8 platform: Anthropic, OpenAI, DeepSeek, Gemini, Groq, OpenRouter, Ollama, LM Studio (sesja 19)
+- [x] 4 sloty modeli: Main (rozmowa), Minion (tlo), Master (geniusz), Embedding (wektory) (sesja 19)
+- [x] MCP tool master_task: delegacja W GORE do Mastera (minion zbiera kontekst, master odpowiada) (sesja 19)
+- [x] modelResolver.js: centralny utility do tworzenia modeli per rola (sesja 19)
+- [x] Per-agent model overrides: kazdy agent moze miec inne modele (Agent.js + yamlParser) (sesja 19)
+- [x] MCP narzedzia: 17 total (15 + chat_todo + plan_action) (sesja 25)
+- [x] Build: 6.6MB, wersja 1.0.3 (sesja 19)
+- [x] **master_task 3 tryby**: domyslny, z instrukcjami dla miniona, bez miniona (sesja 20)
+- [x] skip_minion: agent pomija miniona i sam dostarcza kontekst do Mastera (sesja 20)
+- [x] minion_instructions: agent mowi minionowi JAK i GDZIE szukac kontekstu (sesja 20)
+- [x] System prompt agenta: pelne instrukcje 3 trybow z przykladami (sesja 20)
+- [x] **Wszystkie 3 tryby przetestowane w Obsidianie** - Jaskier sam wybral odpowiedni tryb do kazdego testu (sesja 20)
+- [x] **FAZA 2.5: Playbook + Vault Map per agent** (sesja 21)
+- [x] PlaybookManager.js - zarzadzanie playbook.md i vault_map.md per agent (sesja 21)
+- [x] Starter playbooki: Jaskier (orchestrator), Dexter (vault expert), Ezra (meta-agent) (sesja 21)
+- [x] Starter vault mapy: rozne strefy dostepu per agent (sesja 21)
+- [x] Auto-tworzenie playbook + vault_map przy starcie pluginu (sesja 21)
+- [x] MinionRunner: auto-prep czyta playbook + vault_map i wstrzykuje do system promptu miniona (sesja 21)
+- [x] Agent.js: lekki pointer do playbooka (nie pelna tresc) w system prompcie (sesja 21)
+- [x] Hot-reload: detekcja edycji playbook/vault_map przez vault_write (sesja 21)
+- [x] Build: 6.6MB, wersja 1.0.4 (sesja 21)
+- [x] **FAZA 3: Agent Manager + Creator** (sesja 22)
+- [x] AgentProfileModal: ujednolicony modal do tworzenia i edycji agentow z 5 zakladkami (sesja 22)
+- [x] AgentDeleteModal: usuwanie agenta z opcja archiwizacji pamieci (sesja 22)
+- [x] AgentSidebar rewrite: karty agentow z akcjami (profil, usun, przelacz) (sesja 22)
+- [x] Tylko Jaskier jako built-in agent (Dexter/Ezra to szablony/archetypy) (sesja 22)
+- [x] Built-in overrides: edycja Jaskiera zapisywana do _overrides.yaml (sesja 22)
+- [x] Fallback: usuniecie ostatniego agenta -> auto-odtworzenie Jaskiera (sesja 22)
+- [x] Skill create-agent: Jaskier prowadzi usera przez tworzenie agenta przez rozmowe (sesja 22)
+- [x] Archiwizacja pamieci agenta do .pkm-assistant/archive/ przy usuwaniu (sesja 22)
+- [x] Build: 6.6MB, wersja 1.0.5 (sesja 22)
+- [x] **FAZA 4: Komunikator + Delegacja** (sesja 23)
+- [x] KomunikatorManager.js: pliki inbox, parseMessages, writeMessage, markAsRead (sesja 23)
+- [x] MCP tool agent_message - wysylanie wiadomosci miedzy agentami (sesja 23)
+- [x] MCP tool agent_delegate - delegowanie zadania innemu agentowi (sesja 23)
+- [x] KomunikatorModal: pelny UI (lista agentow + inbox + compose) (sesja 23)
+- [x] AgentSidebar: sekcja komunikatora z badge'ami nieprzeczytanych (sesja 23)
+- [x] SendToAgentModal + menu kontekstowe "Wyslij do asystenta" (sesja 23)
+- [x] chat_view.js: przycisk delegacji gdy agent proponuje zmiane (sesja 23)
+- [x] MinionRunner: czytanie inbox w auto-prep (sesja 23)
+- [x] Agent.js: sekcja KOMUNIKATOR w system prompcie (sesja 23)
+- [x] Build: 6.7MB, wersja 1.0.6 (sesja 23)
+- [x] **FAZA 4 FIXES: Podwojny status + UI fixes + Delegacja autosend** (sesja 24)
+- [x] KomunikatorManager: dual read status (NOWA/USER_READ/AI_READ/ALL_READ), backwards compat (sesja 24)
+- [x] KomunikatorModal: CSS fixes (button fit, status dots user+AI), debounce renders (sesja 24)
+- [x] AgentSidebar: "Nowy agent" przenieslony nad komunikator, debounce na events (sesja 24)
+- [x] MinionRunner: auto markAsAIRead po inbox processing (sesja 24)
+- [x] AgentDelegateTool: passes context_summary + from_agent do chat_view (sesja 24)
+- [x] chat_view.js delegation: auto-sends "[Delegacja] context" jako 1. wiadomosc (sesja 24)
+- [x] Agent.js: silniejszy prompt dla context_summary w agent_delegate (sesja 24)
+- [x] Build: 6.7MB, wersja 1.0.6 (sesja 24)
+- [x] **FAZA 5: Rozszerzony Chat + Inline** (sesja 25)
+- [x] Extended Thinking: zwijany blok "Myslenie..." z reasoning_content (DeepSeek + Anthropic) (sesja 25)
+- [x] Animacje CSS: streaming shimmer, slideDown tool calli, pulsujace pending (sesja 25)
+- [x] Inline Comments: context menu "Komentarz do Asystenta" → modal → agent edytuje plik (sesja 25)
+- [x] Todo Lists w chacie: MCP tool chat_todo, interaktywny widget z checkboxami i paskiem postepu (sesja 25)
+- [x] Creation Plans: MCP tool plan_action, widget z numerowanymi krokami i przyciskiem "Zatwierdz plan" (sesja 25)
+- [x] Quick link po vault_write: klikalny link do pliku w chacie (sesja 25)
+- [x] Delegacja + artefakty: aktywne todo/plany automatycznie przekazywane przy delegacji (sesja 25)
+- [x] Fix inline comment prompt: uproszczony format bez instrukcji narzdziowych (sesja 25)
+- [x] MCP narzedzia: 17 total (15 + chat_todo + plan_action) (sesja 25)
+- [x] ToolCallDisplay: polskie nazwy dla chat_todo i plan_action (sesja 25)
+- [x] Ustawienie "Pokaz myslenie AI" (obsek.showThinking) (sesja 25)
+- [x] Build: 6.7MB, wersja 1.0.6 (sesja 25)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
-- [ ] Pozostale agenty (Dexter, Ezra) - testy przeniesione do FAZY 3 (Agent Manager)
-- [ ] Agent Creator Modal (tworzenie agentow z UI)
 - [ ] Strefy vaulta (VaultZones - konfiguracja jest w .pkm-assistant/config.yaml)
 - [ ] Workflow parser i loader
-- [ ] Agent Sidebar (osobny panel z lista agentow)
 
 ## Nastepne kroki (pelny plan w PLAN.md)
 
-Aktualnie: **FAZA 0** (14/16) + **FAZA 1** (15/17) + **FAZA 2 - Minion per Agent** (DONE + TESTED!)
-- Postep: 50/176 checkboxow (28%)
-- Wersja: 1.0.2
-- Uwaga usera: agent moze lepiej formulowac komendy dla miniona - do dalszego dopracowania
-- [ ] Stabilnosc codziennego uzytku (3 dni bez bledow + fix bledow) - deadline: 2026-02-24
+Aktualnie: **FAZA 0** (13/15) + **FAZA 1** (15/17) + **FAZA 2** (DONE!) + **FAZA 3** (DONE!) + **FAZA 4** (DONE!) + **FAZA 5** (prawie DONE! 2 backlog)
+- Postep: ~130/270 checkboxow (~48%)
+- Wersja: 1.0.6
+- Sesja 25: FAZA 5 kompletna - extended thinking, animacje, inline comments, todo listy, creation plans + 3 fixy
+- [ ] FAZA 5.7: Panel artefaktow + manualna edycja (backlog)
+- [ ] FAZA 5.8: Agora - tablica aktywnosci agentow (backlog)
+- [ ] FAZA 6: Onboarding wizard
+- [ ] FAZA 7: Solidnosc + Release v1.0
 - [ ] obsidian_settings MCP tool (odlozone)
 - [ ] JS sandbox w skillach (odlozone)
 

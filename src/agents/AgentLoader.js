@@ -4,7 +4,7 @@
  */
 import { Agent } from './Agent.js';
 import { parseYaml, validateAgentSchema } from '../utils/yamlParser.js';
-import { createJaskier, createDexter, createEzra, ARCHETYPE_DEFAULTS } from './archetypes/index.js';
+import { createJaskier, ARCHETYPE_DEFAULTS } from './archetypes/index.js';
 
 /**
  * AgentLoader class - handles loading agents from files and built-in definitions
@@ -19,15 +19,16 @@ export class AgentLoader {
     }
 
     /**
-     * Load all built-in agents
-     * @returns {Agent[]} Array of built-in agents
+     * Load all built-in agents (only Jaskier on fresh install)
+     * @returns {Promise<Agent[]>} Array of built-in agents
      */
-    loadBuiltInAgents() {
-        return [
-            createJaskier(),
-            createDexter(),
-            createEzra()
-        ];
+    async loadBuiltInAgents() {
+        const jaskier = createJaskier();
+
+        // Load overrides from YAML if they exist
+        await this._mergeBuiltInOverrides(jaskier);
+
+        return [jaskier];
     }
 
     /**
@@ -120,10 +121,14 @@ export class AgentLoader {
      * @returns {Promise<Agent[]>} All agents
      */
     async loadAllAgents() {
-        const builtIn = this.loadBuiltInAgents();
+        const builtIn = await this.loadBuiltInAgents();
         const custom = await this.loadCustomAgents();
 
-        return [...builtIn, ...custom];
+        // Filter out custom agents that have the same name as built-in ones
+        const builtInNames = new Set(builtIn.map(a => a.name));
+        const filteredCustom = custom.filter(a => !builtInNames.has(a.name));
+
+        return [...builtIn, ...filteredCustom];
     }
 
     /**
@@ -152,21 +157,90 @@ export class AgentLoader {
      * @returns {Promise<boolean>} Success status
      */
     async deleteAgent(agent) {
-        if (!agent.filePath) {
-            console.error('[AgentLoader] Cannot delete agent without filePath');
-            return false;
-        }
-
-        if (agent.isBuiltIn) {
-            console.error('[AgentLoader] Cannot delete built-in agent');
-            return false;
-        }
+        if (!agent.filePath) return false;
 
         try {
             await this.vault.adapter.remove(agent.filePath);
             return true;
         } catch (error) {
             console.error('[AgentLoader] Error deleting agent:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Merge built-in agent with override YAML (for persisting user edits)
+     * @private
+     * @param {Agent} agent - Built-in agent to merge overrides into
+     */
+    async _mergeBuiltInOverrides(agent) {
+        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const overridePath = `${this.agentsPath}/${safeName}_overrides.yaml`;
+
+        try {
+            const exists = await this.vault.adapter.exists(overridePath);
+            if (!exists) return;
+
+            const content = await this.vault.adapter.read(overridePath);
+            const data = parseYaml(content);
+            if (!data) return;
+
+            // Merge overrides into the agent
+            if (data.default_permissions) {
+                agent.update({ default_permissions: data.default_permissions });
+            }
+            if (data.skills) agent.skills = data.skills;
+            if (data.minion !== undefined) agent.minion = data.minion;
+            if (data.minion_enabled !== undefined) agent.minionEnabled = data.minion_enabled;
+            if (data.temperature !== undefined) agent.temperature = data.temperature;
+            if (data.personality) agent.personality = data.personality;
+            if (data.emoji) agent.emoji = data.emoji;
+            if (data.models) agent.models = data.models;
+            if (data.model) agent.model = data.model;
+            if (data.focus_folders) agent.focusFolders = data.focus_folders;
+        } catch (e) {
+            // No overrides or error reading - use defaults
+        }
+    }
+
+    /**
+     * Save built-in agent overrides to YAML
+     * @param {Agent} agent - Built-in agent with modified settings
+     * @returns {Promise<string>} Path to override file
+     */
+    async saveBuiltInOverrides(agent) {
+        const { stringifyYaml } = await import('../utils/yamlParser.js');
+
+        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const filePath = `${this.agentsPath}/${safeName}_overrides.yaml`;
+
+        // Save all editable fields
+        const data = agent.serialize();
+        delete data.name; // Name stays hardcoded
+        delete data.archetype; // Archetype stays hardcoded
+
+        const content = stringifyYaml(data);
+        await this.vault.adapter.write(filePath, content);
+
+        return filePath;
+    }
+
+    /**
+     * Delete built-in agent override file
+     * @param {Agent} agent - Built-in agent
+     * @returns {Promise<boolean>}
+     */
+    async deleteBuiltInOverrides(agent) {
+        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const overridePath = `${this.agentsPath}/${safeName}_overrides.yaml`;
+
+        try {
+            const exists = await this.vault.adapter.exists(overridePath);
+            if (exists) {
+                await this.vault.adapter.remove(overridePath);
+            }
+            return true;
+        } catch (e) {
             return false;
         }
     }

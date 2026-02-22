@@ -1,4 +1,5 @@
 import { TFile } from 'obsidian';
+import { isProtectedPath } from '../utils/keySanitizer.js';
 
 export function createVaultWriteTool(app) {
     return {
@@ -31,6 +32,10 @@ export function createVaultWriteTool(app) {
                 }
                 if (typeof content !== 'string') { // Allow empty string content
                     throw new Error('Content must be a string');
+                }
+
+                if (isProtectedPath(path)) {
+                    throw new Error('Brak dostępu do plików konfiguracji systemu');
                 }
 
                 const mode = args.mode || 'replace';

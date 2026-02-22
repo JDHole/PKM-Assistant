@@ -23,54 +23,52 @@
 .agent-list {
     flex: 1;
     overflow-y: auto;
-}
-
-.agent-section {
-    margin-bottom: 15px;
-}
-
-.agent-section h4 {
-    font-size: 0.75em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin: 0 0 8px 0;
-    letter-spacing: 0.05em;
-}
-
-/* Agent Item */
-.agent-item {
     display: flex;
-    align-items: center;
-    padding: 8px 10px;
-    border-radius: 6px;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Agent Card */
+.agent-card {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: background-color 0.15s ease;
-    margin-bottom: 4px;
-    gap: 10px;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
 }
 
-.agent-item:hover {
+.agent-card:hover {
     background-color: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
 }
 
-.agent-item.active {
+.agent-card.active {
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
 }
 
-.agent-item.active:hover {
+.agent-card.active:hover {
     background-color: var(--interactive-accent-hover);
 }
 
-/* Agent Emoji */
-.agent-emoji {
-    font-size: 1.4em;
-    width: 28px;
-    text-align: center;
+/* Card Header Row */
+.agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-/* Agent Info */
-.agent-info {
+.agent-card-emoji {
+    font-size: 1.5em;
+    width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.agent-card-name-col {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -78,36 +76,76 @@
     min-width: 0;
 }
 
-.agent-name {
-    font-weight: 500;
+.agent-card-name {
+    font-weight: 600;
     font-size: 0.95em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.agent-role {
+.agent-card-role {
     font-size: 0.75em;
     color: var(--text-muted);
 }
 
-.agent-item.active .agent-role {
+.agent-card.active .agent-card-role {
     color: var(--text-on-accent);
     opacity: 0.8;
 }
 
-/* Active Badge */
-.agent-active-badge {
+.agent-card-active {
     color: var(--text-on-accent);
-    font-size: 0.6em;
-    opacity: 0.8;
+    font-size: 0.7em;
+    flex-shrink: 0;
 }
 
-/* Footer */
-.agent-sidebar-footer {
-    padding-top: 10px;
-    border-top: 1px solid var(--background-modifier-border);
-    margin-top: auto;
+/* Action Buttons */
+.agent-card-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.agent-card:hover .agent-card-actions,
+.agent-card.active .agent-card-actions {
+    opacity: 1;
+}
+
+.agent-card-action-btn {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: none;
+    background: var(--background-modifier-border);
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background 0.15s ease;
+    line-height: 1;
+}
+
+.agent-card-action-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.agent-card.active .agent-card-action-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-on-accent);
+}
+
+.agent-card.active .agent-card-action-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.agent-card-delete-btn:hover {
+    background: var(--text-error) !important;
+    color: white !important;
+}
+
+/* Add Agent section (between cards and communicator) */
+.agent-sidebar-add-section {
+    padding: 8px 0;
 }
 
 .agent-add-button {
@@ -133,7 +171,41 @@
     padding: 10px;
 }
 
-/* Agent Creator Modal */
+/* Delete Modal */
+.agent-delete-modal {
+    padding: 20px;
+    max-width: 450px;
+}
+
+.agent-delete-modal h2 {
+    margin-top: 0;
+}
+
+.agent-delete-info p {
+    margin: 8px 0;
+}
+
+.agent-delete-warning {
+    color: var(--text-error);
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+.agent-delete-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agent-delete-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+}
+
+/* Legacy Agent Creator Modal */
 .agent-creator-modal {
     padding: 20px;
 }
@@ -141,15 +213,6 @@
 .agent-creator-modal h2 {
     margin-top: 0;
     margin-bottom: 20px;
-}
-
-.agent-creator-modal .setting-item {
-    border-top: none;
-    padding-top: 12px;
-}
-
-.agent-creator-modal textarea {
-    min-height: 100px;
 }
 
 .agent-creator-buttons {
@@ -164,4 +227,77 @@
 .agent-creator-buttons button {
     padding: 8px 16px;
     border-radius: 6px;
+}
+
+/* ===== COMMUNICATOR SECTION ===== */
+.communicator-section {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.communicator-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.communicator-section-header h4 {
+    margin: 0;
+    font-size: 0.95em;
+}
+
+.communicator-open-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 1.1em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+
+.communicator-open-btn:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.communicator-agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.communicator-agent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background 0.15s;
+}
+
+.communicator-agent-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+.communicator-badge {
+    background: var(--text-error);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.7em;
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+.communicator-badge.hidden {
+    display: none;
 }

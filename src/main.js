@@ -43,7 +43,14 @@ import { createMemoryStatusTool } from "./mcp/MemoryStatusTool.js";
 import { createSkillListTool } from "./mcp/SkillListTool.js";
 import { createSkillExecuteTool } from "./mcp/SkillExecuteTool.js";
 import { createMinionTaskTool } from "./mcp/MinionTaskTool.js";
-import { registerAgentSidebar } from "./views/AgentSidebar.js";
+import { createMasterTaskTool } from "./mcp/MasterTaskTool.js";
+import { createAgentMessageTool } from "./mcp/AgentMessageTool.js";
+import { createAgentDelegateTool } from "./mcp/AgentDelegateTool.js";
+import { createChatTodoTool } from "./mcp/ChatTodoTool.js";
+import { createPlanTool } from "./mcp/PlanTool.js";
+import { registerAgentSidebar, openAgentSidebar } from "./views/AgentSidebar.js";
+import { SendToAgentModal } from "./views/SendToAgentModal.js";
+import { InlineCommentModal } from "./views/InlineCommentModal.js";
 
 export default class ObsekPlugin extends SmartPlugin {
   SmartEnv = SmartEnv;
@@ -128,6 +135,11 @@ export default class ObsekPlugin extends SmartPlugin {
       this.toolRegistry.registerTool(createSkillListTool(this.app));
       this.toolRegistry.registerTool(createSkillExecuteTool(this.app));
       this.toolRegistry.registerTool(createMinionTaskTool(this.app));
+      this.toolRegistry.registerTool(createMasterTaskTool(this.app));
+      this.toolRegistry.registerTool(createAgentMessageTool(this.app));
+      this.toolRegistry.registerTool(createAgentDelegateTool(this.app));
+      this.toolRegistry.registerTool(createChatTodoTool(this.app));
+      this.toolRegistry.registerTool(createPlanTool(this.app));
 
       this.toolLoader = new ToolLoader(this.app.vault);
       const customTools = await this.toolLoader.loadAllTools();
@@ -139,6 +151,32 @@ export default class ObsekPlugin extends SmartPlugin {
     }
 
     register_smart_connections_codeblock(this);
+
+    // Context menu: "Send to assistant" + "Inline comment"
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, editor, view) => {
+        const selection = editor.getSelection();
+        if (selection && selection.trim().length > 0) {
+          menu.addItem((item) => {
+            item.setTitle('📨 Wyślij do asystenta')
+              .setIcon('message-square')
+              .onClick(() => {
+                const filePath = view?.file?.path || '';
+                new SendToAgentModal(this.app, this, selection, filePath).open();
+              });
+          });
+          menu.addItem((item) => {
+            item.setTitle('✏️ Komentarz do Asystenta')
+              .setIcon('edit')
+              .onClick(() => {
+                const filePath = view?.file?.path || '';
+                new InlineCommentModal(this.app, this, selection, filePath).open();
+              });
+          });
+        }
+      })
+    );
+
     await this.check_for_updates();
   }
 
@@ -152,6 +190,11 @@ export default class ObsekPlugin extends SmartPlugin {
         icon_name: "obsek-icon",
         description: "PKM Assistant: Open chat",
         callback: () => { this.open_chat_view(); }
+      },
+      agents: {
+        icon_name: "users",
+        description: "PKM Assistant: Zarządzaj agentami",
+        callback: () => { openAgentSidebar(this); }
       }
     }
   }
@@ -167,6 +210,31 @@ export default class ObsekPlugin extends SmartPlugin {
     if (this.app.workspace.rightSplit.collapsed) {
       this.app.workspace.rightSplit.toggle();
     }
+  }
+
+  /**
+   * Send inline comment to active chat view.
+   * Opens chat if not open, then sends a formatted message for the agent to edit the file.
+   */
+  sendInlineComment(filePath, selectedText, comment) {
+    this.open_chat_view();
+    setTimeout(() => {
+      const leaves = this.app.workspace.getLeavesOfType('pkm-assistant-chat');
+      if (leaves.length > 0) {
+        const chatView = leaves[0].view;
+        const msg = [
+          `KOMENTARZ INLINE`,
+          `Plik: \`${filePath}\``,
+          `Fragment:`,
+          '```',
+          selectedText,
+          '```',
+          `Co zmienić: ${comment}`
+        ].join('\n');
+        chatView.input_area.value = msg;
+        chatView.send_message();
+      }
+    }, 300);
   }
 
   get settings() { return this.env?.settings || {}; }
@@ -232,6 +300,13 @@ export default class ObsekPlugin extends SmartPlugin {
         name: "PKM Assistant: Open chat",
         callback: () => {
           this.open_chat_view();
+        }
+      },
+      open_agents: {
+        id: "obsek-open-agents",
+        name: "PKM Assistant: Zarządzaj agentami",
+        callback: () => {
+          openAgentSidebar(this);
         }
       },
       insert_connections_codeblock: {

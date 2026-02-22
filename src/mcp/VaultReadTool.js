@@ -1,4 +1,5 @@
 import { TFile } from 'obsidian';
+import { isProtectedPath } from '../utils/keySanitizer.js';
 
 export function createVaultReadTool(app) {
     return {
@@ -18,6 +19,10 @@ export function createVaultReadTool(app) {
             try {
                 if (!args.path) {
                     return { success: false, error: 'Path is required' };
+                }
+
+                if (isProtectedPath(args.path)) {
+                    return { success: false, error: 'Brak dostępu do plików konfiguracji systemu' };
                 }
 
                 const file = app.vault.getAbstractFileByPath(args.path);

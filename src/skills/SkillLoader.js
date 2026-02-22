@@ -114,6 +114,61 @@ Wykonaj tygodniowy przegląd vaulta użytkownika:
 6. **Zapis** — Zaproponuj zapisanie podsumowania tygodniowego.
 
 Bądź refleksyjny. Pomagaj zobaczyć szerszy obraz, nie tylko listę tasków.`
+    },
+    {
+        name: 'create-agent',
+        folder: 'create-agent',
+        content: `---
+name: create-agent
+description: Tworzenie nowego agenta krok po kroku przez rozmowe
+category: system
+version: 1
+enabled: true
+---
+
+# Tworzenie agenta
+
+Poprowadź użytkownika przez stworzenie nowego agenta krok po kroku:
+
+1. **Kim ma być agent?** — Zapytaj o ogólny cel i charakter agenta. Jaką rolę ma pełnić?
+2. **Nazwa i emoji** — Zaproponuj kilka opcji nazwy i emoji. User wybiera.
+3. **Archetyp** — Wyjaśnij 3 dostępne archetypy i pomóż wybrać:
+   - 🎭 Human Vibe — empatyczny, ciepły, do rozmów i organizacji
+   - 🔮 Ekspert Obsidiana — techniczny, do zarządzania vaultem
+   - 🧠 Ekspert AI — analityczny, do promptów i strategii AI
+4. **Osobowość** — Na podstawie odpowiedzi usera napisz opis osobowości (3-5 zdań + lista cech).
+5. **Temperatura** — Wyjaśnij skalę (0=precyzyjny, 1=kreatywny) i zaproponuj wartość.
+6. **Focus folders** — Zapytaj czy agent ma się skupiać na konkretnych folderach.
+7. **Uprawnienia** — Zapytaj jaki poziom dostępu:
+   - Bezpieczny (tylko odczyt)
+   - Standardowy (odczyt + zapis za zgodą)
+   - Pełny (wszystko)
+8. **Podsumowanie** — Pokaż podsumowanie konfiguracji i poproś o zatwierdzenie.
+9. **Zapis** — Po zatwierdzeniu utwórz plik YAML agenta:
+
+\\\`\\\`\\\`
+vault_write(".pkm-assistant/agents/{nazwa}/agent.yaml", "---
+name: {nazwa}
+emoji: {emoji}
+archetype: {archetyp}
+role: specialist
+temperature: {temp}
+personality: |
+  {osobowość}
+focus_folders:
+  - {folder1}
+skills: []
+minion: null
+default_permissions:
+  read_notes: true
+  edit_notes: false
+  create_files: false
+---")
+\\\`\\\`\\\`
+
+10. **Gotowe!** — Powiedz userowi że agent jest stworzony i może go wybrać w panelu agentów.
+
+Bądź pomocny i cierpliwy. User może nie znać terminów technicznych.`
     }
 ];
 

@@ -1,0 +1,259 @@
+/* Agent Profile Modal Styles */
+
+.agent-profile-modal {
+    padding: 20px;
+    min-width: 500px;
+    max-width: 700px;
+}
+
+.agent-profile-title {
+    margin: 0 0 16px 0;
+    font-size: 1.3em;
+}
+
+/* Tab Bar */
+.agent-profile-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 16px;
+    padding-bottom: 0;
+    overflow-x: auto;
+}
+
+.agent-profile-tab {
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85em;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.agent-profile-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.agent-profile-tab.active {
+    color: var(--interactive-accent);
+    border-bottom-color: var(--interactive-accent);
+    font-weight: 500;
+}
+
+/* Tab Content */
+.agent-profile-tab-content {
+    min-height: 300px;
+    max-height: 500px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.agent-profile-tab-content .setting-item {
+    border-top: none;
+    padding: 10px 0;
+}
+
+.agent-profile-tab-content textarea {
+    min-height: 80px;
+}
+
+/* Sections */
+.agent-profile-section {
+    margin-bottom: 16px;
+}
+
+.agent-profile-section-header {
+    margin-top: 20px;
+}
+
+.agent-profile-empty {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+/* Permission Presets */
+.permission-preset-buttons {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 16px 0;
+}
+
+.permission-preset-buttons button {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+/* Memory Preview */
+.agent-profile-preview {
+    background: var(--background-secondary);
+    border-radius: 8px;
+    padding: 12px 16px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 8px 0;
+    font-size: 0.9em;
+}
+
+.agent-profile-preview h1,
+.agent-profile-preview h2,
+.agent-profile-preview h3 {
+    font-size: 1em;
+    margin: 8px 0 4px 0;
+}
+
+.agent-profile-preview ul {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+/* Session List */
+.agent-profile-session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+}
+
+.agent-profile-session-item {
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background 0.15s ease;
+}
+
+.agent-profile-session-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* Stats Grid */
+.agent-profile-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.agent-profile-stat {
+    background: var(--background-secondary);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.agent-profile-stat-value {
+    font-size: 1.3em;
+    font-weight: 600;
+    color: var(--interactive-accent);
+}
+
+.agent-profile-stat-label {
+    font-size: 0.75em;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* Tool Badges */
+.agent-profile-tool-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.agent-profile-tool-badge {
+    background: var(--background-secondary);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-family: var(--font-monospace);
+    color: var(--text-muted);
+}
+
+/* Action Buttons */
+.agent-profile-action-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    margin: 8px 0;
+}
+
+/* Note */
+.agent-profile-note {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.agent-profile-note p {
+    margin: 0;
+}
+
+/* Buttons at bottom */
+.agent-profile-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agent-profile-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+}
+
+/* Hidden File Editor Modal */
+.hidden-file-editor-modal {
+    padding: 20px;
+    min-width: 600px;
+    max-width: 800px;
+}
+
+.hidden-file-editor-modal h3 {
+    margin: 0 0 4px 0;
+}
+
+.hidden-file-editor-path {
+    color: var(--text-muted);
+    font-size: 0.75em;
+    font-family: var(--font-monospace);
+    margin: 0 0 12px 0;
+}
+
+.hidden-file-editor-textarea {
+    width: 100%;
+    min-height: 400px;
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.hidden-file-editor-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.hidden-file-editor-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+}

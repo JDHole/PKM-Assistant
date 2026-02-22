@@ -8,7 +8,11 @@ import { MemoryExtractor } from '../memory/MemoryExtractor.js';
 import { Summarizer } from '../memory/Summarizer.js';
 import chat_view_styles from './chat_view.css' with { type: 'css' };
 import { createToolCallDisplay } from '../components/ToolCallDisplay.js';
+import { createThinkingBlock, updateThinkingBlock } from '../components/ThinkingBlock.js';
+import { createChatTodoList } from '../components/ChatTodoList.js';
+import { createPlanArtifact } from '../components/PlanArtifact.js';
 import { openPermissionsModal } from './PermissionsModal.js';
+import { createModelForRole, clearModelCache } from '../utils/modelResolver.js';
 
 /**
  * ChatView - Main chat interface for Obsek
@@ -474,7 +478,8 @@ export class ChatView extends SmartItemView {
         if (agentManager) {
             const platform = this.env?.settings?.smart_chat_model?.platform || '';
             const isLocalModel = (platform === 'ollama' || platform === 'lm_studio');
-            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel });
+            const hasMaster = !!(this.env?.settings?.obsek?.masterPlatform && this.env?.settings?.obsek?.masterModel);
+            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel, hasMaster });
             this.rollingWindow.setSystemPrompt(basePrompt);
         }
 
@@ -578,7 +583,7 @@ export class ChatView extends SmartItemView {
             const emoji = this.plugin?.agentManager?.getActiveAgent()?.emoji || '🤖';
             row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
 
-            this.current_message_bubble = row.createDiv({ cls: 'pkm-chat-bubble' });
+            this.current_message_bubble = row.createDiv({ cls: 'pkm-chat-bubble streaming' });
             this.current_message_text = this.current_message_bubble.createDiv({
                 cls: 'pkm-chat-content'
             });
@@ -586,6 +591,21 @@ export class ChatView extends SmartItemView {
 
         // Get content from response
         const content = response?.choices?.[0]?.message?.content || '';
+        const reasoningContent = response?.choices?.[0]?.message?.reasoning_content || '';
+
+        // Render thinking block if reasoning_content present and setting enabled
+        const showThinking = this.env?.settings?.obsek?.showThinking ?? true;
+        if (showThinking && reasoningContent.length > 0) {
+            if (!this._currentThinkingBlock) {
+                this._currentThinkingBlock = createThinkingBlock(reasoningContent, true);
+                this.current_message_bubble.insertBefore(
+                    this._currentThinkingBlock,
+                    this.current_message_text
+                );
+            } else {
+                updateThinkingBlock(this._currentThinkingBlock, reasoningContent);
+            }
+        }
 
         // Update text (render as markdown)
         this.current_message_text.empty();
@@ -655,6 +675,10 @@ export class ChatView extends SmartItemView {
                 memory_status: '🧠 Sprawdzam pamięć...',
                 skill_list: '📚 Sprawdzam umiejętności...',
                 skill_execute: '🎯 Aktywuję skill...',
+                minion_task: '🔧 Delegowanie do miniona...',
+                master_task: '🧠 Konsultuje z ekspertem...',
+                chat_todo: '📋 Aktualizuję listę zadań...',
+                plan_action: '📋 Aktualizuję plan...',
             };
 
             for (const toolCall of toolCalls) {
@@ -676,13 +700,53 @@ export class ChatView extends SmartItemView {
                     result = await this.plugin.mcpClient.executeToolCall(toolCall, agentName);
 
                     // Update display with result
-                    toolDisplay.replaceWith(createToolCallDisplay({
+                    const updatedDisplay = createToolCallDisplay({
                         name: toolCall.name,
                         input: toolCall.arguments,
                         output: result,
                         status: result.isError ? 'error' : 'success',
                         error: result.error
-                    }));
+                    });
+                    toolDisplay.replaceWith(updatedDisplay);
+
+                    // Render interactive widgets for special result types
+                    if (result?.type === 'todo_list') {
+                        const existingWidget = toolCallsContainer.querySelector(`[data-todo-id="${result.id}"]`);
+                        const todoWidget = createChatTodoList(result, {
+                            onToggle: (id, idx, done) => {
+                                const store = this.plugin._chatTodoStore;
+                                const todo = store?.get(id);
+                                if (todo && todo.items[idx]) {
+                                    todo.items[idx].done = done;
+                                }
+                            }
+                        });
+                        if (existingWidget) {
+                            existingWidget.replaceWith(todoWidget);
+                        } else {
+                            toolCallsContainer.appendChild(todoWidget);
+                        }
+                    }
+
+                    if (result?.type === 'plan_artifact') {
+                        const existingWidget = toolCallsContainer.querySelector(`[data-plan-id="${result.id}"]`);
+                        const planWidget = createPlanArtifact(result, {
+                            onApprove: (planId) => {
+                                const store = this.plugin._planStore;
+                                const plan = store?.get(planId);
+                                if (plan) {
+                                    plan.approved = true;
+                                    this.input_area.value = `ZATWIERDŹ PLAN: ${planId} — Wykonaj kroki po kolei.`;
+                                    this.send_message();
+                                }
+                            }
+                        });
+                        if (existingWidget) {
+                            existingWidget.replaceWith(planWidget);
+                        } else {
+                            toolCallsContainer.appendChild(planWidget);
+                        }
+                    }
                 } catch (err) {
                     result = { isError: true, error: err.message };
                     toolDisplay.replaceWith(createToolCallDisplay({
@@ -693,7 +757,17 @@ export class ChatView extends SmartItemView {
                     }));
                 }
 
-                // Auto-reload skills/minions if written to their folders
+                // Detect delegation proposal
+                if (toolCall.name === 'agent_delegate') {
+                    try {
+                        const parsed = typeof result === 'object' ? result : JSON.parse(JSON.stringify(result));
+                        if (parsed.delegation === true) {
+                            this._pendingDelegation = parsed;
+                        }
+                    } catch {}
+                }
+
+                // Auto-reload skills/minions/playbooks if written to their folders
                 if (toolCall.name === 'vault_write') {
                     const writePath = toolCall.arguments?.path || '';
                     if (writePath.includes('/skills/')) {
@@ -702,6 +776,27 @@ export class ChatView extends SmartItemView {
                     }
                     if (writePath.includes('/minions/')) {
                         await this.plugin?.agentManager?.reloadMinions();
+                    }
+                    // Playbook/vault_map: no cache to invalidate (read from disk each auto-prep),
+                    // but mark that next auto-prep should re-read them
+                    if (writePath.includes('playbook.md') || writePath.includes('vault_map.md')) {
+                        this._playbookDirty = true;
+                    }
+
+                    // Render quick link to created/edited file
+                    if (!result?.isError && writePath) {
+                        const linkDiv = document.createElement('div');
+                        linkDiv.addClass('pkm-vault-link');
+                        const link = document.createElement('a');
+                        link.addClass('pkm-vault-link-anchor');
+                        link.textContent = `📄 ${writePath}`;
+                        link.href = '#';
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            this.app.workspace.openLinkText(writePath, '');
+                        });
+                        linkDiv.appendChild(link);
+                        toolCallsContainer.appendChild(linkDiv);
                     }
                 }
 
@@ -727,6 +822,13 @@ export class ChatView extends SmartItemView {
             }
 
             // Reset current container before continuing
+            if (this.current_message_bubble) {
+                this.current_message_bubble.classList.remove('streaming');
+            }
+            if (this._currentThinkingBlock) {
+                this._currentThinkingBlock.classList.remove('streaming');
+                this._currentThinkingBlock = null;
+            }
             this.current_message_container = null;
             this.current_message_bubble = null;
             this.current_message_text = null;
@@ -754,6 +856,21 @@ export class ChatView extends SmartItemView {
 
             // Add timestamp below the message
             this.current_message_container.createDiv({ cls: 'pkm-chat-timestamp', text: timestamp });
+
+            // Render delegation button if pending
+            if (this._pendingDelegation) {
+                this._renderDelegationButton(this.current_message_container, this._pendingDelegation);
+                this._pendingDelegation = null;
+            }
+        }
+
+        // Finalize streaming state
+        if (this.current_message_bubble) {
+            this.current_message_bubble.classList.remove('streaming');
+        }
+        if (this._currentThinkingBlock) {
+            this._currentThinkingBlock.classList.remove('streaming');
+            this._currentThinkingBlock = null;
         }
 
         // Reset state
@@ -761,6 +878,75 @@ export class ChatView extends SmartItemView {
         this.current_message_bubble = null;
         this.current_message_text = null;
         this.set_generating(false);
+    }
+
+    /**
+     * Render a delegation button after agent proposes switching to another agent
+     * @param {HTMLElement} container
+     * @param {Object} data - Delegation data from agent_delegate tool
+     */
+    _renderDelegationButton(container, data) {
+        const div = container.createDiv({ cls: 'pkm-delegation-proposal' });
+        div.createEl('p', {
+            text: data.reason || `Proponuję przekazać rozmowę do ${data.to_emoji} ${data.to_name}`,
+            cls: 'pkm-delegation-reason'
+        });
+        const btn = div.createEl('button', {
+            text: `Przejdź do ${data.to_emoji} ${data.to_name}`,
+            cls: 'pkm-delegation-btn mod-cta'
+        });
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = 'Przełączam...';
+            // Consolidate current session before switching
+            if (this.rollingWindow.messages.length > 0) {
+                await this.consolidateSession();
+            }
+            const switched = this.plugin.agentManager?.switchAgent(data.to_agent);
+            if (switched) {
+                const agentMemory = this.plugin.agentManager.getActiveMemory();
+                agentMemory?.startNewSession();
+                this.rollingWindow = this._createRollingWindow();
+                this.render_messages();
+                this.updateAgentDropdown?.();
+                this.updatePermissionsBadge();
+                this.renderSkillButtons();
+                await this.updateSessionDropdown();
+
+                // Auto-send delegation context as first message
+                const delegationMsg = data.context_summary
+                    || data.reason
+                    || `Delegacja od innego agenta`;
+
+                // Attach active artifacts info so the new agent knows about them
+                let artifactInfo = '';
+                const todoStore = this.plugin._chatTodoStore;
+                const planStore = this.plugin._planStore;
+                if (todoStore?.size > 0 || planStore?.size > 0) {
+                    const parts = ['\n\n--- Aktywne artefakty ---'];
+                    if (todoStore) {
+                        for (const [id, todo] of todoStore) {
+                            const done = todo.items.filter(i => i.done).length;
+                            parts.push(`Lista TODO "${todo.title}" (id: ${id}) — ${done}/${todo.items.length} gotowe`);
+                        }
+                    }
+                    if (planStore) {
+                        for (const [id, plan] of planStore) {
+                            const done = plan.steps.filter(s => s.status === 'done').length;
+                            const status = plan.approved ? 'zatwierdzony' : 'czeka na zatwierdzenie';
+                            parts.push(`Plan "${plan.title}" (id: ${id}) — ${done}/${plan.steps.length} kroków, ${status}`);
+                        }
+                    }
+                    parts.push('Użyj chat_todo / plan_action z tymi ID żeby kontynuować pracę nad nimi.');
+                    artifactInfo = parts.join('\n');
+                }
+
+                const handoffText = `[Delegacja] ${delegationMsg}${artifactInfo}`;
+                this.input_area.value = handoffText;
+                // Small delay to let UI settle before sending
+                setTimeout(() => this.send_message(), 200);
+            }
+        });
     }
 
     /**
@@ -1306,56 +1492,8 @@ export class ChatView extends SmartItemView {
      */
     _getMinionModel(agent, minionConfig) {
         const targetAgent = agent || this.plugin?.agentManager?.getActiveAgent();
-
-        // Check if minion disabled for this agent
         if (targetAgent?.minionEnabled === false) return null;
-
-        // Resolution chain: minion config model → global setting
-        const configModel = minionConfig?.model;
-        const globalModel = this.env?.settings?.obsek?.minionModel;
-        const minionModelId = configModel || globalModel;
-
-        if (!minionModelId || !minionModelId.trim()) return null;
-
-        const scSettings = this.env?.settings?.smart_chat_model || {};
-        let platform = scSettings.platform;
-        if (!platform) {
-            for (const p of ['anthropic', 'openai', 'open_router', 'gemini', 'groq', 'deepseek']) {
-                if (scSettings[`${p}_api_key`]) { platform = p; break; }
-            }
-        }
-        if (!platform) return null;
-
-        // Cache per agent + platform + model
-        const agentName = targetAgent?.name || '_global';
-        const cacheKey = `${agentName}:${platform}:${minionModelId.trim()}`;
-
-        if (!this._minionCache) this._minionCache = new Map();
-        const cached = this._minionCache.get(cacheKey);
-        if (cached?.stream) return cached;
-
-        const api_key = scSettings[`${platform}_api_key`];
-        if (!api_key && platform !== 'ollama') return null;
-
-        const module_config = this.env?.config?.modules?.smart_chat_model;
-        if (!module_config?.class) return null;
-
-        try {
-            const minionModel = new module_config.class({
-                ...module_config,
-                class: null,
-                env: this.env,
-                settings: this.env.settings,
-                adapter: platform,
-                api_key: api_key,
-                model_key: minionModelId.trim(),
-            });
-            this._minionCache.set(cacheKey, minionModel);
-            return minionModel;
-        } catch (e) {
-            console.warn('[ChatView] Failed to create minion model:', e);
-            return null;
-        }
+        return createModelForRole(this.plugin, 'minion', targetAgent, minionConfig);
     }
 
     /**

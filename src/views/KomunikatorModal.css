@@ -1,0 +1,313 @@
+/* KomunikatorModal Styles */
+
+.komunikator-modal {
+    width: 700px;
+    max-width: 90vw;
+    height: 550px;
+    max-height: 80vh;
+}
+
+.komunikator-modal .modal-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.komunikator-title {
+    margin: 0;
+    padding: 16px 20px 12px;
+    font-size: 1.15em;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.komunikator-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Left panel - agent list */
+.komunikator-agents-panel {
+    width: 180px;
+    min-width: 140px;
+    border-right: 1px solid var(--background-modifier-border);
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.komunikator-agent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-size: 0.9em;
+}
+
+.komunikator-agent-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.komunikator-agent-item.selected {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.komunikator-agent-item.selected .komunikator-agent-badge {
+    background: rgba(255, 255, 255, 0.3);
+    color: var(--text-on-accent);
+}
+
+.komunikator-agent-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.komunikator-agent-emoji {
+    font-size: 1.1em;
+    flex-shrink: 0;
+}
+
+.komunikator-agent-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.komunikator-agent-badge {
+    background: var(--text-error);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.7em;
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* Right panel - inbox + compose */
+.komunikator-inbox-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.komunikator-inbox-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.komunikator-inbox-header h4 {
+    margin: 0;
+    font-size: 0.95em;
+    white-space: nowrap;
+}
+
+.komunikator-mark-read-btn {
+    background: none;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-size: 0.7em;
+    color: var(--text-muted);
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.komunikator-mark-read-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* Messages list */
+.komunikator-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.komunikator-empty {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 30px 10px;
+    font-size: 0.9em;
+}
+
+.komunikator-msg-card {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.komunikator-msg-card.unread {
+    border-color: var(--interactive-accent);
+}
+
+/* Message header */
+.komunikator-msg-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--background-secondary);
+    gap: 6px;
+}
+
+.komunikator-msg-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+.komunikator-msg-from {
+    font-weight: 600;
+    font-size: 0.85em;
+    flex-shrink: 0;
+}
+
+.komunikator-msg-subject {
+    flex: 1;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.komunikator-msg-date {
+    font-size: 0.7em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* Read status indicators */
+.komunikator-msg-status {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    font-size: 0.7em;
+}
+
+.komunikator-msg-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.komunikator-msg-status-dot.user-unread {
+    background: var(--interactive-accent);
+}
+
+.komunikator-msg-status-dot.user-read {
+    background: var(--text-success, #00c853);
+}
+
+.komunikator-msg-status-dot.ai-unread {
+    background: var(--text-warning, #ffc107);
+}
+
+.komunikator-msg-status-dot.ai-read {
+    background: var(--text-success, #00c853);
+}
+
+/* Message body */
+.komunikator-msg-body {
+    display: none;
+    padding: 8px 10px;
+    font-size: 0.85em;
+    line-height: 1.5;
+    border-top: 1px solid var(--background-modifier-border);
+    white-space: pre-wrap;
+}
+
+.komunikator-msg-body.expanded {
+    display: block;
+}
+
+.komunikator-msg-context {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--background-modifier-border);
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.komunikator-msg-status-labels {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--background-modifier-border);
+    display: flex;
+    gap: 12px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+}
+
+/* Compose form */
+.komunikator-compose {
+    border-top: 1px solid var(--background-modifier-border);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.komunikator-compose-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.komunikator-compose-row label {
+    font-size: 0.8em;
+    font-weight: 500;
+    min-width: 50px;
+    color: var(--text-muted);
+}
+
+.komunikator-compose-row input,
+.komunikator-compose-row textarea {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+    font-family: inherit;
+}
+
+.komunikator-compose-row textarea {
+    min-height: 40px;
+    resize: vertical;
+}
+
+.komunikator-send-btn {
+    align-self: flex-end;
+    padding: 5px 16px;
+    font-size: 0.85em;
+}

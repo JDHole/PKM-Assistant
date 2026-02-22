@@ -23,6 +23,435 @@
 
 ---
 
+## 2026-02-22 (sesja 25) - FAZA 5: Rozszerzony Chat + Inline Comments
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja FAZY 5 (sesja 25) - cala faza w jednej sesji
+
+**Co zrobiono:**
+
+### 5.4 Extended Thinking
+- ThinkingBlock.js - zwijany/rozwijalny blok "Myslenie..." z ikona 💭
+- chat_view.js: detekcja reasoning_content w handle_chunk, rendering bloku przed trescia
+- anthropic.js adapter: obsluga bloków type:"thinking" + thinking_delta
+- Ustawienie "Pokaz myslenie AI" (obsek.showThinking) w settings
+
+### 5.5 Animacje CSS
+- Streaming shimmer: animowana linia na dole babelka podczas streamowania
+- slideDown keyframe na tool call containers
+- Pulsujaca animacja na pending tool calls
+- Klasa .streaming dodawana/usuwana w handle_chunk/handle_done
+
+### 5.1 Inline Comments
+- InlineCommentModal.js - modal z podgladem zaznaczenia + pole "Co zmienic"
+- Context menu: "Komentarz do Asystenta" (obok "Wyslij do asystenta")
+- sendInlineComment() w main.js - otwiera chat i wysyla sformatowana wiadomosc
+- Agent.js: instrukcja KOMENTARZ INLINE w system prompcie
+
+### 5.3 Todo Lists w chacie
+- ChatTodoTool.js - MCP tool chat_todo z 5 akcjami (create/update/add_item/remove_item/save)
+- ChatTodoList.js - interaktywny widget z checkboxami i paskiem postepu
+- Stan w plugin._chatTodoStore (Map), user klika checkboxy bezposrednio
+- Tryb "tymczasowy" vs "trwaly" (save do vaulta jako markdown)
+
+### 5.2 Creation Plans
+- PlanTool.js - MCP tool plan_action z 3 akcjami (create/update_step/get)
+- PlanArtifact.js - widget z numerowanymi krokami, ikonami statusu, przyciskiem "Zatwierdz plan"
+- Zatwierdzenie planu auto-wysyla wiadomosc do agenta
+- Statusy kroków: pending (○), in_progress (◉ pulsuje), done (✓), skipped (—)
+
+### Fixy po testach (sesja 25b)
+- Fix inline comment prompt - uproszczony format (bez "prosze edytuj plik bezposrednio")
+- Delegacja + artefakty - aktywne todo/plany automatycznie dolaczane do kontekstu delegacji
+- Quick link po vault_write - klikalny link 📄 do pliku w chacie
+
+**Nowe pliki:**
+- `src/components/ThinkingBlock.js` - blok myslenia AI
+- `src/components/ChatTodoList.js` - widget todo listy
+- `src/components/PlanArtifact.js` - widget planu kreacji
+- `src/mcp/ChatTodoTool.js` - MCP tool #16
+- `src/mcp/PlanTool.js` - MCP tool #17
+- `src/views/InlineCommentModal.js` - modal komentarzy inline
+
+**Modyfikowane pliki:**
+- `src/views/chat_view.js` - rendering widgetow, thinking block, streaming class, quick links, delegacja+artefakty
+- `src/views/chat_view.css` - style: thinking, animacje, todo, plan, vault link
+- `src/main.js` - rejestracja 2 nowych tooli, context menu, sendInlineComment
+- `src/agents/Agent.js` - system prompt: LISTA ZADAN, PLAN DZIALANIA, KOMENTARZ INLINE
+- `src/mcp/MCPClient.js` - ACTION_TYPE_MAP: chat_todo, plan_action
+- `src/components/ToolCallDisplay.js` - TOOL_INFO: chat_todo, plan_action
+- `src/views/obsek_settings_tab.js` - toggle "Pokaz myslenie AI"
+- `external-deps/.../adapters/anthropic.js` - thinking blocks support
+
+**Kluczowe decyzje:**
+- Kolejnosc implementacji: 5.4 → 5.5 → 5.1 → 5.3 → 5.2 (od najlatwiejszego do najtrudniejszego)
+- Artefakty (todo/plan) trzymane w pamięci pluginu (Map), nie w plikach - szybkie, bez I/O
+- Plan zatwierdzany kliknieciem - auto-wysyla wiadomosc do agenta
+- Delegacja automatycznie przekazuje aktywne artefakty z ich ID
+- Pomysly na przyszlosc zapisane: Agora (5.8), Panel artefaktow (5.7), Manual edit, Alert create/delete (7.1b)
+
+**Stan:**
+- MCP tools: 17 total
+- Build: 6.7MB
+- FAZA 5: prawie DONE (2 backlog items: panel artefaktow, agora)
+- Postep PLAN.md: ~130/270 (~48%)
+
+---
+
+## 2026-02-22 (sesja 24) - FAZA 4 fixes: podwojny status, delegacja, UI
+
+**Sesja z:** Claude Code (Haiku 4.5)
+
+**Typ sesji:** Bug fixes + polish (sesja 24)
+
+**Co zrobiono:**
+
+### FAZA 4 Fixes: Komunikator + Delegacja Polishing
+
+Naprawienie problemy z podwojnym statusem wiadomosci, UI layout, debounce renderowan, auto-send delegacji oraz wzmocnienie prompta dla streszczenia kontekstu.
+
+**Modyfikowane pliki:**
+- `src/core/KomunikatorManager.js` - dual read status system: NOWA / USER_READ / AI_READ / ALL_READ (backwards compat PRZECZYTANA)
+- `src/views/KomunikatorModal.js` - CSS layout fixes (button fit, modal sizing), status dots pokazujace (user read + AI read), debounce renders na komunikator events
+- `src/views/AgentSidebar.js` - "Nowy agent" button przenieslony ponad komunikator section, debounce na events (nie duplikaty)
+- `src/core/MinionRunner.js` - auto markAsAIRead po inbox processing (AI wiadomosci nie pokazuja sie jako nieprzeczytane)
+- `src/mcp/AgentDelegateTool.js` - passes context_summary + from_agent_name do chat_view
+- `src/views/chat_view.js` - delegation button: auto-sends "[Delegacja] context_summary" jako pierwsza wiadomosc do nowego agenta
+- `src/agents/Agent.js` - silniejszy prompt dla agent_delegate z wytycznymi na context_summary (czym problem sie rozni, co wiesz o kontekscie)
+
+**Kluczowe decyzje:**
+- Dual status: USER_READ (user zobaczyl) + AI_READ (AI je przeczytala) - czyznosci agentow vs uzytkownika
+- Backwards compatibility: stare PRZECZYTANA zmapowana na ALL_READ
+- Debounce: 300ms na sidebar events + 500ms na KomunikatorModal renders - brak duplikatow
+- Auto-delegation: nowy agent otrzymuje kontekst AUTOMATYCZNIE jako 1. wiadomosc (nie musi pytac uzytkownika)
+- Context summary: AI tworzy streszczenie problemu/zadania przy delegacji (nie wysyla cala histori rozmowy)
+
+**Build:** 6.7MB
+
+**Wersja:** 1.0.6 (bez zmian)
+
+**Nastepne kroki:**
+- Test w Obsidianie: komunikacja, delegacja, status icons
+- Sprawdzenie duplikatow renderowan (Console.log debounce timing)
+- Stabilnosc codziennego uzytku - deadline 2026-02-24
+
+---
+
+## 2026-02-22 (sesja 23) - FAZA 4: Komunikator + Delegacja
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja (cala faza w jednej sesji)
+
+**Co zrobiono:**
+
+### FAZA 4: Komunikator + Delegacja (CALA FAZA)
+
+Pelna komunikacja miedzy agentami: wysylanie wiadomosci, delegowanie zadan, inbox z nieprzeczytanymi, UI do zarzadzania komunikacja.
+
+**Nowe pliki:**
+- `src/core/KomunikatorManager.js` - zarzadzanie komunikacja miedzy agentami: pliki inbox, parseMessages(), writeMessage(), markAsRead()
+- `src/views/KomunikatorModal.js` - pelny UI komunikatora: lista agentow + inbox + compose (tworzenie nowej wiadomosci)
+- `src/views/SendToAgentModal.js` - modal wysylania notatki/kontekstu do agenta + menu kontekstowe "Wyslij do asystenta"
+- `src/mcp/AgentMessageTool.js` - MCP tool agent_message: wysylanie wiadomosci miedzy agentami
+- `src/mcp/AgentDelegateTool.js` - MCP tool agent_delegate: delegowanie zadania innemu agentowi
+
+**Modyfikowane pliki:**
+- `src/views/AgentSidebar.js` - sekcja komunikatora z badge'ami nieprzeczytanych wiadomosci
+- `src/views/chat_view.js` - przycisk delegacji gdy agent proponuje przelaczenie na innego agenta
+- `src/core/MinionRunner.js` - czytanie inbox w auto-prep (minion sprawdza wiadomosci przy starcie sesji)
+- `src/agents/Agent.js` - sekcja KOMUNIKATOR w system prompcie (instrukcje uzywania agent_message i agent_delegate)
+- `src/main.js` - import + rejestracja agent_message i agent_delegate (15. i 16. MCP tool -> 15 total)
+- `src/mcp/MCPClient.js` - agent_message + agent_delegate w ACTION_TYPE_MAP
+
+**Kluczowe decyzje:**
+- Komunikacja przez pliki inbox (nie pamiec RAM) - przezywa restart pluginu
+- Agent dostaje sekcje KOMUNIKATOR w system prompcie z instrukcjami kiedy uzywac
+- Minion czyta inbox przy auto-prep - agent wie o wiadomosciach od samego startu sesji
+- Delegacja = propozycja (przycisk w chacie), nie automatyczne przelaczenie
+
+**MCP tools:** 15 total (13 + agent_message + agent_delegate)
+
+**Build:** 6.7MB
+
+**Wersja:** 1.0.5 -> 1.0.6
+
+**Nastepne kroki:**
+- Test w Obsidianie: reload, sprawdzenie komunikacji miedzy agentami
+- Stabilnosc codziennego uzytku
+- FAZA 7.7: Optymalizacja tokenow
+
+---
+
+## 2026-02-22 (sesja 22) - FAZA 3: Agent Manager + Creator
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja (cala faza w jednej sesji)
+
+**Co zrobiono:**
+
+### FAZA 3: Agent Manager + Creator (CALA FAZA - 23/24 checkboxow)
+
+Pelna kontrola nad agentami z poziomu UI: tworzenie, edycja, usuwanie, podglad pamieci i statystyk. Tylko Jaskier jako wbudowany agent, Dexter/Ezra to archetypy/szablony.
+
+**Nowe pliki (3):**
+- `src/views/AgentProfileModal.js` (~400 linii) - ujednolicony modal do tworzenia i edycji agentow
+  - 5 zakladek: Profil, Uprawnienia, Umiejetnosci, Pamiec, Statystyki
+  - Tryb tworzenia (agent=null) vs tryb edycji (agent=Agent)
+  - Profil: nazwa, emoji, archetyp, rola, osobowosc, temperatura, focus folders, model
+  - Uprawnienia: 3 presety (Safe/Standard/Full) + 9 toggleow
+  - Umiejetnosci: checkboxy skilli + dropdown minionow + auto-prep toggle
+  - Pamiec (tylko edycja): brain.md preview, lista sesji, ladowanie sesji
+  - Statystyki (tylko edycja): grid z liczbami sesji/L1/L2/brain size + MCP tools
+- `src/views/AgentProfileModal.css` (~200 linii) - style zakladkowego modala
+- `src/views/AgentDeleteModal.js` (~90 linii) - potwierdzenie usuwania z archiwizacja pamieci
+
+**Modyfikowane pliki (8):**
+- `src/core/AgentManager.js` - nowe metody: updateAgent(), getAgentStats(), archiveAgentMemory(), _recreateJaskierFallback()
+- `src/agents/AgentLoader.js` - loadBuiltInAgents() zwraca TYLKO Jaskiera, _mergeBuiltInOverrides(), saveBuiltInOverrides()
+- `src/views/AgentSidebar.js` - rewrite: karty agentow z emoji, nazwa, rola, active badge, przyciski profil/usun
+- `src/views/AgentSidebar.css` - nowe style kart + modala usuwania
+- `src/views/AgentCreatorModal.js` - redirect do AgentProfileModal (backward compat)
+- `src/skills/SkillLoader.js` - nowy starter skill: create-agent (Jaskier prowadzi przez tworzenie agenta)
+- `src/agents/archetypes/HumanVibe.js` - skill create-agent w domyslnych, zaktualizowana osobowosc
+- `src/agents/archetypes/index.js` - usuniete eksporty createDexter/createEzra
+- `src/core/MinionLoader.js` - ensureStarterMinions() tworzy tylko jaskier-prep (nie Dexter/Ezra)
+
+**Kluczowe decyzje:**
+- Jeden modal do tworzenia i edycji (nie osobne)
+- Jaskier jedyny built-in agent; Dexter/Ezra to szablony w archetypach
+- Built-in overrides: edycja Jaskiera zapisywana do `_overrides.yaml` (nie modyfikuje JS)
+- Fallback: usuniecie ostatniego agenta -> auto-odtworzenie Jaskiera
+- Tryb bez agenta (agentless mode) - notatka w PLAN.md na przyszlosc
+
+**Wersja:** 1.0.4 -> 1.0.5
+**Build:** 6.6MB (bez zmian)
+
+---
+
+## 2026-02-22 (sesja 21) - FAZA 2.5: Playbook + Vault Map per agent
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja
+
+**Co zrobiono:**
+
+### FAZA 2.5: Playbook + Vault Map (CALA FAZA - 11/11 checkboxow)
+
+Kazdy agent dostaje dwa pliki-podręczniki: playbook.md (instrukcje i procedury) i vault_map.md (mapa terenu). Agent NIE nosi ich w system prompcie (za duzo tokenow) - minion czyta je przy auto-prep i wstrzykuje do kontekstu.
+
+**Nowy plik:**
+- `src/core/PlaybookManager.js` (~250 linii) - zarzadzanie playbook + vault_map
+  - Starter playbooki dla 3 agentow (Jaskier, Dexter, Ezra) - rozne narzedzia, skille, procedury
+  - Starter vault mapy dla 3 agentow - rozne strefy dostepu
+  - Generic template dla custom agentow
+  - readPlaybook() / readVaultMap() - odczyt z dysku
+  - ensureStarterFiles() - auto-tworzenie jesli brak
+
+**Modyfikowane pliki (4):**
+- `src/core/AgentManager.js` - import PlaybookManager, init w initialize(), tworzenie playbook/vault_map przy createAgent()
+- `src/core/MinionRunner.js` - runAutoPrep() czyta playbook + vault_map przez PlaybookManager, wstrzykuje do system promptu miniona
+- `src/agents/Agent.js` - lekki pointer do playbooka w system prompcie (6 linii, nie pelna tresc)
+- `src/views/chat_view.js` - hot-reload: detekcja edycji playbook.md/vault_map.md przez vault_write
+
+**Architektura:**
+- Playbook = "instrukcja obslugi agenta": narzedzia, skille, procedury krok-po-kroku
+- Vault Map = "mapa terenu": foldery, strefy dostepu, co gdzie jest
+- Sciezki: .pkm-assistant/agents/{name}/playbook.md i vault_map.md
+- Minion dostaje pelna tresc w system prompcie przy auto-prep
+- Agent dostaje TYLKO pointer (3 linie) - oszczednosc tokenow
+- Agent moze poprosic miniona: minion_task(task: "Sprawdz w playbooku jak...")
+- Hot-reload: vault_write do playbook/vault_map flaguje _playbookDirty
+
+**Odznaczono takze:** Zmiana domyslnego modelu embeddingów (user ogarnal samodzielnie)
+
+**Build:** 6.6MB - SUKCES
+
+**Wersja po sesji:** 1.0.4
+
+**PLAN.md stan:** 77/263 (29%), FAZA 2 KOMPLETNA (2.1-2.5 DONE)
+
+**Nastepne kroki:**
+- Test w Obsidianie: reload, sprawdzenie czy playbook.md/vault_map.md zostaly utworzone
+- FAZA 3: Agent Manager + Creator
+- Stabilnosc codziennego uzytku
+
+---
+
+## 2026-02-22 (sesja 20) - master_task: 3 tryby wywolania (kontrola miniona)
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Rozszerzenie + testy
+
+**Co zrobiono:**
+
+### master_task: 3 tryby wywolania
+
+Uzytkownik zauwazyl ze minion w master_task zbiera za malo kontekstu (3-4 zrodla) i agent nie ma kontroli nad procesem. Dodano 2 nowe parametry:
+
+**MasterTaskTool.js:**
+- `skip_minion` (boolean) - agent pomija miniona i sam dostarcza kontekst w polu `context`
+- `minion_instructions` (string) - agent mowi minionowi JAK szukac (np. "Przeszukaj minimum 10 notatek z folderu Projects/")
+- Logika: jesli skip_minion=true → minion sie nie odpala, jesli minion_instructions podane → zastepuja domyslny prompt
+- Return value: `minion_skipped` field + odpowiedni `minion_context` message
+
+**Agent.js system prompt:**
+- Przepisana sekcja MASTER (EKSPERT) - zamiast jednego sposobu, teraz 3 tryby:
+  - Tryb 1 (domyslny): master_task(task) → minion auto-zbiera
+  - Tryb 2 (instrukcje): master_task(task, minion_instructions) → minion szuka wg wskazowek
+  - Tryb 3 (skip): master_task(task, context, skip_minion: true) → agent sam dostarcza dane
+- Konkretne przyklady uzycia kazdego trybu
+- Instrukcje KIEDY uzyc ktory tryb
+
+### Testy w Obsidianie (Jaskier)
+
+Jaskier **sam z siebie** przetestowal wszystkie 3 tryby:
+
+1. **Tryb 1** (domyslny): `minion_skipped: false`, `context_gathered: true` - minion zbieralz vaulta
+2. **Tryb 2** (instrukcje): `minion_skipped: false`, instrukcje dotarly do miniona (1 plik z Projects/ + dane z memory)
+3. **Tryb 3** (skip): `minion_skipped: true`, `minion_context: "(pominiety)"` - Jaskier sam wkleil fragment WIZJA.md, Master dostal precyzyjny kontekst
+
+**Kluczowa obserwacja:** Tryb 3 dal najlepszy wynik - agent sam przygotowujacy kontekst > automatyczny minion. To potwierdza intuicje uzytkownika.
+
+**Pliki zmienione:**
+- `src/mcp/MasterTaskTool.js` - 2 nowe parametry (skip_minion, minion_instructions), zmiana logiki miniona
+- `src/agents/Agent.js` - przepisana sekcja MASTER w system prompcie (3 tryby z przykladami)
+
+**Build:** 6.6MB - SUKCES
+
+**Decyzje podjete:**
+- Agent powinien miec pelna kontrole nad master_task flow (nie tylko auto-pilot)
+- 3 tryby daja elastycznosc: lazy (domyslny), precise (instrukcje), manual (skip)
+- Minion szuka za plytko (3-4 zrodla) - to kwestia tuningu, nie architektury
+
+**Nastepne kroki:**
+- Tuning miniona (wiecej iteracji, lepszy prompt w minion.md)
+- FAZA 2.5: Playbook + Vault Map per agent
+- Stabilnosc codziennego uzytku
+
+---
+
+## 2026-02-22 (sesja 19) - FAZA 2.4: Architektura 4 modeli + bezpieczenstwo kluczy API
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja
+
+**Co zrobiono:**
+
+### Bezpieczenstwo kluczy API (Krok 1)
+- `keySanitizer.js` - nowy utility: isProtectedPath() blokuje dostepu do .smart-env/, data.json, .env
+- VaultReadTool, VaultListTool, VaultWriteTool - guard na poczatku execute(), blokuje odczyt/zapis/listowanie plikow konfiguracji
+- MemoryExtractor.js - nowa sekcja BEZPIECZENSTWO w prompcie ekstrakcji: "NIGDY nie wyciagaj kluczy API, hasel, tokenow"
+
+### Reorganizacja ustawien (Krok 2)
+- Kompletne przepisanie obsek_settings_tab.js (~400 linii)
+- 6 sekcji: Dostawcy AI, Modele (4 sloty), Embedding, Pamiec, RAG, Informacje
+- Sekcja Dostawcy AI: 8 platform (6 API + 2 lokalne), kazda z polem klucza/adresu, statusem, show/hide toggle
+- Sekcja Modele: 4 sloty (Main, Minion, Master, Embedding) - dropdown platformy + pole modelu
+- Przycisk "Re-indeksuj vault" w sekcji Embedding
+
+### Master model + master_task (Krok 3)
+- MasterTaskTool.js - nowy MCP tool (~120 linii po refaktorze)
+- Flow: Minion zbiera kontekst → Agent buduje prompt → Master odpowiada → prosto do usera
+- Graceful fallback: brak Mastera → blad z instrukcja konfiguracji
+- Rejestracja: 13. MCP tool (main.js, MCPClient.js)
+- System prompt agenta: sekcja MASTER (EKSPERT) z instrukcjami kiedy uzywac
+- ToolCallDisplay: "Konsultacja z ekspertem" (polska etykieta)
+- Typing indicator: "Konsultuje z ekspertem..."
+
+### Per-agent model overrides (Krok 4)
+- Agent.js: nowe pole `models` z override'ami per rola (main/minion/master)
+- yamlParser.js: walidacja pola models w schemacie agenta
+- modelResolver.js - nowy centralny utility (~110 linii)
+  - createModelForRole(plugin, role, agent, minionConfig)
+  - Resolution chain: agent.models.{role} → global obsek → SC platform → null
+  - Cache z invalidacja, klucze API ZAWSZE z globalnej puli
+- MasterTaskTool.js i MinionTaskTool.js: zamienione lokalne _createModel na modelResolver
+- chat_view.js: _getMinionModel() deleguje do modelResolver
+
+### Build + wersja
+- Build: 6.6MB (rozmiar bez zmian)
+- Version bump: 1.0.2 → 1.0.3
+- MCP tools: 13 total (12 + master_task)
+
+**Nowe pliki:** keySanitizer.js, MasterTaskTool.js, modelResolver.js
+**Zmodyfikowane pliki:** VaultReadTool, VaultListTool, VaultWriteTool, MemoryExtractor, obsek_settings_tab, main.js, MCPClient, ToolCallDisplay, chat_view, Agent.js, yamlParser, MinionTaskTool, manifest.json, package.json
+
+---
+
+## 2026-02-22 (sesja 18) - Planowanie: 4 modele, rozszerzony chat, multimodal + audyt
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Czyste planowanie/dokumentacja - ZERO zmian w kodzie
+
+**Co zrobiono:**
+
+### Architektura 4 modeli + Embedding
+- Zaprojektowano architekture 4 modeli AI: Main (rozmowa), Minion (tlo), Master (geniusz), Embedding (wektory)
+- Master model: drogie, potezne modele (Opus, DeepSeek Reasoner R1) do zlozonych zadan
+- Embedding model: oddzielny od chat modelu, dedykowany do wektorow (lokal lub API)
+- Dodano do WIZJA.md sekcja 5 "Architektura AI" (rozbudowana z "Architektura 4 modeli")
+- Dodano do PLAN.md: FAZA 2.5 Embedding model, FAZA 9 Master model
+
+### Rozszerzony chat (FAZA 5)
+- PLAN.md FAZA 5 przemianowana z "INLINE + CREATION PLANS" na "ROZSZERZONY CHAT + INLINE"
+- Nowe podsekcje w PLAN.md:
+  - 5.3 Todo listy w chacie (5 checkboxow) - interaktywne listy zadan w odpowiedziach AI
+  - 5.4 Extended thinking (5 checkboxow) - wyswietlanie reasoning tokens (DeepSeek/Anthropic/OpenAI)
+  - 5.5 Animacje i UI chatu (5 checkboxow) - typing effect, smooth scroll, progress bary
+- WIZJA.md sekcja 11 przebudowana z "Creation Plans" na "Rozszerzony chat" z mockupami ASCII
+
+### Multimodal (FAZA 14)
+- PLAN.md FAZA 14 rozbudowana z 3 do 6 podsekcji:
+  - 14.1 Grafika (rozbudowana)
+  - 14.2 Image input - zdjecia w chacie (5 checkboxow)
+  - 14.3 Video input (5 checkboxow)
+  - 14.4 Voice - rozmowa glosowa (5 checkboxow)
+  - 14.5 Transkrypcja audio (4 checkboxy)
+  - 14.6 Muzyka (rozbudowana)
+- WIZJA.md sekcja 14 calkowicie przebudowana z lakonicznego opisu na szczegolowa wizje z przykladami
+
+### Audyt spojnosci WIZJA.md + PLAN.md
+Znaleziono i naprawiono 13 problemow:
+- Data WIZJA.md: sesja 11 -> sesja 18
+- Literowka: "glebokeiego" -> "glebokiego"
+- Sciezka skilli: per-agent -> centralna biblioteka
+- Lista agentow: Iris -> Dexter + Ezra (faktyczne)
+- Diagram architektury: kompletna przebudowa (Master model, nowe UI, MCP tools, SKILLS+MINIONS)
+- Milestones sekcja 20: przepisane aby odzwierciedlac faktyczny stan
+- PLAN dependency diagram: stara nazwa FAZY 5 -> nowa
+- Permission preset: "YOLO" -> "Full" (spojnosc)
+- Sekcja 5 przeladowana -> tytulem "Architektura AI" + separatory
+- FAZA 3.2: +checkbox tworzenie agenta przez rozmowe z Jaskierem
+- FAZA 6.1: +pomoc w konfiguracji minion modelu
+- Tabela podsumowania: 54/259 (21%)
+- Daty sekcji 21
+
+**Pliki zmienione:**
+- `WIZJA.md` - sekcje 3, 4, 5, 8, 11, 14, 19, 20, 21 (rozbudowa + poprawki spojnosci)
+- `PLAN.md` - FAZA 2.5, 3.2, 5, 6.1, 9, 14 + tabela + diagram (rozbudowa + poprawki)
+- `STATUS.md` - zaktualizowany do sesji 18
+- `MEMORY.md` - zaktualizowane statystyki
+
+**Decyzje podjete:**
+- Nowe funkcje dodawane do ISTNIEJACYCH faz (nie tworzenie nowych) - zachowanie spojnosci planu
+- 4 modele AI to docelowa architektura (Main, Minion, Master, Embedding)
+- Extended thinking wyswietlane w zwijanych blokach (nie inline w odpowiedzi)
+- Multimodal = daleka przyszlosc (v2.0+) ale warto miec plan
+
+**Nastepne kroki:**
+- FAZA 2.4: Playbook + Vault Map (implementacja)
+- FAZA 2.5: Embedding model (oddzielny od chat modelu)
+- Dalsze testy stabilnosci codziennego uzytku
+
+---
+
 ## 2026-02-21 (sesja 17) - Testy miniona + fixy + copy buttons
 
 **Sesja z:** Claude Code (Opus 4.6)
@@ -69,11 +498,23 @@ Przetestowano minion_task w Obsidianie. Kazdy test ujawnil problem, kazdy napraw
 **Uwaga usera na koniec:**
 - Agent moze jeszcze lepiej formulowac komendy dla miniona - do dalszego dopracowania przy nastepnych testach
 
+### Fix 4: AgentManager.js - toggle "Pamiec w prompcie" nie dzialal
+- Problem: `getActiveSystemPromptWithMemory()` uzywal `this.env?.settings?.obsek` ale AgentManager nie ma `this.env`
+- Fix: zmiana na `this.settings?.obsek?.injectMemoryToPrompt`
+- Efekt: toggle w ustawieniach teraz faktycznie wlacza/wylacza pamiec w prompcie
+- Znalezione przez code review sesji 12-17 (weryfikacja calego commita)
+
+### Dokumentacja: playbook + vault_map w WIZJA.md i PLAN.md
+- WIZJA.md sekcja 3: nowa podsekcja "3 kluczowe pliki agenta" (brain.md, playbook.md, vault_map.md)
+- WIZJA.md sekcja 5: nowa podsekcja "Minion jako bibliotekarz" (flow krok po kroku)
+- PLAN.md: nowa sekcja 2.4 Playbook + Vault Map (10 checkboxow)
+- Diagram architektury i sekcja 21 zaktualizowane
+
 **Build:** 6.6MB - SUKCES
 
 **Nastepne kroki:**
 - Dalsze testy minion_task z roznymi pytaniami
-- Ewentualne dopracowanie system promptu agenta (jak formuluje komendy)
+- Implementacja playbook.md + vault_map.md (PLAN.md 2.4)
 - Stabilnosc codziennego uzytku
 
 ---

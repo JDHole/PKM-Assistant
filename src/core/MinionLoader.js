@@ -355,8 +355,9 @@ export class MinionLoader {
                 await this.vault.adapter.mkdir(MINIONS_PATH);
             }
 
-            // Write each starter minion
-            for (const minion of STARTER_MINIONS) {
+            // Write only jaskier-prep on fresh install (other minions are templates for custom agents)
+            const freshInstallMinions = STARTER_MINIONS.filter(m => m.name === 'jaskier-prep');
+            for (const minion of freshInstallMinions) {
                 const folderPath = `${MINIONS_PATH}/${minion.folder}`;
                 const filePath = `${folderPath}/minion.md`;
 
@@ -364,7 +365,7 @@ export class MinionLoader {
                 await this.vault.adapter.write(filePath, minion.content);
             }
 
-            console.log(`[MinionLoader] Created ${STARTER_MINIONS.length} starter minions`);
+            console.log(`[MinionLoader] Created ${freshInstallMinions.length} starter minion(s)`);
         } catch (e) {
             console.error('[MinionLoader] Error creating starter minions:', e);
         }

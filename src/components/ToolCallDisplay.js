@@ -24,6 +24,11 @@ export function createToolCallDisplay(toolCall) {
         skill_list:      { icon: '📚', label: 'Lista umiejętności' },
         skill_execute:   { icon: '🎯', label: 'Aktywacja skilla' },
         minion_task:     { icon: '🔧', label: 'Zadanie miniona' },
+        master_task:     { icon: '🧠', label: 'Konsultacja z ekspertem' },
+        agent_message:   { icon: '💬', label: 'Wiadomość do agenta' },
+        agent_delegate:  { icon: '🤝', label: 'Propozycja delegacji' },
+        chat_todo:       { icon: '📋', label: 'Lista zadań' },
+        plan_action:     { icon: '📋', label: 'Plan działania' },
     };
     const info = TOOL_INFO[toolCall.name] || { icon: '🔧', label: toolCall.name };
     header.createSpan({ cls: 'tool-call-icon', text: info.icon });

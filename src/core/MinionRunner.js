@@ -38,7 +38,38 @@ export class MinionRunner {
         const startTime = Date.now();
 
         try {
-            const systemPrompt = this._buildAutoPrepPrompt(agent, minionConfig);
+            // Read playbook + vault_map for the agent (injected into minion context)
+            const playbookManager = this.plugin?.agentManager?.playbookManager;
+            let playbookContent = '';
+            let vaultMapContent = '';
+            if (playbookManager) {
+                playbookContent = await playbookManager.readPlaybook(agent.name);
+                vaultMapContent = await playbookManager.readVaultMap(agent.name);
+            }
+
+            // Read inbox for unread messages (AI-unread: NOWA or USER_READ)
+            let inboxContent = '';
+            const komunikator = this.plugin?.agentManager?.komunikatorManager;
+            if (komunikator) {
+                try {
+                    const inbox = await komunikator.readInbox(agent.name);
+                    const unread = inbox.filter(m => m.status === 'NOWA' || m.status === 'USER_READ');
+                    if (unread.length > 0) {
+                        inboxContent = unread.map(m =>
+                            `Od: ${m.from} | Temat: ${m.subject} | ${m.date}\n${m.body.slice(0, 500)}`
+                        ).join('\n---\n');
+                        // Mark all as AI-read
+                        for (const m of unread) {
+                            await komunikator.markAsAIRead(agent.name, m.id);
+                        }
+                        this.plugin?.agentManager?._emit('communicator:message_read');
+                    }
+                } catch (e) {
+                    console.warn('[MinionRunner] Failed to read inbox:', e);
+                }
+            }
+
+            const systemPrompt = this._buildAutoPrepPrompt(agent, minionConfig, playbookContent, vaultMapContent, inboxContent);
             const tools = this._getMinionTools(minionConfig.tools);
 
             const messages = [
@@ -118,9 +149,14 @@ export class MinionRunner {
 
     /**
      * Build system prompt for auto-prep mode.
-     * Uses the stored prompt from minion.md.
+     * Uses the stored prompt from minion.md + playbook + vault_map.
+     * @param {Object} agent
+     * @param {Object} minionConfig
+     * @param {string} [playbookContent] - Content of playbook.md
+     * @param {string} [vaultMapContent] - Content of vault_map.md
+     * @param {string} [inboxContent] - Unread inbox messages
      */
-    _buildAutoPrepPrompt(agent, minionConfig) {
+    _buildAutoPrepPrompt(agent, minionConfig, playbookContent = '', vaultMapContent = '', inboxContent = '') {
         const parts = [];
 
         parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name} ${agent.emoji}.`);
@@ -130,6 +166,24 @@ export class MinionRunner {
         // Full prompt from minion.md (the detailed instructions)
         if (minionConfig.prompt) {
             parts.push(minionConfig.prompt);
+        }
+
+        // Inject playbook (agent's instruction manual)
+        if (playbookContent) {
+            parts.push('');
+            parts.push('--- PLAYBOOK AGENTA (instrukcje i procedury) ---');
+            parts.push(playbookContent);
+            parts.push('--- Koniec playbooka ---');
+        }
+
+        // Inject vault_map (agent's terrain map)
+        if (vaultMapContent) {
+            parts.push('');
+            parts.push('--- VAULT MAP (mapa vaulta) ---');
+            parts.push(vaultMapContent);
+            parts.push('--- Koniec vault map ---');
+            parts.push('');
+            parts.push('Użyj vault map żeby wiedzieć GDZIE szukać informacji.');
         }
 
         // Add skill info if agent has skills
@@ -147,6 +201,15 @@ export class MinionRunner {
                     parts.push('SUGEROWANY SKILL: {nazwa_skilla}');
                 }
             }
+        }
+
+        // Inject unread inbox messages
+        if (inboxContent) {
+            parts.push('');
+            parts.push('--- NOWE WIADOMOŚCI W INBOXIE ---');
+            parts.push(inboxContent);
+            parts.push('--- Koniec wiadomości ---');
+            parts.push('Poinformuj agenta o nowych wiadomościach w jego inboxie.');
         }
 
         return parts.join('\n');
