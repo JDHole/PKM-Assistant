@@ -7,6 +7,7 @@
  * Both modes use streamToCompleteWithTools for tool-calling loops.
  */
 import { streamToCompleteWithTools } from '../memory/streamHelper.js';
+import { log } from '../utils/Logger.js';
 
 /** Max characters for tool results (truncate to save tokens) */
 const MAX_TOOL_RESULT_LENGTH = 3000;
@@ -36,6 +37,8 @@ export class MinionRunner {
      */
     async runAutoPrep(userMessage, agent, minionConfig, minionModel) {
         const startTime = Date.now();
+        log.group('Minion', `Auto-prep: ${minionConfig.name} dla ${agent.name}`);
+        log.debug('Minion', `User message: "${userMessage.slice(0, 100)}..."`);
 
         try {
             // Read playbook + vault_map for the agent (injected into minion context)
@@ -69,7 +72,7 @@ export class MinionRunner {
                 }
             }
 
-            const systemPrompt = this._buildAutoPrepPrompt(agent, minionConfig, playbookContent, vaultMapContent, inboxContent);
+            const systemPrompt = await this._buildAutoPrepPrompt(agent, minionConfig, playbookContent, vaultMapContent, inboxContent);
             const tools = this._getMinionTools(minionConfig.tools);
 
             const messages = [
@@ -85,14 +88,20 @@ export class MinionRunner {
                 { maxIterations: minionConfig.max_iterations || 3 }
             );
 
+            log.info('Minion', `Auto-prep DONE: ${result.toolsUsed?.length || 0} tools, ${(result.finalText || '').length} znaków`);
+            log.timing('Minion', 'Auto-prep', startTime);
+            log.groupEnd();
             return {
                 context: result.finalText || '',
                 toolsUsed: result.toolsUsed || [],
-                duration: Date.now() - startTime
+                toolCallDetails: result.toolCallDetails || [],
+                duration: Date.now() - startTime,
+                usage: result.usage || null,
             };
         } catch (error) {
-            console.error('[MinionRunner] Auto-prep failed:', error);
-            return { context: '', toolsUsed: [], duration: Date.now() - startTime };
+            log.error('Minion', 'Auto-prep FAIL:', error);
+            log.groupEnd();
+            return { context: '', toolsUsed: [], toolCallDetails: [], duration: Date.now() - startTime, usage: null };
         }
     }
 
@@ -110,6 +119,8 @@ export class MinionRunner {
      */
     async runTask(taskPrompt, agent, minionConfig, minionModel, options = {}) {
         const startTime = Date.now();
+        log.group('Minion', `Task: ${minionConfig.name} dla ${agent.name}`);
+        log.debug('Minion', `Zadanie: "${taskPrompt.slice(0, 200)}..."`);
 
         try {
             const systemPrompt = this._buildTaskPrompt(agent, minionConfig);
@@ -136,14 +147,20 @@ export class MinionRunner {
                 { maxIterations: minionConfig.max_iterations || 3 }
             );
 
+            log.info('Minion', `Task DONE: ${response.toolsUsed?.length || 0} tools, ${(response.finalText || '').length} znaków`);
+            log.timing('Minion', 'Task', startTime);
+            log.groupEnd();
             return {
                 result: response.finalText || '',
                 toolsUsed: response.toolsUsed || [],
-                duration: Date.now() - startTime
+                toolCallDetails: response.toolCallDetails || [],
+                duration: Date.now() - startTime,
+                usage: response.usage || null,
             };
         } catch (error) {
-            console.error('[MinionRunner] Task failed:', error);
-            return { result: `Błąd miniona: ${error.message}`, toolsUsed: [], duration: Date.now() - startTime };
+            log.error('Minion', 'Task FAIL:', error);
+            log.groupEnd();
+            return { result: `Błąd miniona: ${error.message}`, toolsUsed: [], toolCallDetails: [], duration: Date.now() - startTime, usage: null };
         }
     }
 
@@ -156,7 +173,7 @@ export class MinionRunner {
      * @param {string} [vaultMapContent] - Content of vault_map.md
      * @param {string} [inboxContent] - Unread inbox messages
      */
-    _buildAutoPrepPrompt(agent, minionConfig, playbookContent = '', vaultMapContent = '', inboxContent = '') {
+    async _buildAutoPrepPrompt(agent, minionConfig, playbookContent = '', vaultMapContent = '', inboxContent = '') {
         const parts = [];
 
         parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name} ${agent.emoji}.`);
@@ -212,6 +229,23 @@ export class MinionRunner {
             parts.push('Poinformuj agenta o nowych wiadomościach w jego inboxie.');
         }
 
+        // Inject Agora context (shared knowledge base)
+        const agoraManager = this.plugin?.agoraManager;
+        if (agoraManager) {
+            try {
+                const agoraContent = await agoraManager.buildMinionContext(agent);
+                if (agoraContent) {
+                    parts.push('');
+                    parts.push('--- AGORA (Baza Wiedzy o Użytkowniku) ---');
+                    parts.push(agoraContent);
+                    parts.push('--- Koniec Agory ---');
+                    parts.push('Wykorzystaj wiedzę z Agory do lepszego przygotowania kontekstu.');
+                }
+            } catch (e) {
+                // Agora is optional, don't break auto-prep
+            }
+        }
+
         return parts.join('\n');
     }
 
@@ -261,6 +295,7 @@ export class MinionRunner {
      * @returns {Promise<string>} Tool result as string
      */
     async _executeTool(toolCall) {
+        log.debug('Minion', `_executeTool: ${toolCall.name}`);
         const tool = this.toolRegistry.getTool(toolCall.name);
         if (!tool) return `Błąd: narzędzie "${toolCall.name}" nie istnieje`;
 

@@ -4,7 +4,7 @@
  */
 export async function register_smart_connections_codeblock(plugin) {
   plugin.registerMarkdownCodeBlockProcessor(
-    'smart-connections',
+    'pkm-connections',
     async (cb_content, container, mpp_ctx) => {
       container.empty();
       container.createEl('span', { text: 'Loading…' });
@@ -25,7 +25,7 @@ export async function register_smart_connections_codeblock(plugin) {
         const connections_list = entity.connections;
         if(!connections_list?.env) {
           container.empty();
-          container.createEl('p', { text: 'Smart Environment / Connections loading…' });
+          container.createEl('p', { text: 'Ładowanie połączeń...' });
           // retry button
           const retry_button = container.createEl('button', { text: 'Retry' });
           retry_button.addEventListener('click', () => {

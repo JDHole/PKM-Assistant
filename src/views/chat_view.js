@@ -1,5 +1,5 @@
 import { SmartItemView } from "obsidian-smart-env/views/smart_item_view.js";
-import { MarkdownRenderer } from 'obsidian';
+import { MarkdownRenderer, Notice } from 'obsidian';
 import { RollingWindow } from '../memory/RollingWindow.js';
 import { SessionManager } from '../memory/SessionManager.js';
 import { RAGRetriever } from '../memory/RAGRetriever.js';
@@ -9,10 +9,16 @@ import { Summarizer } from '../memory/Summarizer.js';
 import chat_view_styles from './chat_view.css' with { type: 'css' };
 import { createToolCallDisplay } from '../components/ToolCallDisplay.js';
 import { createThinkingBlock, updateThinkingBlock } from '../components/ThinkingBlock.js';
+import { createSubAgentBlock, createPendingSubAgentBlock } from '../components/SubAgentBlock.js';
 import { createChatTodoList } from '../components/ChatTodoList.js';
 import { createPlanArtifact } from '../components/PlanArtifact.js';
+import { TodoEditModal } from './TodoEditModal.js';
+import { PlanEditModal } from './PlanEditModal.js';
+import { log } from '../utils/Logger.js';
 import { openPermissionsModal } from './PermissionsModal.js';
 import { createModelForRole, clearModelCache } from '../utils/modelResolver.js';
+import { TokenTracker } from '../utils/TokenTracker.js';
+import { countTokens } from '../utils/tokenCounter.js';
 
 /**
  * ChatView - Main chat interface for Obsek
@@ -39,6 +45,9 @@ export class ChatView extends SmartItemView {
 
         // Session timeout tracking (detect return after long inactivity)
         this.lastMessageTimestamp = null;
+
+        // Token usage tracking (per-session, per-role)
+        this.tokenTracker = new TokenTracker();
     }
 
     async initSessionManager() {
@@ -129,26 +138,49 @@ export class ChatView extends SmartItemView {
 
         this.autosaveStatus = sessionControls.createDiv({ cls: 'autosave-status', text: '' });
 
-        // Token counter
-        header.createDiv({
+        // Token counter (clickable — opens overlay panel)
+        const tokenWrapper = header.createDiv({ cls: 'token-wrapper' });
+        const tokenCounter = tokenWrapper.createDiv({
             cls: 'token-counter',
             text: '0 / 100 000'
         });
+        tokenCounter.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = tokenWrapper.querySelector('.token-panel');
+            if (panel) panel.classList.toggle('hidden');
+        });
         this.updateTokenCounter();
 
-        // Create main layout
-        const chat_container = container.createDiv({ cls: 'pkm-chat-container' });
+        // Token usage panel (overlay, hidden by default)
+        const tokenPanel = tokenWrapper.createDiv({ cls: 'token-panel hidden' });
+        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-main' });
+        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-minion' });
+        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-master' });
+
+        // Close panel on outside click
+        document.addEventListener('click', (e) => {
+            if (!tokenWrapper.contains(e.target)) {
+                tokenPanel.classList.add('hidden');
+            }
+        });
+
+        // Create main layout: body (row) → main (column) + toolbar
+        const chatBody = container.createDiv({ cls: 'pkm-chat-body' });
+        const chatMain = chatBody.createDiv({ cls: 'pkm-chat-main' });
 
         // Messages area
-        this.messages_container = chat_container.createDiv({ cls: 'pkm-chat-messages' });
+        this.messages_container = chatMain.createDiv({ cls: 'pkm-chat-messages' });
         this.render_messages();
 
+        // Bottom panel (unified: skills + input)
+        const bottomPanel = chatMain.createDiv({ cls: 'pkm-chat-bottom-panel' });
+
         // Skill buttons bar
-        this.skillButtonsBar = chat_container.createDiv({ cls: 'pkm-skill-buttons' });
+        this.skillButtonsBar = bottomPanel.createDiv({ cls: 'pkm-skill-buttons' });
         this.renderSkillButtons();
 
         // Input area
-        const input_container = chat_container.createDiv({ cls: 'pkm-chat-input-container' });
+        const input_container = bottomPanel.createDiv({ cls: 'pkm-chat-input-container' });
         const input_wrapper = input_container.createDiv({ cls: 'pkm-chat-input-wrapper' });
 
         this.input_area = input_wrapper.createEl('textarea', {
@@ -170,6 +202,10 @@ export class ChatView extends SmartItemView {
             cls: 'pkm-chat-stop-button hidden'
         });
         this.stop_button.textContent = '■';
+
+        // Right toolbar
+        this.toolbar = chatBody.createDiv({ cls: 'pkm-chat-toolbar' });
+        this._renderToolbar();
 
         // Event listeners
         this.input_area.addEventListener('input', this.handleInputResize.bind(this));
@@ -193,18 +229,67 @@ export class ChatView extends SmartItemView {
     }
 
     updateTokenCounter() {
+        const el = this.container?.querySelector('.token-counter');
+        if (!el) return;
+
+        // Primary: show TokenTracker total (sum of ALL in+out across all roles)
+        const tracked = this.tokenTracker.getSessionTotal();
+        if (tracked.total > 0) {
+            el.textContent = `↑${tracked.input.toLocaleString('pl-PL')} ↓${tracked.output.toLocaleString('pl-PL')}`;
+        } else {
+            // Fallback: rollingWindow context estimate (API doesn't return usage)
+            const current = this.rollingWindow.getCurrentTokenCount();
+            const max = this.rollingWindow.maxTokens;
+            el.textContent = `~${current.toLocaleString('pl-PL')} / ${max.toLocaleString('pl-PL')}`;
+        }
+
+        // Visual warning if close to context limit
         const current = this.rollingWindow.getCurrentTokenCount();
         const max = this.rollingWindow.maxTokens;
-        const el = this.container.querySelector('.token-counter');
-        if (el) {
-            el.textContent = `${current.toLocaleString('pl-PL')} / ${max.toLocaleString('pl-PL')}`;
+        if (current > max * 0.9) {
+            el.addClass('token-warning');
+        } else {
+            el.removeClass('token-warning');
+        }
+    }
 
-            // Visual warning if close to limit (optional)
-            if (current > max * 0.9) {
-                el.addClass('token-warning');
-            } else {
-                el.removeClass('token-warning');
+    /** Update the expandable token usage panel (overlay) */
+    _updateTokenPanel() {
+        try {
+            const mainRow = this.container?.querySelector('.token-panel-main');
+            const minionRow = this.container?.querySelector('.token-panel-minion');
+            const masterRow = this.container?.querySelector('.token-panel-master');
+            if (!mainRow) return;
+
+            const s = this.tokenTracker.getSessionTotal();
+            const fmt = (n) => n.toLocaleString('pl-PL');
+
+            // Main
+            const m = s.byRole?.main || { input: 0, output: 0 };
+            mainRow.textContent = (m.input + m.output > 0)
+                ? `Main: ↑${fmt(m.input)} ↓${fmt(m.output)}`
+                : 'Main: brak danych z API';
+
+            // Minion
+            if (minionRow) {
+                const mn = s.byRole?.minion || { input: 0, output: 0 };
+                minionRow.textContent = (mn.input + mn.output > 0)
+                    ? `Minion: ↑${fmt(mn.input)} ↓${fmt(mn.output)}`
+                    : 'Minion: nie użyty';
             }
+
+            // Master
+            if (masterRow) {
+                const ms = s.byRole?.master || { input: 0, output: 0 };
+                masterRow.textContent = (ms.input + ms.output > 0)
+                    ? `Master: ↑${fmt(ms.input)} ↓${fmt(ms.output)}`
+                    : 'Master: nie użyty';
+            }
+
+            // Also update the main counter
+            this.updateTokenCounter();
+        } catch (e) {
+            console.warn('[Obsek] _updateTokenPanel error:', e);
         }
     }
 
@@ -300,6 +385,402 @@ export class ChatView extends SmartItemView {
         }
     }
 
+    /**
+     * Auto-save artifact to disk via ArtifactManager (fire-and-forget).
+     */
+    _autoSaveArtifact(type, id, data) {
+        if (!data || !this.plugin.artifactManager) return;
+        const createdBy = data.createdBy
+            || this.plugin?.agentManager?.getActiveAgent()?.name
+            || 'unknown';
+        data.createdBy = createdBy;
+        this.plugin.artifactManager.save({
+            type, id, title: data.title || '', data, createdBy
+        }).catch(e => console.warn('[ChatView] Artifact auto-save failed:', e));
+    }
+
+    /**
+     * Build reusable plan callbacks object for createPlanArtifact.
+     */
+    _buildPlanCallbacks() {
+        return {
+            onApprove: (planId) => {
+                const plan = this.plugin._planStore?.get(planId);
+                if (plan) {
+                    plan.approved = true;
+                    this._autoSaveArtifact('plan', planId, plan);
+                    this.input_area.value = `ZATWIERDŹ PLAN: ${planId} — Wykonaj kroki po kolei.`;
+                    this.send_message();
+                }
+            },
+            onEditStep: (planId, idx, changes) => {
+                const plan = this.plugin._planStore?.get(planId);
+                if (!plan?.steps[idx]) return;
+                if (changes.label !== undefined) plan.steps[idx].label = changes.label;
+                if (changes.description !== undefined) plan.steps[idx].description = changes.description;
+                this._autoSaveArtifact('plan', planId, plan);
+            },
+            onAddStep: (planId, label) => {
+                this._autoSaveArtifact('plan', planId, this.plugin._planStore?.get(planId));
+            },
+            onDeleteStep: (planId, idx) => {
+                this._autoSaveArtifact('plan', planId, this.plugin._planStore?.get(planId));
+            },
+            onStatusChange: (planId, idx, newStatus) => {
+                this._autoSaveArtifact('plan', planId, this.plugin._planStore?.get(planId));
+            },
+            onComment: (planId, idx, text) => {
+                const plan = this.plugin._planStore?.get(planId);
+                const stepLabel = plan?.steps[idx]?.label || `krok ${idx + 1}`;
+                this.input_area.value = `[Komentarz do "${stepLabel}"]: ${text}`;
+                this.input_area.focus();
+            },
+            onSubtaskToggle: (planId, stepIdx, subIdx, done) => {
+                const plan = this.plugin._planStore?.get(planId);
+                if (plan?.steps[stepIdx]?.subtasks?.[subIdx]) {
+                    plan.steps[stepIdx].subtasks[subIdx].done = done;
+                    this._autoSaveArtifact('plan', planId, plan);
+                }
+            },
+            onAddSubtask: (planId, stepIdx, text) => {
+                this._autoSaveArtifact('plan', planId, this.plugin._planStore?.get(planId));
+            },
+            onDeleteSubtask: (planId, stepIdx, subIdx) => {
+                this._autoSaveArtifact('plan', planId, this.plugin._planStore?.get(planId));
+            },
+            onOpenModal: (planId) => {
+                new PlanEditModal(this.app, this.plugin, planId, (updatedPlan) => {
+                    // Re-render widget after modal save
+                    const container = this.messages_container?.querySelector(`[data-plan-id="${planId}"]`);
+                    if (container && updatedPlan) {
+                        const newWidget = createPlanArtifact(updatedPlan, this._buildPlanCallbacks());
+                        container.replaceWith(newWidget);
+                    }
+                }).open();
+            }
+        };
+    }
+
+    /**
+     * Build lightweight artifact context for system prompt.
+     * Returns null if no artifacts exist.
+     */
+    /**
+     * Oczko: build active note context for system prompt injection.
+     * Returns formatted string with title, frontmatter, and first ~500 tokens of content.
+     * Returns null if no markdown file is open or feature is disabled.
+     */
+    async _buildActiveNoteContext() {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== 'md') return null;
+
+        const lines = [`## Otwarta notatka: ${file.basename}`, `Ścieżka: ${file.path}`];
+
+        // Frontmatter from Obsidian's metadata cache (fast, no parsing)
+        try {
+            const cache = this.app.metadataCache.getFileCache(file);
+            const fm = cache?.frontmatter;
+            if (fm && Object.keys(fm).length > 0) {
+                const entries = Object.entries(fm)
+                    .filter(([k]) => k !== 'position')
+                    .map(([k, v]) => `  ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                    .join('\n');
+                if (entries) lines.push(`Frontmatter:\n${entries}`);
+            }
+        } catch (e) {
+            log.warn('Chat', 'Oczko: frontmatter read failed:', e);
+        }
+
+        // Content from Obsidian cache (fast)
+        try {
+            const raw = await this.app.vault.cachedRead(file);
+            let content = raw.replace(/^---\n[\s\S]*?\n---\n?/, '').trim();
+            if (content.length > 2000) {
+                content = content.slice(0, 2000) + '\n[...obcięto]';
+            }
+            if (content) lines.push(`Treść (początek):\n${content}`);
+        } catch (e) {
+            log.warn('Chat', 'Oczko: content read failed:', e);
+        }
+
+        return lines.join('\n');
+    }
+
+    _buildArtifactContext() {
+        const todoStore = this.plugin._chatTodoStore;
+        const planStore = this.plugin._planStore;
+        if ((!todoStore || todoStore.size === 0) && (!planStore || planStore.size === 0)) return null;
+
+        const lines = ['--- Istniejące artefakty (użyj tych ID zamiast tworzyć nowe) ---'];
+
+        if (todoStore?.size > 0) {
+            for (const [id, todo] of todoStore) {
+                const done = todo.items?.filter(i => i.done).length || 0;
+                const total = todo.items?.length || 0;
+                lines.push(`📋 TODO "${todo.title}" (id: ${id}) — ${done}/${total} gotowe`);
+            }
+        }
+        if (planStore?.size > 0) {
+            for (const [id, plan] of planStore) {
+                const done = plan.steps?.filter(s => s.status === 'done').length || 0;
+                const total = plan.steps?.length || 0;
+                const status = plan.approved ? 'zatwierdzony' : 'niezatwierdzony';
+                lines.push(`📝 PLAN "${plan.title}" (id: ${id}) — ${done}/${total} kroków, ${status}`);
+            }
+        }
+
+        lines.push('Gdy user odnosi się do istniejącego artefaktu, użyj powyższego ID. Nie twórz nowego jeśli pasujący już istnieje.');
+        return lines.join('\n');
+    }
+
+    /**
+     * Build reusable todo callbacks object for createChatTodoList.
+     */
+    _buildTodoCallbacks() {
+        return {
+            onToggle: (id, idx, done) => {
+                const todo = this.plugin._chatTodoStore?.get(id);
+                if (todo?.items[idx]) {
+                    todo.items[idx].done = done;
+                    this._autoSaveArtifact('todo', id, todo);
+                }
+            },
+            onEditItem: (id, idx, newText) => {
+                const todo = this.plugin._chatTodoStore?.get(id);
+                if (todo?.items[idx]) {
+                    todo.items[idx].text = newText;
+                    this._autoSaveArtifact('todo', id, todo);
+                }
+            },
+            onAddItem: (id) => {
+                this._autoSaveArtifact('todo', id, this.plugin._chatTodoStore?.get(id));
+            },
+            onDeleteItem: (id) => {
+                this._autoSaveArtifact('todo', id, this.plugin._chatTodoStore?.get(id));
+            },
+            onOpenModal: (id) => {
+                new TodoEditModal(this.app, this.plugin, id, (updatedTodo) => {
+                    const container = this.messages_container?.querySelector(`[data-todo-id="${id}"]`);
+                    if (container && updatedTodo) {
+                        const newWidget = createChatTodoList(updatedTodo, this._buildTodoCallbacks());
+                        container.replaceWith(newWidget);
+                    }
+                }).open();
+            }
+        };
+    }
+
+    /**
+     * Render the right toolbar with icon buttons.
+     */
+    _renderToolbar() {
+        if (!this.toolbar) return;
+        this.toolbar.empty();
+
+        // Artifact button
+        const artifactBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Artefakty sesji' } });
+        artifactBtn.textContent = '📦';
+        artifactBtn.addEventListener('click', () => this._toggleArtifactPanel());
+
+        // Skills toggle
+        const skillsBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Skille' } });
+        skillsBtn.textContent = '⚡';
+        skillsBtn.addEventListener('click', () => {
+            if (this.skillButtonsBar) {
+                const isHidden = this.skillButtonsBar.style.display === 'none';
+                this.skillButtonsBar.style.display = isHidden ? '' : 'none';
+                skillsBtn.classList.toggle('active', isHidden);
+            }
+        });
+
+        // Oczko (active note awareness) toggle
+        const oczkoBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Oczko — kontekst otwartej notatki' } });
+        oczkoBtn.textContent = '👁️';
+        if (this.env?.settings?.obsek?.enableOczko !== false) {
+            oczkoBtn.classList.add('active');
+        }
+        oczkoBtn.addEventListener('click', () => {
+            const obsek = this.env.settings.obsek || (this.env.settings.obsek = {});
+            const newValue = obsek.enableOczko === false;
+            obsek.enableOczko = newValue;
+            oczkoBtn.classList.toggle('active', newValue);
+            this.plugin.saveSettings();
+            log.debug('Chat', `Oczko toggled: ${newValue}`);
+        });
+
+        // Modes (future placeholder)
+        const modesBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn pkm-toolbar-btn-disabled', attr: { 'aria-label': 'Tryby (wkrótce)' } });
+        modesBtn.textContent = '⚙️';
+    }
+
+    /**
+     * Toggle the artifact panel overlay.
+     * Shows ALL artifacts (global, not session-bound).
+     */
+    _toggleArtifactPanel() {
+        if (this._artifactPanel) {
+            this._artifactPanel.remove();
+            this._artifactPanel = null;
+            return;
+        }
+
+        const panel = document.createElement('div');
+        panel.className = 'pkm-artifact-panel';
+
+        // Header
+        const header = panel.createDiv({ cls: 'pkm-artifact-panel-header' });
+        header.createSpan({ text: '📦 Artefakty' });
+        const closeBtn = header.createEl('button', { cls: 'pkm-artifact-panel-close', text: '×' });
+        closeBtn.addEventListener('click', () => this._toggleArtifactPanel());
+
+        // List
+        const list = panel.createDiv({ cls: 'pkm-artifact-panel-list' });
+        const todoStore = this.plugin._chatTodoStore;
+        const planStore = this.plugin._planStore;
+        let hasItems = false;
+
+        // --- TODO section ---
+        if (todoStore?.size > 0) {
+            list.createDiv({ cls: 'pkm-artifact-panel-section', text: '📋 Listy TODO' });
+            for (const [id, todo] of todoStore) {
+                hasItems = true;
+                const item = list.createDiv({ cls: 'pkm-artifact-panel-item' });
+                const info = item.createDiv({ cls: 'pkm-artifact-panel-item-info' });
+
+                const done = todo.items?.filter(i => i.done).length || 0;
+                const total = todo.items?.length || 0;
+                info.createSpan({ cls: 'pkm-artifact-panel-item-title', text: todo.title || 'Todo' });
+                info.createSpan({ cls: 'pkm-artifact-panel-item-progress', text: `${done}/${total}` });
+                if (todo.createdBy) {
+                    info.createSpan({ cls: 'pkm-artifact-panel-item-badge', text: todo.createdBy });
+                }
+
+                // Click → open modal
+                info.addEventListener('click', () => {
+                    new TodoEditModal(this.app, this.plugin, id, (updated) => {
+                        // Re-render widget in chat if exists
+                        const widget = this.messages_container?.querySelector(`[data-todo-id="${id}"]`);
+                        if (widget && updated) {
+                            widget.replaceWith(createChatTodoList(updated, this._buildTodoCallbacks()));
+                        }
+                        // Refresh panel
+                        this._toggleArtifactPanel();
+                        this._toggleArtifactPanel();
+                    }).open();
+                });
+
+                // Action buttons
+                const actions = item.createDiv({ cls: 'pkm-artifact-panel-item-actions' });
+
+                // Copy to vault as markdown
+                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', text: '📄', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                copyBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const md = `# ${todo.title}\n\n` + (todo.items || [])
+                        .map(i => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n') + '\n';
+                    const safeName = (todo.title || 'Todo').replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ _-]/g, '').trim();
+                    const path = `${safeName}.md`;
+                    await this.app.vault.adapter.write(path, md);
+                    new Notice(`Zapisano: ${path}`);
+                });
+
+                // Delete
+                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', text: '🗑️', attr: { 'aria-label': 'Usuń artefakt' } });
+                delBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    todoStore.delete(id);
+                    if (this.plugin.artifactManager) {
+                        await this.plugin.artifactManager.deleteById(id);
+                    }
+                    // Remove widget from chat if exists
+                    const widget = this.messages_container?.querySelector(`[data-todo-id="${id}"]`);
+                    if (widget) widget.remove();
+                    // Refresh panel
+                    this._toggleArtifactPanel();
+                    this._toggleArtifactPanel();
+                });
+            }
+        }
+
+        // --- PLAN section ---
+        if (planStore?.size > 0) {
+            list.createDiv({ cls: 'pkm-artifact-panel-section', text: '📝 Plany' });
+            for (const [id, plan] of planStore) {
+                hasItems = true;
+                const item = list.createDiv({ cls: 'pkm-artifact-panel-item' });
+                const info = item.createDiv({ cls: 'pkm-artifact-panel-item-info' });
+
+                const done = plan.steps?.filter(s => s.status === 'done').length || 0;
+                const total = plan.steps?.length || 0;
+                const icon = plan.approved ? '✅' : '📝';
+                info.createSpan({ cls: 'pkm-artifact-panel-item-title', text: `${icon} ${plan.title || 'Plan'}` });
+                info.createSpan({ cls: 'pkm-artifact-panel-item-progress', text: `${done}/${total}` });
+                if (plan.createdBy) {
+                    info.createSpan({ cls: 'pkm-artifact-panel-item-badge', text: plan.createdBy });
+                }
+
+                // Click → open modal
+                info.addEventListener('click', () => {
+                    new PlanEditModal(this.app, this.plugin, id, (updated) => {
+                        const widget = this.messages_container?.querySelector(`[data-plan-id="${id}"]`);
+                        if (widget && updated) {
+                            widget.replaceWith(createPlanArtifact(updated, this._buildPlanCallbacks()));
+                        }
+                        this._toggleArtifactPanel();
+                        this._toggleArtifactPanel();
+                    }).open();
+                });
+
+                // Action buttons
+                const actions = item.createDiv({ cls: 'pkm-artifact-panel-item-actions' });
+
+                // Copy to vault as markdown
+                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', text: '📄', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                copyBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    let md = `# ${plan.title}\n\n`;
+                    (plan.steps || []).forEach((s, i) => {
+                        const check = s.status === 'done' ? 'x' : ' ';
+                        md += `- [${check}] **${s.label}**`;
+                        if (s.description) md += ` — ${s.description}`;
+                        md += '\n';
+                        if (s.subtasks?.length > 0) {
+                            for (const sub of s.subtasks) {
+                                md += `  - [${sub.done ? 'x' : ' '}] ${sub.text}\n`;
+                            }
+                        }
+                    });
+                    const safeName = (plan.title || 'Plan').replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ _-]/g, '').trim();
+                    const path = `${safeName}.md`;
+                    await this.app.vault.adapter.write(path, md);
+                    new Notice(`Zapisano: ${path}`);
+                });
+
+                // Delete
+                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', text: '🗑️', attr: { 'aria-label': 'Usuń artefakt' } });
+                delBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    planStore.delete(id);
+                    if (this.plugin.artifactManager) {
+                        await this.plugin.artifactManager.deleteById(id);
+                    }
+                    const widget = this.messages_container?.querySelector(`[data-plan-id="${id}"]`);
+                    if (widget) widget.remove();
+                    this._toggleArtifactPanel();
+                    this._toggleArtifactPanel();
+                });
+            }
+        }
+
+        if (!hasItems) {
+            list.createDiv({ cls: 'pkm-artifact-panel-empty', text: 'Brak artefaktów' });
+        }
+
+        // Attach to chat body (relative parent)
+        this.toolbar.parentElement.appendChild(panel);
+        this._artifactPanel = panel;
+    }
+
     handleGlobalKeydown(e) {
         if (e.key === 'Escape' && this.is_generating) {
             e.preventDefault();
@@ -363,15 +844,19 @@ export class ChatView extends SmartItemView {
      */
     get_chat_model() {
         // Return cached model if available
-        if (this.env.smart_chat_model?.stream) return this.env.smart_chat_model;
+        if (this.env?.smart_chat_model?.stream) {
+            log.debug('Chat', `Model z cache: ${this.env.smart_chat_model.model_key || 'unknown'}`);
+            return this.env.smart_chat_model;
+        }
 
-        const settings = this.env.settings?.smart_chat_model;
+        const settings = this.env?.settings?.smart_chat_model;
+        if (!settings) return null; // env/settings not ready yet
 
         // Detect platform from setting or API keys
-        let platform = settings?.platform;
+        let platform = settings.platform;
         if (!platform) {
             for (const p of ['anthropic', 'openai', 'gemini', 'groq', 'open_router', 'deepseek', 'ollama']) {
-                if (settings?.[`${p}_api_key`] || p === 'ollama') { platform = p; break; }
+                if (settings[`${p}_api_key`] || p === 'ollama') { platform = p; break; }
             }
         }
         if (!platform) return null;
@@ -398,9 +883,10 @@ export class ChatView extends SmartItemView {
                 model_key: model_key,
             });
             this.env.smart_chat_model = chat_model;
+            log.model('main', platform, model_key);
             return chat_model;
         } catch (e) {
-            console.error('[Obsek] Error creating chat model:', e);
+            log.error('Chat', 'Tworzenie modelu FAIL:', e);
             return null;
         }
     }
@@ -424,6 +910,8 @@ export class ChatView extends SmartItemView {
     async send_message() {
         const text = this.input_area.value.trim();
         if (!text || this.is_generating) return;
+        const sendStart = Date.now();
+        log.group('Chat', `send_message: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
 
         // Detect return after long inactivity → consolidate + start new session
         const timeoutMs = (this.env?.settings?.sessionTimeoutMinutes || 30) * 60 * 1000;
@@ -471,46 +959,80 @@ export class ChatView extends SmartItemView {
         this.set_generating(true);
 
         // Ensure RAG is initialized (lazy init - waits for embed model)
+        const t0 = Date.now();
         await this.ensureRAGInitialized();
+        log.timing('Chat', 'ensureRAGInitialized', t0);
 
         // Get system prompt from active agent (includes memory: brain + active context)
         const agentManager = this.plugin?.agentManager;
         if (agentManager) {
+            const t1 = Date.now();
             const platform = this.env?.settings?.smart_chat_model?.platform || '';
             const isLocalModel = (platform === 'ollama' || platform === 'lm_studio');
-            const hasMaster = !!(this.env?.settings?.obsek?.masterPlatform && this.env?.settings?.obsek?.masterModel);
-            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel, hasMaster });
+            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel });
             this.rollingWindow.setSystemPrompt(basePrompt);
+            log.timing('Chat', `System prompt build (${basePrompt.length} znaków, local=${isLocalModel})`, t1);
+        }
+
+        // Oczko: inject active note context (if enabled)
+        const oczkoEnabled = this.env?.settings?.obsek?.enableOczko !== false;
+        if (oczkoEnabled) {
+            try {
+                const noteCtx = await this._buildActiveNoteContext();
+                if (noteCtx) {
+                    const cp = this.rollingWindow.baseSystemPrompt || '';
+                    this.rollingWindow.setSystemPrompt(`${cp}\n\n${noteCtx}`);
+                    log.debug('Chat', `Oczko: "${this.app.workspace.getActiveFile()?.basename}"`);
+                }
+            } catch (e) {
+                log.warn('Chat', 'Oczko injection failed:', e);
+            }
+        }
+
+        // Inject artifact summary into system prompt (so agent always knows what exists)
+        const artifactCtx = this._buildArtifactContext();
+        if (artifactCtx) {
+            const currentPrompt = this.rollingWindow.baseSystemPrompt || '';
+            this.rollingWindow.setSystemPrompt(`${currentPrompt}\n\n${artifactCtx}`);
         }
 
         // RAG: Retrieve relevant context before preparing request
         if (this.ragRetriever) {
+            const t2 = Date.now();
             try {
                 const ragResults = await this.ragRetriever.retrieve(text);
                 if (ragResults.length > 0) {
+                    log.timing('Chat', `RAG: ${ragResults.length} wyników`, t2);
                     const context = this.ragRetriever.formatContext(ragResults);
                     const currentBase = this.rollingWindow.baseSystemPrompt || '';
                     this.rollingWindow.setSystemPrompt(
                         `${currentBase}\n\n--- Relevantny kontekst z poprzednich rozmów ---\n${context}`
                     );
+                } else {
+                    log.timing('Chat', 'RAG: brak wyników', t2);
                 }
             } catch (ragError) {
-                console.warn('[Obsek] RAG retrieval failed:', ragError);
+                log.warn('Chat', 'RAG retrieval failed:', ragError);
+                log.timing('Chat', 'RAG FAILED', t2);
             }
         }
 
-        // === MINION AUTO-PREP (first message in session only) ===
+        // === MINION AUTO-PREP (first message in session, toggle in settings) ===
         const activeAgent = this.plugin?.agentManager?.getActiveAgent();
-        if (activeAgent?.minionEnabled !== false && activeAgent?.minion) {
+        const autoPrepEnabled = this.env?.settings?.obsek?.autoPrepEnabled !== false; // default: true
+        if (autoPrepEnabled && activeAgent?.minionEnabled !== false && activeAgent?.minion) {
             const isFirstMessage = this.rollingWindow.messages.filter(m => m.role === 'user').length <= 1;
             if (isFirstMessage) {
+                const t3 = Date.now();
                 const minionConfig = this.plugin?.agentManager?.minionLoader?.getMinion(activeAgent.minion);
                 if (minionConfig) {
                     const minionModel = this._getMinionModel(activeAgent, minionConfig);
                     const prepModel = minionModel || this.get_chat_model?.();
                     if (prepModel?.stream && this.plugin?.toolRegistry) {
                         try {
-                            this.showTypingIndicator('Minion przygotowuje kontekst...');
+                            // Show pending SubAgentBlock during minion work
+                            this.showTypingIndicator('🤖 Przygotowanie kontekstu...');
+
                             if (!this._minionRunner) {
                                 const { MinionRunner } = await import('../core/MinionRunner.js');
                                 this._minionRunner = new MinionRunner({
@@ -522,6 +1044,25 @@ export class ChatView extends SmartItemView {
                             const prepResult = await this._minionRunner.runAutoPrep(
                                 text, activeAgent, minionConfig, prepModel
                             );
+                            log.timing('Chat', 'Minion auto-prep', t3);
+                            // Track minion auto-prep tokens: prefer API, fallback to text estimate
+                            const prepInput = prepResult.usage?.prompt_tokens || countTokens(text);
+                            const prepOutput = prepResult.usage?.completion_tokens || countTokens(prepResult.context || '');
+                            if (prepInput > 0 || prepOutput > 0) {
+                                this.tokenTracker.record('minion', prepInput, prepOutput);
+                                this._updateTokenPanel();
+                            }
+                            // Store auto-prep data — will be rendered INSIDE assistant bubble in handle_chunk
+                            if (prepResult.toolsUsed?.length > 0 || prepResult.usage || prepResult.context) {
+                                this._autoPrepData = {
+                                    type: 'auto-prep',
+                                    toolsUsed: prepResult.toolsUsed,
+                                    toolCallDetails: prepResult.toolCallDetails || [],
+                                    duration: prepResult.duration,
+                                    usage: prepResult.usage,
+                                    response: prepResult.context || '',
+                                };
+                            }
                             if (prepResult.context && prepResult.context !== 'Brak dodatkowego kontekstu.') {
                                 const currentBase = this.rollingWindow.baseSystemPrompt || '';
                                 this.rollingWindow.setSystemPrompt(
@@ -529,6 +1070,7 @@ export class ChatView extends SmartItemView {
                                 );
                             }
                         } catch (minionError) {
+                            log.timing('Chat', 'Minion auto-prep FAILED', t3);
                             console.warn('[Obsek] Minion auto-prep failed (non-fatal):', minionError);
                         }
                     }
@@ -539,11 +1081,18 @@ export class ChatView extends SmartItemView {
 
         // Prepare request
         const messages = this.rollingWindow.getMessagesForAPI();
+        log.debug('Chat', `Messages for API: ${messages.length} wiadomości`);
 
         // Get tools from MCP registry if agent has mcp permission
         let tools = [];
         if (activeAgent?.permissions?.mcp && this.plugin?.toolRegistry) {
             tools = this.plugin.toolRegistry.getToolDefinitions();
+            // Filter tools by agent's enabledTools (empty = all tools)
+            const enabled = activeAgent.enabledTools;
+            if (enabled && enabled.length > 0) {
+                tools = tools.filter(t => enabled.includes(t.function?.name || t.name));
+            }
+            log.debug('Chat', `Tools: ${tools.length} narzędzi (filtered: ${!!enabled?.length})`);
         }
 
         try {
@@ -552,6 +1101,11 @@ export class ChatView extends SmartItemView {
             if (!chat_model?.stream) {
                 throw new Error('Chat model not configured. Please configure API key in Settings → Obsek.');
             }
+            log.timing('Chat', `TOTAL send→stream (model: ${chat_model.model_key || 'unknown'}, msgs: ${messages.length}, tools: ${tools.length})`, sendStart);
+
+            // Count input tokens from text (always works, no API dependency)
+            const inputText = messages.map(m => m.content || '').join('\n');
+            this._lastInputTokens = countTokens(inputText);
 
             // Start streaming with tools
             this.showTypingIndicator();
@@ -564,9 +1118,10 @@ export class ChatView extends SmartItemView {
                 }
             );
         } catch (error) {
-            console.error('Error sending message:', error);
+            log.error('Chat', 'send_message ERROR:', error);
             this.handle_error(error);
         }
+        log.groupEnd();
     }
 
     handle_chunk(response) {
@@ -584,6 +1139,14 @@ export class ChatView extends SmartItemView {
             row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
 
             this.current_message_bubble = row.createDiv({ cls: 'pkm-chat-bubble streaming' });
+
+            // Insert auto-prep SubAgentBlock INSIDE the bubble (stays with the message)
+            if (this._autoPrepData) {
+                const subBlock = createSubAgentBlock(this._autoPrepData);
+                this.current_message_bubble.appendChild(subBlock);
+                this._autoPrepData = null;
+            }
+
             this.current_message_text = this.current_message_bubble.createDiv({
                 cls: 'pkm-chat-content'
             });
@@ -626,8 +1189,20 @@ export class ChatView extends SmartItemView {
         if (this._lastProcessedResponseId === responseId && responseId) return;
         this._lastProcessedResponseId = responseId;
 
+        log.debug('Chat', 'handle_done wywołane');
+
         this.hideTypingIndicator();
         const content = response?.choices?.[0]?.message?.content || '';
+
+        // Track token usage: prefer API data, fallback to own counting from text
+        const apiInput = response?.usage?.prompt_tokens || 0;
+        const apiOutput = response?.usage?.completion_tokens || 0;
+        const inputTokens = apiInput > 0 ? apiInput : (this._lastInputTokens || 0);
+        const outputTokens = apiOutput > 0 ? apiOutput : countTokens(content);
+        if (inputTokens > 0 || outputTokens > 0) {
+            this.tokenTracker.record('main', inputTokens, outputTokens);
+            this._updateTokenPanel();
+        }
 
         // DeepSeek Reasoner: capture reasoning_content for tool call continuations
         const reasoningContent = response?.choices?.[0]?.message?.reasoning_content || null;
@@ -648,6 +1223,7 @@ export class ChatView extends SmartItemView {
 
         // Check for tool calls in response
         if (toolCalls.length > 0) {
+            log.info('Chat', `Tool calls: ${toolCalls.length} → ${toolCalls.map(tc => tc.name).join(', ')}`);
 
             // Ensure we have a container
             if (!this.current_message_container) {
@@ -682,45 +1258,84 @@ export class ChatView extends SmartItemView {
             };
 
             for (const toolCall of toolCalls) {
-                // Show status in typing indicator during tool execution
-                const statusMsg = TOOL_STATUS[toolCall.name] || `🔧 ${toolCall.name}...`;
-                this.showTypingIndicator(statusMsg);
+                const isSubAgent = toolCall.name === 'minion_task' || toolCall.name === 'master_task';
 
-                // Show pending state
-                const toolDisplay = createToolCallDisplay({
-                    name: toolCall.name,
-                    input: toolCall.arguments,
-                    status: 'pending'
-                });
+                // Show pending state: SubAgentBlock for minion/master, ToolCallDisplay for others
+                let toolDisplay;
+                if (isSubAgent) {
+                    // Sub-agents get their own pending block (no typing indicator — it would scroll past it)
+                    this.hideTypingIndicator();
+                    toolDisplay = createPendingSubAgentBlock(toolCall.name);
+                } else {
+                    const statusMsg = TOOL_STATUS[toolCall.name] || `🔧 ${toolCall.name}...`;
+                    this.showTypingIndicator(statusMsg);
+                    toolDisplay = createToolCallDisplay({
+                        name: toolCall.name,
+                        input: toolCall.arguments,
+                        status: 'pending'
+                    });
+                }
                 toolCallsContainer.appendChild(toolDisplay);
+                if (isSubAgent) toolDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
                 // Execute tool via MCPClient
                 let result;
                 try {
+                    log.debug('Chat', `Wykonuję tool: ${toolCall.name}`, toolCall.arguments);
                     result = await this.plugin.mcpClient.executeToolCall(toolCall, agentName);
 
-                    // Update display with result
-                    const updatedDisplay = createToolCallDisplay({
-                        name: toolCall.name,
-                        input: toolCall.arguments,
-                        output: result,
-                        status: result.isError ? 'error' : 'success',
-                        error: result.error
-                    });
-                    toolDisplay.replaceWith(updatedDisplay);
+                    // For minion/master: replace pending with full SubAgentBlock
+                    if (isSubAgent && result?.success) {
+                        const taskQuery = typeof toolCall.arguments === 'string'
+                            ? (() => { try { return JSON.parse(toolCall.arguments).task; } catch { return toolCall.arguments; } })()
+                            : toolCall.arguments?.task || '';
+                        const role = toolCall.name === 'minion_task' ? 'minion' : 'master';
+
+                        // Track sub-agent tokens: prefer API data, fallback to text estimate
+                        const subInput = result.usage?.prompt_tokens || countTokens(taskQuery);
+                        const subOutput = result.usage?.completion_tokens || countTokens(typeof result.result === 'string' ? result.result : '');
+                        if (subInput > 0 || subOutput > 0) {
+                            this.tokenTracker.record(role, subInput, subOutput);
+                            this._updateTokenPanel();
+                        }
+
+                        const fullBlock = createSubAgentBlock({
+                            type: toolCall.name,
+                            query: taskQuery,
+                            response: typeof result.result === 'string' ? result.result : '',
+                            toolsUsed: result.tools_used || [],
+                            toolCallDetails: result.tool_call_details || [],
+                            duration: result.duration_ms || 0,
+                            usage: result.usage,
+                        });
+                        toolDisplay.replaceWith(fullBlock);
+                        fullBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    } else if (isSubAgent && !result?.success) {
+                        // Error for sub-agent
+                        const errorBlock = createSubAgentBlock({
+                            type: toolCall.name,
+                            query: typeof toolCall.arguments === 'string' ? toolCall.arguments : toolCall.arguments?.task || '',
+                            response: `Błąd: ${result?.error || 'Nieznany błąd'}`,
+                            duration: 0,
+                        });
+                        toolDisplay.replaceWith(errorBlock);
+                        errorBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    } else {
+                        // Regular tool: update display with result
+                        const updatedDisplay = createToolCallDisplay({
+                            name: toolCall.name,
+                            input: toolCall.arguments,
+                            output: result,
+                            status: result.isError ? 'error' : 'success',
+                            error: result.error
+                        });
+                        toolDisplay.replaceWith(updatedDisplay);
+                    }
 
                     // Render interactive widgets for special result types
                     if (result?.type === 'todo_list') {
                         const existingWidget = toolCallsContainer.querySelector(`[data-todo-id="${result.id}"]`);
-                        const todoWidget = createChatTodoList(result, {
-                            onToggle: (id, idx, done) => {
-                                const store = this.plugin._chatTodoStore;
-                                const todo = store?.get(id);
-                                if (todo && todo.items[idx]) {
-                                    todo.items[idx].done = done;
-                                }
-                            }
-                        });
+                        const todoWidget = createChatTodoList(result, this._buildTodoCallbacks());
                         if (existingWidget) {
                             existingWidget.replaceWith(todoWidget);
                         } else {
@@ -730,17 +1345,8 @@ export class ChatView extends SmartItemView {
 
                     if (result?.type === 'plan_artifact') {
                         const existingWidget = toolCallsContainer.querySelector(`[data-plan-id="${result.id}"]`);
-                        const planWidget = createPlanArtifact(result, {
-                            onApprove: (planId) => {
-                                const store = this.plugin._planStore;
-                                const plan = store?.get(planId);
-                                if (plan) {
-                                    plan.approved = true;
-                                    this.input_area.value = `ZATWIERDŹ PLAN: ${planId} — Wykonaj kroki po kolei.`;
-                                    this.send_message();
-                                }
-                            }
-                        });
+                        const planCallbacks = this._buildPlanCallbacks();
+                        const planWidget = createPlanArtifact(result, planCallbacks);
                         if (existingWidget) {
                             existingWidget.replaceWith(planWidget);
                         } else {
@@ -749,12 +1355,19 @@ export class ChatView extends SmartItemView {
                     }
                 } catch (err) {
                     result = { isError: true, error: err.message };
-                    toolDisplay.replaceWith(createToolCallDisplay({
-                        name: toolCall.name,
-                        input: toolCall.arguments,
-                        status: 'error',
-                        error: err.message
-                    }));
+                    if (isSubAgent) {
+                        toolDisplay.replaceWith(createSubAgentBlock({
+                            type: toolCall.name,
+                            response: `Błąd: ${err.message}`,
+                        }));
+                    } else {
+                        toolDisplay.replaceWith(createToolCallDisplay({
+                            name: toolCall.name,
+                            input: toolCall.arguments,
+                            status: 'error',
+                            error: err.message
+                        }));
+                    }
                 }
 
                 // Detect delegation proposal
@@ -837,12 +1450,14 @@ export class ChatView extends SmartItemView {
             this.showTypingIndicator('Analizuję wyniki...');
 
             // Continue conversation with tool results
+            log.info('Chat', `continueWithToolResults: ${toolResults.length} wyników, kontynuuję rozmowę...`);
             await this.continueWithToolResults();
             return;
         }
 
 
         // No tool calls - normal completion
+        log.info('Chat', `Odpowiedź GOTOWA: ${content.length} znaków (bez tool calls)`);
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
         const idx = this.rollingWindow.messages.length; // Will be the index after adding
         this.rollingWindow.addMessage('assistant', content, { timestamp });
@@ -953,7 +1568,12 @@ export class ChatView extends SmartItemView {
      * Continue conversation after tool execution
      */
     async continueWithToolResults() {
+        log.debug('Chat', 'continueWithToolResults() — kontynuacja po tool calls');
         const messages = this.rollingWindow.getMessagesForAPI();
+
+        // Count input tokens for this continuation call
+        const inputText = messages.map(m => m.content || '').join('\n');
+        this._lastInputTokens = countTokens(inputText);
 
         // Get tools again
         let tools = [];
@@ -1283,6 +1903,12 @@ export class ChatView extends SmartItemView {
             window.removeEventListener('beforeunload', this.handleBeforeUnloadBound);
         }
 
+        // Cleanup artifact panel
+        if (this._artifactPanel) {
+            this._artifactPanel.remove();
+            this._artifactPanel = null;
+        }
+
         // Cleanup if needed
         if (this.is_generating) {
             this.stop_generation();
@@ -1305,6 +1931,7 @@ export class ChatView extends SmartItemView {
     // --- Session Handlers ---
 
     async handleNewSession() {
+        log.info('Chat', `handleNewSession: ${this.rollingWindow.messages.length} wiadomości do konsolidacji`);
         // Consolidate session (extract memory + save) BEFORE clearing
         if (this.rollingWindow.messages.length > 0) {
             await this.consolidateSession();
@@ -1319,14 +1946,19 @@ export class ChatView extends SmartItemView {
             agentMemory.startNewSession();
         }
 
+        // Artifacts are global — NOT cleared on new session
+
         this.rollingWindow = this._createRollingWindow();
+        this.tokenTracker.clear();
         this.render_messages();
         this.add_welcome_message();
         this.updateTokenCounter();
+        this._updateTokenPanel();
         await this.updateSessionDropdown();
     }
 
     async handleSaveSession() {
+        log.debug('Chat', 'handleSaveSession');
         try {
             const agentManager = this.plugin?.agentManager;
             const activeAgent = agentManager?.getActiveAgent();
@@ -1366,6 +1998,7 @@ export class ChatView extends SmartItemView {
     }
 
     async handleLoadSession(path) {
+        log.info('Chat', `handleLoadSession: ${path}`);
         try {
             let parsed;
 
@@ -1425,8 +2058,11 @@ export class ChatView extends SmartItemView {
         const messages = this.rollingWindow.messages;
         if (!messages || messages.length === 0) return;
 
+        log.group('Chat', `consolidateSession: ${messages.length} wiadomości`);
         const agentManager = this.plugin?.agentManager;
         const agentMemory = agentManager?.getActiveMemory();
+
+        // Artifacts are saved on every mutation (fire-and-forget) — no batch save needed here
 
         // Always save the raw session first (safety net)
         await this.handleSaveSession();
@@ -1449,8 +2085,9 @@ export class ChatView extends SmartItemView {
                     await agentMemory.memoryWrite(brainUpdates, activeContextSummary);
                 }
             }
+            log.info('Chat', 'Memory extraction OK');
         } catch (error) {
-            console.error('[ChatView] Memory extraction failed (session saved, extraction skipped):', error);
+            log.error('Chat', 'Memory extraction FAIL:', error);
         }
 
         // L1/L2 consolidation trigger (runs independently of extraction)
@@ -1476,9 +2113,10 @@ export class ChatView extends SmartItemView {
                     unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
                 }
             } catch (l1l2Error) {
-                console.error('[ChatView] L1/L2 consolidation failed (non-fatal):', l1l2Error);
+                log.error('Chat', 'L1/L2 consolidation FAIL:', l1l2Error);
             }
         }
+        log.groupEnd();
     }
 
     /**

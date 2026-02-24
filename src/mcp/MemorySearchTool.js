@@ -1,26 +1,31 @@
 /**
  * MCP tool for searching agent's own memory (sessions, brain, summaries).
  * Separate from vault_search which searches user's notes.
+ *
+ * Supports semantic search via EmbeddingHelper when embed model is available,
+ * with fallback to keyword indexOf.
  */
+import { EmbeddingHelper } from '../memory/EmbeddingHelper.js';
+
 export function createMemorySearchTool(app) {
     return {
         name: 'memory_search',
-        description: 'Search your own memory - past sessions, brain notes, and summaries. Use this when user asks about previous conversations or things you should remember.',
+        description: 'Przeszukaj SWOJĄ pamięć — przeszłe sesje, brain.md (fakty o userze), podsumowania L1/L2. Szuka semantycznie (po znaczeniu) z fallbackiem na słowa kluczowe.\n\nCO PRZESZUKUJE:\n- sessions: pliki rozmów z userem (każda sesja = osobny .md)\n- brain: brain.md — trwałe fakty o userze (preferencje, ustalenia, informacje osobiste)\n- summaries: streszczenia L1 (5 sesji → 1 plik) i L2 (5 L1 → 1 mega-streszczenie)\n\nKIEDY UŻYWAĆ:\n- User pyta "co rozmawialiśmy o X?", "pamiętasz że...?", "kiedy ostatnio...?"\n- Szukasz kontekstu z poprzednich rozmów\n- Potrzebujesz sprawdzić co wiesz o userze\n\nKIEDY NIE UŻYWAĆ:\n- Szukasz w notatkach USERA → użyj vault_search\n- Chcesz przeczytać brain.md → użyj memory_update z operation="read_brain"\n- Chcesz statystyki pamięci → użyj memory_status\n\nUWAGI:\n- Wyszukuje semantycznie (batch embedding — efektywny, 1-2 HTTP calls)\n- Max 30 dokumentów przeszukiwanych jednocześnie\n- Wyniki posortowane po score (0-1, im wyżej tym lepiej)\n- Zwraca snippet (200 znaków) z każdego wyniku',
         inputSchema: {
             type: 'object',
             properties: {
                 query: {
                     type: 'string',
-                    description: 'Text to search for in your memory'
+                    description: 'Zapytanie — pisz naturalnie, np. "co user lubi jeść", "rozmowa o projekcie X", "ustalenia z zeszłego tygodnia"'
                 },
                 scope: {
                     type: 'string',
                     enum: ['all', 'sessions', 'brain', 'summaries'],
-                    description: 'Where to search. Default: all'
+                    description: '"all" (domyślnie) = przeszukaj wszystko. "sessions" = tylko rozmowy. "brain" = tylko trwałe fakty. "summaries" = tylko streszczenia L1/L2.'
                 },
                 limit: {
                     type: 'number',
-                    description: 'Max results to return. Default: 10'
+                    description: 'Max wyników. Domyślnie 10, max 30. Dla szybkiego sprawdzenia wystarczy 3-5.'
                 }
             },
             required: ['query']
@@ -34,7 +39,6 @@ export function createMemorySearchTool(app) {
 
                 const scope = args.scope || 'all';
                 const limit = Math.min(args.limit || 10, 30);
-                const queryLower = query.toLowerCase();
 
                 // Get active agent's memory path
                 const agentManager = plugin?.agentManager;
@@ -47,9 +51,10 @@ export function createMemorySearchTool(app) {
                 const memoryBase = `.pkm-assistant/agents/${safeName}/memory`;
                 const adapter = app.vault.adapter;
 
-                const results = [];
+                // Collect all memory documents to search
+                const docs = [];
 
-                // Search sessions
+                // Collect sessions
                 if (scope === 'all' || scope === 'sessions') {
                     const sessionsPath = `${memoryBase}/sessions`;
                     try {
@@ -57,64 +62,37 @@ export function createMemorySearchTool(app) {
                         if (listed?.files) {
                             const mdFiles = listed.files.filter(f => f.endsWith('.md')).sort().reverse();
                             for (const filePath of mdFiles) {
-                                if (results.length >= limit) break;
                                 try {
                                     const content = await adapter.read(filePath);
-                                    const contentLower = content.toLowerCase();
-                                    const idx = contentLower.indexOf(queryLower);
-                                    if (idx !== -1) {
-                                        const start = Math.max(0, idx - 100);
-                                        const end = Math.min(content.length, idx + query.length + 100);
-                                        let snippet = content.substring(start, end).replace(/\n/g, ' ');
-                                        if (start > 0) snippet = '...' + snippet;
-                                        if (end < content.length) snippet = snippet + '...';
-
-                                        results.push({
-                                            source: 'session',
-                                            path: filePath,
-                                            name: filePath.split('/').pop(),
-                                            snippet
-                                        });
-                                    }
-                                } catch (e) {
-                                    // Skip unreadable files
-                                }
+                                    docs.push({
+                                        source: 'session',
+                                        path: filePath,
+                                        name: filePath.split('/').pop(),
+                                        content
+                                    });
+                                } catch (e) { /* skip unreadable */ }
                             }
                         }
-                    } catch (e) {
-                        // Sessions folder not found
-                    }
+                    } catch (e) { /* sessions folder not found */ }
                 }
 
-                // Search brain
+                // Collect brain
                 if (scope === 'all' || scope === 'brain') {
                     const brainPath = `${memoryBase}/brain.md`;
                     try {
                         if (await adapter.exists(brainPath)) {
                             const content = await adapter.read(brainPath);
-                            const contentLower = content.toLowerCase();
-                            const idx = contentLower.indexOf(queryLower);
-                            if (idx !== -1) {
-                                const start = Math.max(0, idx - 100);
-                                const end = Math.min(content.length, idx + query.length + 100);
-                                let snippet = content.substring(start, end).replace(/\n/g, ' ');
-                                if (start > 0) snippet = '...' + snippet;
-                                if (end < content.length) snippet = snippet + '...';
-
-                                results.push({
-                                    source: 'brain',
-                                    path: brainPath,
-                                    name: 'brain.md',
-                                    snippet
-                                });
-                            }
+                            docs.push({
+                                source: 'brain',
+                                path: brainPath,
+                                name: 'brain.md',
+                                content
+                            });
                         }
-                    } catch (e) {
-                        // No brain yet
-                    }
+                    } catch (e) { /* no brain yet */ }
                 }
 
-                // Search summaries (L1/L2)
+                // Collect summaries (L1/L2)
                 if (scope === 'all' || scope === 'summaries') {
                     for (const subdir of ['summaries/L1', 'summaries/L2']) {
                         const dirPath = `${memoryBase}/${subdir}`;
@@ -122,34 +100,89 @@ export function createMemorySearchTool(app) {
                             const listed = await adapter.list(dirPath);
                             if (listed?.files) {
                                 for (const filePath of listed.files) {
-                                    if (results.length >= limit) break;
                                     if (!filePath.endsWith('.md')) continue;
                                     try {
                                         const content = await adapter.read(filePath);
-                                        const contentLower = content.toLowerCase();
-                                        const idx = contentLower.indexOf(queryLower);
-                                        if (idx !== -1) {
-                                            const start = Math.max(0, idx - 100);
-                                            const end = Math.min(content.length, idx + query.length + 100);
-                                            let snippet = content.substring(start, end).replace(/\n/g, ' ');
-                                            if (start > 0) snippet = '...' + snippet;
-                                            if (end < content.length) snippet = snippet + '...';
-
-                                            results.push({
-                                                source: subdir,
-                                                path: filePath,
-                                                name: filePath.split('/').pop(),
-                                                snippet
-                                            });
-                                        }
-                                    } catch (e) {
-                                        // Skip
-                                    }
+                                        docs.push({
+                                            source: subdir,
+                                            path: filePath,
+                                            name: filePath.split('/').pop(),
+                                            content
+                                        });
+                                    } catch (e) { /* skip */ }
                                 }
                             }
-                        } catch (e) {
-                            // Dir doesn't exist
+                        } catch (e) { /* dir doesn't exist */ }
+                    }
+                }
+
+                // ── TRY SEMANTIC SEARCH via EmbeddingHelper (batch) ──
+                const env = plugin?.env;
+                if (env) {
+                    try {
+                        const embedHelper = new EmbeddingHelper(env);
+                        if (embedHelper.isReady() && docs.length > 0) {
+                            // Limit docs to most recent 30, odfiltruj puste
+                            const searchDocs = docs
+                                .filter(d => d.content && d.content.trim().length > 0)
+                                .slice(0, 30);
+                            const snippets = searchDocs.map(d => d.content.substring(0, 1500));
+
+                            // Single batch: query + all doc snippets (1-2 HTTP calls instead of N)
+                            const allVecs = await embedHelper.embedBatch([query, ...snippets]);
+                            const queryVec = allVecs[0];
+
+                            const scored = searchDocs.map((doc, i) => ({
+                                ...doc,
+                                score: embedHelper.cosineSimilarity(queryVec, allVecs[i + 1])
+                            }));
+
+                            scored.sort((a, b) => b.score - a.score);
+                            const topResults = scored.slice(0, limit).filter(r => r.score > 0.3);
+
+                            if (topResults.length > 0) {
+                                return {
+                                    success: true,
+                                    query,
+                                    agent: activeAgent.name,
+                                    searchType: 'semantic',
+                                    results: topResults.map(r => ({
+                                        source: r.source,
+                                        path: r.path,
+                                        name: r.name,
+                                        score: r.score,
+                                        snippet: r.content.substring(0, 200).replace(/\n/g, ' ') + '...'
+                                    })),
+                                    count: topResults.length
+                                };
+                            }
                         }
+                    } catch (e) {
+                        console.warn('[MemorySearch] Semantic search failed, falling back to keyword:', e.message);
+                    }
+                }
+
+                // ── FALLBACK: keyword indexOf ──
+                const queryLower = query.toLowerCase();
+                const results = [];
+
+                for (const doc of docs) {
+                    if (results.length >= limit) break;
+                    const contentLower = doc.content.toLowerCase();
+                    const idx = contentLower.indexOf(queryLower);
+                    if (idx !== -1) {
+                        const start = Math.max(0, idx - 100);
+                        const end = Math.min(doc.content.length, idx + query.length + 100);
+                        let snippet = doc.content.substring(start, end).replace(/\n/g, ' ');
+                        if (start > 0) snippet = '...' + snippet;
+                        if (end < doc.content.length) snippet = snippet + '...';
+
+                        results.push({
+                            source: doc.source,
+                            path: doc.path,
+                            name: doc.name,
+                            snippet
+                        });
                     }
                 }
 
@@ -157,6 +190,7 @@ export function createMemorySearchTool(app) {
                     success: true,
                     query,
                     agent: activeAgent.name,
+                    searchType: 'keyword',
                     results,
                     count: results.length
                 };

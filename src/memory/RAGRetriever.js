@@ -38,34 +38,46 @@ export class RAGRetriever {
     }
 
     /**
-     * Indeksuje sesję (dodaje do cache)
-     * @param {{path: string, name: string}} session - Session object from AgentMemory.listSessions()
-     */
-    async indexSession(session) {
-        if (!this.agentMemory || !this.embeddingHelper) return;
-
-        try {
-            const sessionData = await this.agentMemory.loadSession(session);
-            if (!sessionData?.messages?.length) return;
-
-            const content = sessionData.messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
-            const embedding = await this.embeddingHelper.embed(content);
-
-            this.sessionEmbeddings.set(session.path, { embedding, content });
-        } catch (error) {
-            console.error(`[RAG] Error indexing session ${session.path}:`, error);
-        }
-    }
-
-    /**
-     * Indeksuje wszystkie sesje z AgentMemory
+     * Indeksuje wszystkie sesje z AgentMemory (batch - 1-2 HTTP calls zamiast N).
+     * Limituje do 20 najnowszych sesji.
      */
     async indexAllSessions() {
-        if (!this.agentMemory) return;
+        if (!this.agentMemory || !this.embeddingHelper) return;
 
         const sessions = await this.agentMemory.listSessions();
-        for (const session of sessions) {
-            await this.indexSession(session);
+        // Most recent 20 sessions only (sorted desc by name = date)
+        const recentSessions = sessions.slice(0, 20);
+
+        // Load all session contents
+        const loaded = [];
+        for (const session of recentSessions) {
+            try {
+                const sessionData = await this.agentMemory.loadSession(session);
+                if (!sessionData?.messages?.length) continue;
+                const content = sessionData.messages
+                    .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+                    .join('\n\n')
+                    .substring(0, 1500); // cap per session to avoid huge payloads
+                loaded.push({ path: session.path, content });
+            } catch { /* skip unreadable */ }
+        }
+
+        // Odfiltruj puste sesje przed embedowaniem
+        const validLoaded = loaded.filter(s => s.content && s.content.trim().length > 0);
+        if (validLoaded.length === 0) return;
+
+        // Batch embed ALL sessions in 1-2 HTTP calls
+        try {
+            const texts = validLoaded.map(s => s.content);
+            const vecs = await this.embeddingHelper.embedBatch(texts);
+            validLoaded.forEach((s, i) => {
+                if (vecs[i]) {
+                    this.sessionEmbeddings.set(s.path, { embedding: vecs[i], content: s.content });
+                }
+            });
+            console.log(`[RAG] Indexed ${validLoaded.length} sessions (batch)`);
+        } catch (e) {
+            console.warn('[RAG] Batch indexing failed:', e.message);
         }
     }
 

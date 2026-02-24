@@ -1,6 +1,7 @@
 import { SmartPluginSettingsTab } from "obsidian-smart-env";
-import { Setting, Notice } from "obsidian";
+import { Setting, Notice, Modal } from "obsidian";
 import { maskKey } from '../utils/keySanitizer.js';
+import { log } from '../utils/Logger.js';
 
 /**
  * ObsekSettingsTab - Settings for PKM Assistant
@@ -13,6 +14,29 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         this.name = 'PKM Assistant';
         this.icon = 'bot';
         this._showKeys = {}; // track which API keys are visible
+    }
+
+    async render() {
+        this.containerEl.empty();
+        // Show PKM-branded loading message while env is loading (replaces SC's "Smart Environment is loading...")
+        if (this.env?.state !== 'loaded') {
+            if (this.env?.state === 'loading') {
+                this.containerEl.createEl('p', { text: 'Ładowanie PKM Assistant...' });
+            } else {
+                this.containerEl.createEl('p', { text: 'PKM Assistant nie został jeszcze uruchomiony.' });
+                const btn = this.containerEl.createEl('button', { text: 'Uruchom PKM Assistant' });
+                btn.addEventListener('click', async () => {
+                    btn.disabled = true;
+                    btn.textContent = 'Ładowanie...';
+                    await this.env.load(true);
+                });
+            }
+        }
+        await this.env.constructor.wait_for({ loaded: true });
+        this.prepare_layout();
+        await this.render_header(this.header_container);
+        await this.render_plugin_settings(this.plugin_container);
+        await this.render_global_settings(this.global_settings_container);
     }
 
     async render_header(container) {
@@ -339,6 +363,17 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             );
 
         new Setting(container)
+            .setName('Oczko (kontekst otwartej notatki)')
+            .setDesc('Wstrzykuj tytuł, frontmatter i początek otwartej notatki do promptu AI. Agent będzie wiedział jaką notatkę masz otwartą.')
+            .addToggle(toggle => toggle
+                .setValue(obsek.enableOczko !== false)
+                .onChange(async (value) => {
+                    obsek.enableOczko = value;
+                    await this.save_settings();
+                })
+            );
+
+        new Setting(container)
             .setName('Limit kontekstu')
             .setDesc('Max tokenów w oknie rozmowy (10k - 2M)')
             .addText(text => {
@@ -404,6 +439,17 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                     await this.save_settings();
                 }));
 
+        new Setting(container)
+            .setName('🐛 Tryb debugowania')
+            .setDesc('Pokazuje WSZYSTKO w konsoli (Ctrl+Shift+I): ładowanie, tool calle, modele, streaming, pamięć. Wyłącz po debugowaniu.')
+            .addToggle(toggle => toggle
+                .setValue(obsek.debugMode ?? false)
+                .onChange(async (value) => {
+                    obsek.debugMode = value;
+                    log.setDebug(value);
+                    await this.save_settings();
+                }));
+
         // ══════════════════════════════════════════
         // SEKCJA 4: RAG
         // ══════════════════════════════════════════
@@ -447,7 +493,62 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             });
 
         // ══════════════════════════════════════════
-        // SEKCJA 5: INFORMACJE
+        // SEKCJA 5: SYSTEM PROMPT
+        // ══════════════════════════════════════════
+        container.createEl('h2', { text: '📋 System Prompt' });
+        container.createEl('p', {
+            text: 'Edytuj sekcje system promptu i przeglądaj strukturę aktywnego agenta.',
+            cls: 'setting-item-description'
+        });
+
+        // Auto-prep toggle
+        new Setting(container)
+            .setName('Minion auto-prep')
+            .setDesc('Minion automatycznie zbiera kontekst przy pierwszej wiadomości sesji')
+            .addToggle(toggle => toggle
+                .setValue(obsek.autoPrepEnabled !== false)
+                .onChange(async (value) => {
+                    obsek.autoPrepEnabled = value;
+                    await this.save_settings();
+                })
+            );
+
+        // PKM System prompt textarea
+        new Setting(container)
+            .setName('Sekcja "PKM Assistant"')
+            .setDesc('Opis ekosystemu PKM wstrzykiwany do każdego agenta. Pusty = domyślny tekst z kodu.');
+
+        const pkmTextarea = container.createEl('textarea', {
+            placeholder: 'Pusty = domyślny opis PKM Assistant (agenci, narzędzia, pamięć, skille, embedding...)',
+        });
+        pkmTextarea.value = obsek.pkmSystemPrompt || '';
+        pkmTextarea.style.cssText = 'width:100%; min-height:120px; font-family:monospace; font-size:0.85em; resize:vertical; margin-bottom:12px; padding:8px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
+        pkmTextarea.addEventListener('change', async () => {
+            obsek.pkmSystemPrompt = pkmTextarea.value.trim();
+            await this.save_settings();
+        });
+
+        // Environment prompt textarea
+        new Setting(container)
+            .setName('Sekcja "Środowisko"')
+            .setDesc('Opis środowiska pracy (Obsidian, vault, foldery). Pusty = domyślny tekst z kodu.');
+
+        const envTextarea = container.createEl('textarea', {
+            placeholder: 'Pusty = domyślny opis Obsidian/Vault (markdown, wikilinki, foldery .pkm-assistant i .obsidian...)',
+        });
+        envTextarea.value = obsek.environmentPrompt || '';
+        envTextarea.style.cssText = 'width:100%; min-height:120px; font-family:monospace; font-size:0.85em; resize:vertical; margin-bottom:12px; padding:8px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
+        envTextarea.addEventListener('change', async () => {
+            obsek.environmentPrompt = envTextarea.value.trim();
+            await this.save_settings();
+        });
+
+        // Prompt Inspector panel (async)
+        const inspectorEl = container.createDiv({ cls: 'prompt-inspector' });
+        this._renderPromptInspector(inspectorEl);
+
+        // ══════════════════════════════════════════
+        // SEKCJA 6: INFORMACJE
         // ══════════════════════════════════════════
         container.createEl('h2', { text: 'ℹ️ Informacje' });
 
@@ -565,6 +666,146 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             smartSourcesSettings.embed_model[adapter] = {};
         }
         smartSourcesSettings.embed_model[adapter].model_key = value;
+    }
+
+    /**
+     * Render Prompt Inspector — shows sections + token breakdown for active agent
+     */
+    async _renderPromptInspector(container) {
+        const agentManager = this.plugin?.agentManager;
+        if (!agentManager) {
+            container.createEl('p', { text: 'Agent Manager niedostępny.', cls: 'setting-item-description' });
+            return;
+        }
+
+        const activeAgent = agentManager.getActiveAgent();
+        if (!activeAgent) {
+            container.createEl('p', { text: 'Brak aktywnego agenta.', cls: 'setting-item-description' });
+            return;
+        }
+
+        container.createEl('p', {
+            text: `Aktywny agent: ${activeAgent.emoji} ${activeAgent.name}`,
+            cls: 'setting-item-description'
+        });
+
+        try {
+            const data = await agentManager.getPromptInspectorData();
+            const { sections, breakdown } = data;
+
+            if (!sections || sections.length === 0) {
+                container.createEl('p', { text: 'Brak sekcji promptu.', cls: 'setting-item-description' });
+                return;
+            }
+
+            // Total tokens header
+            const totalEl = container.createDiv({ cls: 'prompt-inspector-total' });
+            totalEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--background-modifier-border); margin-bottom:8px;';
+            totalEl.createEl('strong', { text: `Łącznie: ${breakdown.total.toLocaleString()} tokenów` });
+            totalEl.createEl('span', {
+                text: `${sections.filter(s => s.enabled).length}/${sections.length} sekcji`,
+                cls: 'setting-item-description'
+            });
+
+            // Category groups
+            const categories = {
+                core: '🔵 Rdzeń',
+                capabilities: '🟢 Możliwości',
+                rules: '🟡 Zasady',
+                context: '🟣 Kontekst dynamiczny',
+            };
+
+            for (const [catKey, catLabel] of Object.entries(categories)) {
+                const catSections = sections.filter(s => s.category === catKey);
+                if (catSections.length === 0) continue;
+
+                const catTokens = catSections.filter(s => s.enabled).reduce((sum, s) => sum + s.tokens, 0);
+
+                const groupEl = container.createDiv();
+                groupEl.style.cssText = 'margin: 8px 0;';
+
+                const headerEl = groupEl.createDiv();
+                headerEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 0;';
+                headerEl.createEl('span', { text: catLabel });
+                headerEl.createEl('span', {
+                    text: `${catTokens.toLocaleString()} tok`,
+                    cls: 'setting-item-description'
+                });
+
+                for (const section of catSections) {
+                    const rowEl = groupEl.createDiv();
+                    rowEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:2px 0 2px 16px; font-size:0.85em; gap:6px;';
+
+                    if (section.required) {
+                        // Required sections: locked, no toggle
+                        rowEl.createEl('span', { text: `🔒 ${section.label}` });
+                    } else {
+                        // Toggleable sections
+                        const toggleBtn = rowEl.createEl('span', {
+                            text: section.enabled ? '✅' : '⬜',
+                            attr: { 'aria-label': section.enabled ? 'Wyłącz' : 'Włącz' }
+                        });
+                        toggleBtn.style.cssText = 'cursor:pointer; user-select:none;';
+                        toggleBtn.createSpan({ text: ` ${section.label}` });
+                        if (!section.enabled) rowEl.style.opacity = '0.5';
+
+                        toggleBtn.addEventListener('click', async () => {
+                            const obsek = this.env?.settings?.obsek || {};
+                            if (!obsek.disabledPromptSections) obsek.disabledPromptSections = [];
+                            if (section.enabled) {
+                                // Disable
+                                if (!obsek.disabledPromptSections.includes(section.key)) {
+                                    obsek.disabledPromptSections.push(section.key);
+                                }
+                                // Update in-place (no re-render)
+                                toggleBtn.firstChild.textContent = '⬜';
+                                toggleBtn.setAttribute('aria-label', 'Włącz');
+                                rowEl.style.opacity = '0.5';
+                            } else {
+                                // Enable
+                                obsek.disabledPromptSections = obsek.disabledPromptSections.filter(k => k !== section.key);
+                                // Update in-place (no re-render)
+                                toggleBtn.firstChild.textContent = '✅';
+                                toggleBtn.setAttribute('aria-label', 'Wyłącz');
+                                rowEl.style.opacity = '1';
+                            }
+                            section.enabled = !section.enabled;
+                            await this.save_settings();
+                        });
+                    }
+
+                    rowEl.createEl('span', {
+                        text: `${section.tokens.toLocaleString()} tok`,
+                        cls: 'setting-item-description',
+                        attr: { style: 'margin-left:auto;' }
+                    });
+                }
+            }
+
+            // Preview button
+            const previewSetting = new Setting(container)
+                .setName('Podgląd pełnego promptu')
+                .setDesc('Pokaż cały złożony system prompt aktywnego agenta');
+            previewSetting.addButton(btn => {
+                btn.setButtonText('Pokaż prompt')
+                    .onClick(async () => {
+                        try {
+                            const fullPrompt = await agentManager.getActiveSystemPromptWithMemory();
+                            const modal = new Modal(this.app);
+                            modal.titleEl.setText(`System Prompt — ${activeAgent.emoji} ${activeAgent.name}`);
+                            const contentEl = modal.contentEl.createDiv();
+                            contentEl.style.cssText = 'white-space:pre-wrap; font-family:monospace; font-size:0.8em; max-height:70vh; overflow-y:auto; padding:8px;';
+                            contentEl.textContent = fullPrompt;
+                            modal.open();
+                        } catch (e) {
+                            new Notice('Błąd podglądu promptu: ' + e.message);
+                        }
+                    });
+            });
+        } catch (e) {
+            container.createEl('p', { text: `Błąd: ${e.message}`, cls: 'setting-item-description' });
+            log.warn('Settings', 'Prompt Inspector error:', e);
+        }
     }
 
     get_platform_name(platform) {

@@ -4,22 +4,22 @@ import { isProtectedPath } from '../utils/keySanitizer.js';
 export function createVaultWriteTool(app) {
     return {
         name: 'vault_write',
-        description: 'Create a new note or modify an existing one. Use mode "create", "append", "prepend", or "replace".',
+        description: 'Stwórz nową notatkę lub zmodyfikuj istniejącą w vaultcie użytkownika.\n\nTRYBY (mode):\n- "create" — nowy plik (błąd jeśli już istnieje)\n- "append" — dopisz na KOŃCU istniejącego pliku (np. dodaj sekcję, wpis do dziennika)\n- "prepend" — dopisz na POCZĄTKU istniejącego pliku\n- "replace" — zastąp CAŁĄ zawartość (uwaga: nadpisuje wszystko! jeśli plik nie istnieje, tworzy nowy)\n\nKIEDY UŻYWAĆ:\n- User prosi "stwórz notatkę", "zapisz to", "dodaj do pliku X"\n- Po analizie/pracy: zapisanie wyników do notatki\n- Aktualizacja plików konfiguracyjnych (.pkm-assistant/)\n\nKIEDY NIE UŻYWAĆ:\n- Nie nadpisuj notatek usera bez pytania — preferuj append zamiast replace\n- Do zapisu w pamięci agenta → użyj memory_update\n\nUWAGI:\n- Ścieżka musi zawierać rozszerzenie (np. .md)\n- Pliki systemowe (.smart-env/) są zablokowane\n- Operacja wymaga uprawnień vault.write — user zobaczy modal zatwierdzenia',
         inputSchema: {
             type: 'object',
             properties: {
                 path: {
                     type: 'string',
-                    description: 'Path to the note (relative to vault root)'
+                    description: 'Ścieżka pliku relatywna do roota vaulta. Musi zawierać rozszerzenie. Przykłady: "Notatki/nowy-pomysł.md", "Dziennik/2026-02-24.md"'
                 },
                 content: {
                     type: 'string',
-                    description: 'Content to write'
+                    description: 'Treść do zapisania. Dla trybu append/prepend: treść która zostanie DODANA do istniejącej. Dla replace/create: pełna zawartość pliku. Używaj markdown.'
                 },
                 mode: {
                     type: 'string',
                     enum: ['create', 'append', 'prepend', 'replace'],
-                    description: 'Write mode: create (fail if exists), append, prepend, or replace'
+                    description: 'Tryb zapisu. "create" = nowy plik (błąd jeśli istnieje). "append" = dopisz na końcu. "prepend" = dopisz na początku. "replace" = nadpisz całość (UWAGA: kasuje starą treść!). Domyślnie: replace'
                 }
             },
             required: ['path', 'content']

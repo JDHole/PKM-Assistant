@@ -1,6 +1,6 @@
 {
   "name": "obsek-plugin",
-  "version": "1.0.5",
+  "version": "1.0.9",
   "type": "module",
   "description": "AI Agent system for Obsidian - chat with your vault, edit files with AI assistance.",
   "scripts": {

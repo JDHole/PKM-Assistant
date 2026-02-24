@@ -3,17 +3,17 @@ import { TFile } from 'obsidian';
 export function createVaultDeleteTool(app) {
     return {
         name: 'vault_delete',
-        description: 'Delete a note from the vault. Use with caution.',
+        description: 'Usuń notatkę z vaulta użytkownika. OPERACJA NIEODWRACALNA (chyba że trash=true).\n\nDOMYŚLNIE plik trafia do kosza systemowego (trash=true) — user może go odzyskać.\nUstaw trash=false TYLKO gdy user wyraźnie prosi o trwałe usunięcie.\n\nKIEDY UŻYWAĆ:\n- User wyraźnie prosi "usuń plik X", "skasuj notatkę Y"\n- Czyszczenie duplikatów lub pustych plików na prośbę usera\n\nKIEDY NIE UŻYWAĆ:\n- NIGDY nie usuwaj plików bez wyraźnej prośby usera\n- Nie usuwaj plików konfiguracyjnych (.pkm-assistant/) bez potwierdzenia\n- Nie usuwaj folderów — to narzędzie działa tylko na pojedyncze pliki\n\nUWAGI:\n- Wymaga uprawnień vault.delete — user zobaczy modal zatwierdzenia\n- Nie można usunąć folderów, tylko pliki\n- Pliki systemowe (.smart-env/) są zablokowane',
         inputSchema: {
             type: 'object',
             properties: {
                 path: {
                     type: 'string',
-                    description: 'Path to the note to delete'
+                    description: 'Ścieżka pliku do usunięcia, relatywna do roota vaulta. Przykład: "Archiwum/stara-notatka.md"'
                 },
                 trash: {
                     type: 'boolean',
-                    description: 'If true, move to system trash instead of permanent delete. Default: true'
+                    description: 'true (domyślnie) = przenieś do kosza systemowego (odwracalne). false = trwałe usunięcie (NIEODWRACALNE). Zawsze preferuj true.'
                 }
             },
             required: ['path']

@@ -1,8 +1,8 @@
 import { SmartItemView } from 'obsidian-smart-env/views/smart_item_view.js';
 import { apply_pause_state, toggle_pause_state } from '../utils/pause_controls.js';
 export class ConnectionsItemView extends SmartItemView {
-  static get view_type() { return 'smart-connections-view'; }
-  static get display_text() { return 'Connections'; }
+  static get view_type() { return 'pkm-connections-view'; }
+  static get display_text() { return 'PKM Connections'; }
   static get icon_name() { return 'smart-connections'; }
 
   constructor(leaf, plugin) {

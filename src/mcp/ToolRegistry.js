@@ -45,6 +45,14 @@ export class ToolRegistry {
     }
 
     /**
+     * Returns all registered tool names.
+     * @returns {string[]} Array of tool names.
+     */
+    getAllToolNames() {
+        return Array.from(this.tools.keys());
+    }
+
+    /**
      * Returns tool definitions formatted for OpenAI function calling / AI consumption.
      * @returns {Array<Object>} Array of tool definitions in AI format.
      */

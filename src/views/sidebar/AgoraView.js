@@ -1,0 +1,1011 @@
+/**
+ * AgoraView - Full Agora panel in sidebar.
+ * Tabs: Profil, Aktywność, Projekty, Mapa, Dostęp
+ * All tabs use inline forms for CRUD operations (no raw file editors).
+ */
+import { Modal } from 'obsidian';
+
+const TABS = [
+    { id: 'profile', label: '👤 Profil' },
+    { id: 'activity', label: '📢 Aktywność' },
+    { id: 'projects', label: '📋 Projekty' },
+    { id: 'map', label: '🗺️ Mapa' },
+    { id: 'access', label: '🔐 Dostęp' }
+];
+
+/** Map display headers → AgoraManager section keys */
+const PROFILE_SECTION_MAP = {
+    'Kim jestem': 'kim_jestem',
+    'Zainteresowania': 'zainteresowania',
+    'Cele': 'cele',
+    'Wartości': 'wartosci',
+    'Aktualne projekty': 'projekty',
+    'Wyzwania': 'wyzwania',
+    'Ustalenia': 'ustalenia',
+    'Sukcesy': 'sukcesy'
+};
+
+// ─────────────────────────────────────────────
+// MAIN AGORA VIEW
+// ─────────────────────────────────────────────
+
+/**
+ * Render the full Agora view.
+ * @param {HTMLElement} container
+ * @param {Object} plugin
+ * @param {import('./SidebarNav.js').SidebarNav} nav
+ * @param {Object} params - { tab?: string }
+ */
+export function renderAgoraView(container, plugin, nav, params) {
+    const agora = plugin.agoraManager;
+    if (!agora) {
+        container.createEl('p', { text: 'AgoraManager nie jest zainicjalizowany.', cls: 'agent-error' });
+        return;
+    }
+
+    container.createEl('h3', { text: '🏛️ Agora', cls: 'sidebar-section-title' });
+    container.createEl('p', {
+        text: 'Wspólna baza wiedzy — to widzi każdy agent.',
+        cls: 'agora-subtitle'
+    });
+
+    const activeTab = params.tab || 'profile';
+    const tabBar = container.createDiv({ cls: 'sidebar-profile-tabs' });
+    for (const tab of TABS) {
+        const btn = tabBar.createEl('button', {
+            cls: `sidebar-profile-tab ${tab.id === activeTab ? 'active' : ''}`,
+            text: tab.label
+        });
+        btn.addEventListener('click', () => {
+            nav.replace('agora', { tab: tab.id }, 'Agora');
+        });
+    }
+
+    const content = container.createDiv({ cls: 'sidebar-profile-tab-content' });
+    const refresh = () => nav.replace('agora', { tab: activeTab }, 'Agora');
+
+    switch (activeTab) {
+        case 'profile': renderProfileTab(content, plugin, agora, refresh); break;
+        case 'activity': renderActivityTab(content, plugin, agora, refresh); break;
+        case 'projects': renderProjectsTab(content, plugin, agora, nav); break;
+        case 'map': renderMapTab(content, plugin, agora, refresh); break;
+        case 'access': renderAccessTab(content, plugin, agora, refresh); break;
+    }
+}
+
+// ─────────────────────────────────────────────
+// PROFILE TAB
+// ─────────────────────────────────────────────
+
+async function renderProfileTab(container, plugin, agora, refresh) {
+    const loading = container.createEl('p', { text: 'Ładowanie profilu...', cls: 'agora-loading' });
+
+    try {
+        const profile = await agora.readProfile();
+        loading.remove();
+
+        // Parse all sections from profile
+        const parsedSections = new Map();
+        if (profile && profile.trim().length > 10) {
+            const sections = profile.split(/^## /m).filter(s => s.trim());
+            for (const sec of sections) {
+                const lines = sec.split('\n');
+                const header = lines[0].replace(/^#+ /, '').trim();
+                const body = lines.slice(1).join('\n').trim();
+                if (header !== 'Profil Użytkownika') {
+                    parsedSections.set(header, body);
+                }
+            }
+        }
+
+        // Render each section
+        for (const [displayName, sectionKey] of Object.entries(PROFILE_SECTION_MAP)) {
+            const body = parsedSections.get(displayName) || '';
+            const secDiv = container.createDiv({ cls: 'agora-profile-section' });
+            secDiv.createEl('h4', { text: displayName, cls: 'agora-profile-header' });
+
+            const itemsDiv = secDiv.createDiv({ cls: 'agora-profile-items' });
+
+            // Parse bullet points (skip blockquote placeholders)
+            const items = body.split('\n')
+                .filter(l => l.trim() && !l.trim().startsWith('>'))
+                .map(l => l.replace(/^- /, '').trim())
+                .filter(Boolean);
+
+            if (items.length === 0) {
+                itemsDiv.createEl('p', { text: '(pusta)', cls: 'sidebar-empty-text agora-empty-hint' });
+            }
+
+            for (const item of items) {
+                renderEditableItem(itemsDiv, item, {
+                    onSave: async (newVal) => {
+                        await agora.updateProfile(sectionKey, 'update', newVal, item);
+                        refresh();
+                    },
+                    onDelete: async () => {
+                        await agora.updateProfile(sectionKey, 'delete', item);
+                        refresh();
+                    }
+                });
+            }
+
+            // Add form
+            renderAddForm(secDiv, async (val) => {
+                await agora.updateProfile(sectionKey, 'add', val);
+                refresh();
+            });
+        }
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY TAB
+// ─────────────────────────────────────────────
+
+async function renderActivityTab(container, plugin, agora, refresh) {
+    const loading = container.createEl('p', { text: 'Ładowanie aktywności...', cls: 'agora-loading' });
+
+    try {
+        const entries = await agora.readActivity(15);
+        loading.remove();
+
+        if (entries.length === 0) {
+            container.createEl('p', {
+                text: 'Brak wpisów aktywności.',
+                cls: 'sidebar-empty-text'
+            });
+        } else {
+            const reversed = [...entries].reverse();
+            for (const entry of reversed) {
+                renderActivityCard(container, entry, plugin, agora, refresh);
+            }
+        }
+
+        // Add activity button
+        const addSection = container.createDiv({ cls: 'agora-actions' });
+        const addBtn = addSection.createEl('button', {
+            text: '+ Dodaj aktywność',
+            cls: 'sidebar-detail-btn'
+        });
+        addBtn.addEventListener('click', () => {
+            new ActivityModal(plugin.app, plugin, {
+                onSave: async (data) => {
+                    await agora.postActivity(
+                        data.agent, data.emoji || '',
+                        data.summary, data.conclusions, data.actions
+                    );
+                    refresh();
+                }
+            }).open();
+        });
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+function renderActivityCard(container, entry, plugin, agora, refresh) {
+    const card = container.createDiv({ cls: 'agora-activity-card' });
+
+    const header = card.createDiv({ cls: 'agora-activity-header' });
+    header.createSpan({ text: entry.agent, cls: 'agora-activity-agent' });
+
+    const headerRight = header.createDiv({ cls: 'agora-item-actions' });
+    headerRight.createSpan({ text: entry.date, cls: 'agora-activity-date' });
+
+    // Edit button
+    const editBtn = headerRight.createEl('button', {
+        cls: 'agora-item-btn', attr: { title: 'Edytuj' }
+    });
+    editBtn.textContent = '✏️';
+    editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        new ActivityModal(plugin.app, plugin, {
+            entry,
+            onSave: async (data) => {
+                await agora.updateActivity(entry.id, data);
+                refresh();
+            }
+        }).open();
+    });
+
+    // Delete button
+    const delBtn = headerRight.createEl('button', {
+        cls: 'agora-item-btn agora-item-delete', attr: { title: 'Usuń' }
+    });
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await agora.deleteActivity(entry.id);
+        refresh();
+    });
+
+    card.createDiv({ text: entry.summary, cls: 'agora-activity-summary' });
+
+    if (entry.conclusions) {
+        const det = card.createDiv({ cls: 'agora-activity-detail' });
+        det.createSpan({ text: 'Wnioski: ', cls: 'agora-activity-label' });
+        det.createSpan({ text: entry.conclusions });
+    }
+    if (entry.actions) {
+        const det = card.createDiv({ cls: 'agora-activity-detail' });
+        det.createSpan({ text: 'Akcje: ', cls: 'agora-activity-label' });
+        det.createSpan({ text: entry.actions });
+    }
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY MODAL (add / edit)
+// ─────────────────────────────────────────────
+
+class ActivityModal extends Modal {
+    constructor(app, plugin, options) {
+        super(app);
+        this.plugin = plugin;
+        this.options = options; // { entry?, onSave }
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.addClass('agora-modal');
+
+        const entry = this.options.entry;
+        const isEdit = !!entry;
+
+        contentEl.createEl('h3', {
+            text: isEdit ? 'Edytuj aktywność' : 'Nowa aktywność',
+            cls: 'agora-modal-title'
+        });
+
+        // Agent
+        const agentRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        agentRow.createEl('label', { text: 'Agent / Autor' });
+        const agentInput = agentRow.createEl('input', {
+            attr: { type: 'text', placeholder: 'np. Jaskier 🎭 lub Użytkownik' }
+        });
+        agentInput.value = entry?.agent || 'Użytkownik';
+
+        // Summary
+        const summaryRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        summaryRow.createEl('label', { text: 'Podsumowanie' });
+        const summaryInput = summaryRow.createEl('textarea', {
+            attr: { placeholder: 'Co się wydarzyło...', rows: 3 }
+        });
+        summaryInput.value = entry?.summary || '';
+
+        // Conclusions
+        const conclusionsRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        conclusionsRow.createEl('label', { text: 'Wnioski' });
+        const conclusionsInput = conclusionsRow.createEl('textarea', {
+            attr: { placeholder: 'Kluczowe wnioski...', rows: 2 }
+        });
+        conclusionsInput.value = entry?.conclusions || '';
+
+        // Actions
+        const actionsRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        actionsRow.createEl('label', { text: 'Akcje dla agentów' });
+        const actionsInput = actionsRow.createEl('textarea', {
+            attr: { placeholder: 'Zalecane akcje...', rows: 2 }
+        });
+        actionsInput.value = entry?.actions || '';
+
+        // Footer
+        const footer = contentEl.createDiv({ cls: 'agora-modal-footer' });
+        const cancelBtn = footer.createEl('button', { text: 'Anuluj' });
+        cancelBtn.addEventListener('click', () => this.close());
+
+        const saveBtn = footer.createEl('button', { text: 'Zapisz', cls: 'mod-cta' });
+        saveBtn.addEventListener('click', async () => {
+            const data = {
+                agent: agentInput.value.trim() || 'Użytkownik',
+                emoji: '',
+                date: entry?.date || new Date().toLocaleString('pl-PL'),
+                summary: summaryInput.value.trim(),
+                conclusions: conclusionsInput.value.trim(),
+                actions: actionsInput.value.trim()
+            };
+            if (!data.summary) return;
+            await this.options.onSave(data);
+            this.close();
+        });
+
+        setTimeout(() => summaryInput.focus(), 50);
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+// ─────────────────────────────────────────────
+// PROJECTS TAB
+// ─────────────────────────────────────────────
+
+async function renderProjectsTab(container, plugin, agora, nav) {
+    const loading = container.createEl('p', { text: 'Ładowanie projektów...', cls: 'agora-loading' });
+
+    try {
+        const projects = await agora.listProjects();
+        loading.remove();
+
+        if (projects.length === 0) {
+            container.createEl('p', {
+                text: 'Brak współdzielonych projektów.',
+                cls: 'sidebar-empty-text'
+            });
+        }
+
+        for (const p of projects) {
+            const card = container.createDiv({ cls: 'agora-project-card' });
+            const header = card.createDiv({ cls: 'agora-project-header' });
+            header.createSpan({ text: p.title, cls: 'agora-project-title' });
+
+            // Status badge - clickable to cycle
+            const statusCls = p.status === 'active' ? 'status-active' :
+                              p.status === 'done' ? 'status-done' : 'status-paused';
+            const statusBadge = header.createSpan({
+                text: p.status,
+                cls: `agora-project-status clickable ${statusCls}`,
+                attr: { title: 'Kliknij aby zmienić status' }
+            });
+            statusBadge.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const next = p.status === 'active' ? 'paused' :
+                             p.status === 'paused' ? 'done' : 'active';
+                await agora.updateProjectStatus(p.slug, next);
+                nav.replace('agora', { tab: 'projects' }, 'Agora');
+            });
+
+            card.createDiv({
+                text: `Agenci: ${p.agents.join(', ')}`,
+                cls: 'agora-project-agents'
+            });
+
+            card.addEventListener('click', () => {
+                nav.push('agora-project-detail', { slug: p.slug }, 'Agora');
+            });
+        }
+
+        // Create project button
+        const addSection = container.createDiv({ cls: 'agora-actions' });
+        const addBtn = addSection.createEl('button', {
+            text: '+ Nowy projekt',
+            cls: 'sidebar-detail-btn'
+        });
+        addBtn.addEventListener('click', () => {
+            new ProjectCreateModal(plugin.app, plugin, {
+                onSave: async (data) => {
+                    await agora.createProject(
+                        data.title, data.description, data.agents, null, 'Użytkownik'
+                    );
+                    nav.replace('agora', { tab: 'projects' }, 'Agora');
+                }
+            }).open();
+        });
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+// ─────────────────────────────────────────────
+// PROJECT CREATE MODAL
+// ─────────────────────────────────────────────
+
+class ProjectCreateModal extends Modal {
+    constructor(app, plugin, options) {
+        super(app);
+        this.plugin = plugin;
+        this.options = options;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.addClass('agora-modal');
+        contentEl.createEl('h3', { text: 'Nowy projekt', cls: 'agora-modal-title' });
+
+        // Title
+        const titleRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        titleRow.createEl('label', { text: 'Tytuł' });
+        const titleInput = titleRow.createEl('input', {
+            attr: { type: 'text', placeholder: 'Nazwa projektu...' }
+        });
+
+        // Description
+        const descRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        descRow.createEl('label', { text: 'Opis' });
+        const descInput = descRow.createEl('textarea', {
+            attr: { placeholder: 'Opis projektu...', rows: 3 }
+        });
+
+        // Agents (checkboxes)
+        const agentsRow = contentEl.createDiv({ cls: 'agora-modal-field' });
+        agentsRow.createEl('label', { text: 'Agenci' });
+        const allAgents = this.plugin.agentManager?.getAgentListForUI() || [];
+        const checkboxes = [];
+        const cbContainer = agentsRow.createDiv({ cls: 'agora-modal-checkboxes' });
+        for (const a of allAgents) {
+            const label = cbContainer.createEl('label', { cls: 'agora-modal-checkbox' });
+            const cb = label.createEl('input', { attr: { type: 'checkbox' } });
+            cb.value = a.name;
+            label.appendText(` ${a.emoji} ${a.name}`);
+            checkboxes.push(cb);
+        }
+
+        // Footer
+        const footer = contentEl.createDiv({ cls: 'agora-modal-footer' });
+        const cancelBtn = footer.createEl('button', { text: 'Anuluj' });
+        cancelBtn.addEventListener('click', () => this.close());
+
+        const saveBtn = footer.createEl('button', { text: 'Utwórz', cls: 'mod-cta' });
+        saveBtn.addEventListener('click', async () => {
+            const title = titleInput.value.trim();
+            if (!title) return;
+            const agents = checkboxes.filter(c => c.checked).map(c => c.value);
+            const description = descInput.value.trim() || '';
+            await this.options.onSave({ title, description, agents });
+            this.close();
+        });
+
+        setTimeout(() => titleInput.focus(), 50);
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+// ─────────────────────────────────────────────
+// PROJECT DETAIL VIEW
+// ─────────────────────────────────────────────
+
+/**
+ * Render a single project detail view.
+ * @param {HTMLElement} container
+ * @param {Object} plugin
+ * @param {import('./SidebarNav.js').SidebarNav} nav
+ * @param {Object} params - { slug: string }
+ */
+export async function renderAgoraProjectDetailView(container, plugin, nav, params) {
+    const agora = plugin.agoraManager;
+    if (!agora || !params.slug) {
+        container.createEl('p', { text: 'Brak danych projektu.', cls: 'agent-error' });
+        return;
+    }
+
+    const refresh = () => nav.replace('agora-project-detail', { slug: params.slug }, 'Agora');
+    const loading = container.createEl('p', { text: 'Ładowanie projektu...', cls: 'agora-loading' });
+
+    try {
+        const project = await agora.getProject(params.slug);
+        loading.remove();
+
+        if (!project) {
+            container.createEl('p', { text: `Projekt "${params.slug}" nie istnieje.`, cls: 'agent-error' });
+            return;
+        }
+
+        // ── Title + Status ──
+        const titleRow = container.createDiv({ cls: 'agora-project-detail-header' });
+        titleRow.createEl('h3', { text: project.title, cls: 'sidebar-section-title' });
+
+        const statusSelect = titleRow.createEl('select', { cls: 'agora-status-select' });
+        for (const s of ['active', 'paused', 'done']) {
+            const opt = statusSelect.createEl('option', { text: s, value: s });
+            if (s === project.status) opt.selected = true;
+        }
+        statusSelect.addEventListener('change', async () => {
+            await agora.updateProjectStatus(params.slug, statusSelect.value);
+            const komunikator = plugin.agentManager?.komunikatorManager;
+            if (komunikator) {
+                await agora.pingAgents(params.slug, 'Użytkownik',
+                    `Status projektu zmieniony na: ${statusSelect.value}`, komunikator);
+            }
+            refresh();
+        });
+
+        // ── Meta ──
+        const meta = container.createDiv({ cls: 'sidebar-detail-meta' });
+        meta.createDiv({ cls: 'sidebar-detail-row' }).innerHTML =
+            `<span class="sidebar-detail-label">Autor:</span> <span class="sidebar-detail-value">${project.created_by}</span>`;
+        meta.createDiv({ cls: 'sidebar-detail-row' }).innerHTML =
+            `<span class="sidebar-detail-label">Data:</span> <span class="sidebar-detail-value">${project.created_at}</span>`;
+
+        // ── Agents ──
+        const agentsSection = container.createDiv({ cls: 'agora-project-section' });
+        agentsSection.createEl('h4', { text: 'Agenci', cls: 'agora-profile-header' });
+        const agentsBadges = agentsSection.createDiv({ cls: 'agora-agent-badges' });
+        for (const a of project.agents) {
+            const agentObj = plugin.agentManager?.getAgent(a);
+            const emoji = agentObj?.emoji || '';
+            const badge = agentsBadges.createDiv({ cls: 'agora-agent-badge' });
+            badge.createSpan({ text: `${emoji} ${a}` });
+
+            // Remove agent button (only if more than 1 agent)
+            if (project.agents.length > 1) {
+                const removeBtn = badge.createEl('button', {
+                    cls: 'agora-badge-remove',
+                    attr: { title: `Usuń ${a} z projektu` }
+                });
+                removeBtn.textContent = '✕';
+                removeBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await agora.removeAgentFromProject(params.slug, a);
+                    const komunikator = plugin.agentManager?.komunikatorManager;
+                    if (komunikator) {
+                        await komunikator.writeMessage('Użytkownik', a,
+                            `[Agora] Usunięto z projektu: ${project.title}`,
+                            `Zostałeś usunięty z projektu "${project.title}".`
+                        );
+                    }
+                    refresh();
+                });
+            }
+        }
+
+        // Add agent
+        const allAgents = plugin.agentManager?.getAgentListForUI() || [];
+        const availableAgents = allAgents.filter(a => !project.agents.includes(a.name));
+        if (availableAgents.length > 0) {
+            const addAgentForm = agentsSection.createDiv({ cls: 'agora-add-form' });
+            const agentSelect = addAgentForm.createEl('select', { cls: 'agora-add-input' });
+            agentSelect.createEl('option', { text: 'Dodaj agenta...', value: '' });
+            for (const a of availableAgents) {
+                agentSelect.createEl('option', { text: `${a.emoji} ${a.name}`, value: a.name });
+            }
+
+            const notifyLabel = addAgentForm.createEl('label', { cls: 'agora-notify-label' });
+            const notifyCheck = notifyLabel.createEl('input', { attr: { type: 'checkbox' } });
+            notifyCheck.checked = true;
+            notifyLabel.appendText(' Powiadom');
+
+            const addAgentBtn = addAgentForm.createEl('button', { cls: 'agora-add-btn', text: '+' });
+            addAgentBtn.addEventListener('click', async () => {
+                const name = agentSelect.value;
+                if (!name) return;
+                await agora.addAgentToProject(params.slug, name);
+                if (notifyCheck.checked) {
+                    const komunikator = plugin.agentManager?.komunikatorManager;
+                    if (komunikator) {
+                        await komunikator.writeMessage('Użytkownik', name,
+                            `[Agora] Dodano do projektu: ${project.title}`,
+                            `Zostałeś dodany do projektu "${project.title}". Sprawdź Agorę po szczegóły.`
+                        );
+                    }
+                }
+                refresh();
+            });
+        }
+
+        // ── Description ──
+        const descSection = container.createDiv({ cls: 'agora-project-section' });
+        const descHeader = descSection.createDiv({ cls: 'agora-section-header-row' });
+        descHeader.createEl('h4', { text: 'Opis', cls: 'agora-profile-header' });
+
+        const descEditBtn = descHeader.createEl('button', {
+            cls: 'agora-item-btn', attr: { title: 'Edytuj opis' }
+        });
+        descEditBtn.textContent = '✏️';
+
+        const descContent = descSection.createDiv({ cls: 'agora-project-desc-text' });
+        descContent.textContent = project.description || '(brak opisu)';
+
+        descEditBtn.addEventListener('click', () => {
+            descContent.style.display = 'none';
+            descEditBtn.style.display = 'none';
+
+            const editArea = descSection.createDiv({ cls: 'agora-desc-edit' });
+            const textarea = editArea.createEl('textarea', {
+                cls: 'agora-desc-textarea',
+                attr: { rows: 4 }
+            });
+            textarea.value = project.description || '';
+
+            const btnRow = editArea.createDiv({ cls: 'agora-edit-buttons' });
+            const saveBtn = btnRow.createEl('button', { text: 'Zapisz', cls: 'mod-cta agora-edit-save' });
+            const cancelBtn = btnRow.createEl('button', { text: 'Anuluj', cls: 'agora-edit-cancel' });
+
+            saveBtn.addEventListener('click', async () => {
+                await agora.updateProjectDescription(params.slug, textarea.value.trim());
+                refresh();
+            });
+            cancelBtn.addEventListener('click', () => {
+                editArea.remove();
+                descContent.style.display = '';
+                descEditBtn.style.display = '';
+            });
+
+            textarea.focus();
+        });
+
+        // ── Tasks ──
+        const taskSection = container.createDiv({ cls: 'agora-project-tasks' });
+        taskSection.createEl('h4', { text: 'Zadania', cls: 'agora-profile-header' });
+
+        if (project.tasks && project.tasks.length > 0) {
+            project.tasks.forEach((task, idx) => {
+                const taskRow = taskSection.createDiv({ cls: 'agora-task-row' });
+
+                const checkbox = taskRow.createEl('input', {
+                    attr: { type: 'checkbox' },
+                    cls: 'agora-task-check'
+                });
+                checkbox.checked = task.done;
+                checkbox.addEventListener('change', async () => {
+                    if (task.done) {
+                        await agora.uncompleteTask(params.slug, idx);
+                    } else {
+                        await agora.completeTask(params.slug, idx);
+                    }
+                    refresh();
+                });
+
+                taskRow.createSpan({
+                    text: `@${task.assignee}: ${task.task}`,
+                    cls: task.done ? 'agora-task-text done' : 'agora-task-text'
+                });
+
+                const delBtn = taskRow.createEl('button', {
+                    cls: 'agora-item-btn agora-item-delete',
+                    attr: { title: 'Usuń zadanie' }
+                });
+                delBtn.textContent = '✕';
+                delBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await agora.deleteTask(params.slug, idx);
+                    refresh();
+                });
+            });
+
+            // Progress bar
+            const done = project.tasks.filter(t => t.done).length;
+            const total = project.tasks.length;
+            const pct = total > 0 ? Math.round(done / total * 100) : 0;
+            const progressDiv = taskSection.createDiv({ cls: 'agora-progress' });
+            const bar = progressDiv.createDiv({ cls: 'agora-progress-bar' });
+            bar.createDiv({ cls: 'agora-progress-fill' }).style.width = `${pct}%`;
+            progressDiv.createSpan({ text: `${done}/${total} (${pct}%)`, cls: 'agora-progress-text' });
+        } else {
+            taskSection.createEl('p', { text: '(brak zadań)', cls: 'sidebar-empty-text' });
+        }
+
+        // Add task form
+        const addTaskForm = taskSection.createDiv({ cls: 'agora-add-task-form' });
+        const assigneeSelect = addTaskForm.createEl('select', { cls: 'agora-task-assignee' });
+        for (const a of project.agents) {
+            assigneeSelect.createEl('option', { text: a, value: a });
+        }
+        const taskInput = addTaskForm.createEl('input', {
+            cls: 'agora-add-input',
+            attr: { type: 'text', placeholder: 'Nowe zadanie...' }
+        });
+
+        const notifyLabel2 = addTaskForm.createEl('label', { cls: 'agora-notify-label' });
+        const notifyCheck2 = notifyLabel2.createEl('input', { attr: { type: 'checkbox' } });
+        notifyCheck2.checked = true;
+        notifyLabel2.appendText(' Ping');
+
+        const addTaskBtn = addTaskForm.createEl('button', { cls: 'agora-add-btn', text: '+' });
+        addTaskBtn.addEventListener('click', async () => {
+            const taskText = taskInput.value.trim();
+            if (!taskText) return;
+            const assignee = assigneeSelect.value;
+            await agora.addTask(params.slug, assignee, taskText);
+            if (notifyCheck2.checked) {
+                const komunikator = plugin.agentManager?.komunikatorManager;
+                if (komunikator) {
+                    await komunikator.writeMessage('Użytkownik', assignee,
+                        `[Agora] Nowe zadanie: ${project.title}`,
+                        `Nowe zadanie: ${taskText}`
+                    );
+                }
+            }
+            refresh();
+        });
+        taskInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addTaskBtn.click();
+        });
+
+        // ── Delete Project ──
+        const dangerSection = container.createDiv({ cls: 'agora-project-danger' });
+        const deleteBtn = dangerSection.createEl('button', {
+            text: '🗑️ Usuń projekt',
+            cls: 'agora-danger-btn'
+        });
+        deleteBtn.addEventListener('click', () => {
+            // Confirmation step
+            deleteBtn.style.display = 'none';
+            const confirmRow = dangerSection.createDiv({ cls: 'agora-danger-confirm' });
+            confirmRow.createSpan({ text: 'Na pewno usunąć projekt?', cls: 'agora-danger-text' });
+            const yesBtn = confirmRow.createEl('button', { text: 'Tak, usuń', cls: 'agora-danger-btn' });
+            const noBtn = confirmRow.createEl('button', { text: 'Anuluj', cls: 'agora-edit-cancel' });
+
+            yesBtn.addEventListener('click', async () => {
+                await agora.deleteProject(params.slug);
+                nav.replace('agora', { tab: 'projects' }, 'Agora');
+            });
+            noBtn.addEventListener('click', () => {
+                confirmRow.remove();
+                deleteBtn.style.display = '';
+            });
+        });
+
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+// ─────────────────────────────────────────────
+// MAP TAB
+// ─────────────────────────────────────────────
+
+async function renderMapTab(container, plugin, agora, refresh) {
+    const loading = container.createEl('p', { text: 'Ładowanie mapy...', cls: 'agora-loading' });
+
+    try {
+        const map = await agora.readVaultMap();
+        loading.remove();
+
+        // Parse sections from vault map
+        const sections = (map || '').split(/^## /m).filter(s => s.trim());
+        for (const sec of sections) {
+            const lines = sec.split('\n');
+            const header = lines[0].replace(/^#+ /, '').trim();
+            const body = lines.slice(1).join('\n').trim();
+
+            if (header === 'Globalna Mapa Vaulta') continue;
+
+            const secDiv = container.createDiv({ cls: 'agora-map-section' });
+            secDiv.createEl('h4', { text: header, cls: 'agora-profile-header' });
+
+            const itemsDiv = secDiv.createDiv({ cls: 'agora-profile-items' });
+
+            const items = body.split('\n')
+                .filter(l => l.trim() && !l.trim().startsWith('>'))
+                .map(l => l.trim())
+                .filter(Boolean);
+
+            if (items.length === 0) {
+                itemsDiv.createEl('p', { text: '(pusta)', cls: 'sidebar-empty-text agora-empty-hint' });
+            }
+
+            for (const item of items) {
+                const cleanItem = item.replace(/^- /, '').trim();
+                renderEditableItem(itemsDiv, cleanItem, {
+                    onSave: async (newVal) => {
+                        const newItem = item.startsWith('- ') ? `- ${newVal}` : newVal;
+                        const newBody = body.replace(item, newItem);
+                        await agora.updateVaultMap(header, newBody);
+                        refresh();
+                    },
+                    onDelete: async () => {
+                        const newBody = body.split('\n')
+                            .filter(l => l.trim() !== item.trim())
+                            .join('\n').trim();
+                        await agora.updateVaultMap(header, newBody || '> (pusta sekcja)');
+                        refresh();
+                    }
+                });
+            }
+
+            // Add form for each section
+            renderAddForm(secDiv, async (val) => {
+                const line = `- ${val}`;
+                const cleanBody = body.replace(/^> .*$/gm, '').trim();
+                const newBody = cleanBody ? `${cleanBody}\n${line}` : line;
+                await agora.updateVaultMap(header, newBody);
+                refresh();
+            });
+        }
+
+        // Agent focus folders section
+        const agentZonesDiv = container.createDiv({ cls: 'agora-map-section' });
+        agentZonesDiv.createEl('h4', { text: '📁 Focus Folders agentów', cls: 'agora-profile-header' });
+
+        const allAgents = plugin.agentManager?.getAgentListForUI() || [];
+        for (const agentInfo of allAgents) {
+            const agent = plugin.agentManager.getAgent(agentInfo.name);
+            if (!agent) continue;
+
+            const folders = agent.focusFolders || [];
+            const agentRow = agentZonesDiv.createDiv({ cls: 'agora-agent-zone' });
+            agentRow.createSpan({
+                text: `${agentInfo.emoji} ${agentInfo.name}: `,
+                cls: 'agora-agent-zone-name'
+            });
+
+            if (folders.length === 0) {
+                agentRow.createSpan({ text: '(brak)', cls: 'sidebar-empty-text' });
+            } else {
+                agentRow.createSpan({
+                    text: folders.join(', '),
+                    cls: 'agora-agent-zone-folders'
+                });
+            }
+
+            // Add folder form
+            const addFolderForm = agentRow.createDiv({ cls: 'agora-add-form agora-add-form-inline' });
+            const folderInput = addFolderForm.createEl('input', {
+                cls: 'agora-add-input',
+                attr: { type: 'text', placeholder: 'Dodaj folder...' }
+            });
+            const addFolderBtn = addFolderForm.createEl('button', { cls: 'agora-add-btn', text: '+' });
+
+            const doAddFolder = async () => {
+                const val = folderInput.value.trim();
+                if (!val) return;
+                const newFolders = [...(agent.focusFolders || []), val];
+                await plugin.agentManager.updateAgent(agentInfo.name, { focus_folders: newFolders });
+                refresh();
+            };
+            addFolderBtn.addEventListener('click', doAddFolder);
+            folderInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') doAddFolder();
+            });
+        }
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+// ─────────────────────────────────────────────
+// ACCESS TAB
+// ─────────────────────────────────────────────
+
+async function renderAccessTab(container, plugin, agora, refresh) {
+    const loading = container.createEl('p', { text: 'Ładowanie uprawnień...', cls: 'agora-loading' });
+
+    try {
+        const agents = plugin.agentManager?.getAgentListForUI() || [];
+        loading.remove();
+
+        if (agents.length === 0) {
+            container.createEl('p', { text: 'Brak agentów.', cls: 'sidebar-empty-text' });
+            return;
+        }
+
+        // Level legend
+        const legend = container.createDiv({ cls: 'agora-access-legend' });
+        legend.createEl('div', {
+            text: '🟢 admin — pełny zapis (profil, mapa, aktywność, projekty)',
+            cls: 'agora-access-legend-item'
+        });
+        legend.createEl('div', {
+            text: '🟡 contributor — zapis aktywności i projektów',
+            cls: 'agora-access-legend-item'
+        });
+        legend.createEl('div', {
+            text: '🔴 reader — tylko odczyt',
+            cls: 'agora-access-legend-item'
+        });
+
+        // Agent access list
+        const list = container.createDiv({ cls: 'agora-access-list' });
+        for (const agentInfo of agents) {
+            const access = await agora.getAccess(agentInfo.name);
+            const row = list.createDiv({ cls: 'agora-access-row' });
+
+            row.createSpan({
+                text: `${agentInfo.emoji} ${agentInfo.name}`,
+                cls: 'agora-access-agent'
+            });
+
+            // Inline level select
+            const select = row.createEl('select', { cls: 'agora-access-select' });
+            for (const level of ['admin', 'contributor', 'reader']) {
+                const emoji = level === 'admin' ? '🟢' :
+                              level === 'contributor' ? '🟡' : '🔴';
+                const opt = select.createEl('option', {
+                    text: `${emoji} ${level}`,
+                    value: level
+                });
+                if (level === access.level) opt.selected = true;
+            }
+            select.addEventListener('change', async () => {
+                await agora.setAccess(agentInfo.name, select.value);
+                row.style.opacity = '0.5';
+                setTimeout(() => { row.style.opacity = '1'; }, 300);
+            });
+
+            if (access.projects && access.projects.length > 0) {
+                row.createSpan({
+                    text: `projekty: ${access.projects.join(', ')}`,
+                    cls: 'agora-access-projects'
+                });
+            }
+        }
+    } catch (e) {
+        loading.textContent = `Błąd: ${e.message}`;
+    }
+}
+
+// ─────────────────────────────────────────────
+// SHARED HELPERS
+// ─────────────────────────────────────────────
+
+/**
+ * Render an editable item row with edit/delete buttons.
+ * @param {HTMLElement} container
+ * @param {string} text - Display text
+ * @param {Object} callbacks - { onSave: async (newVal) => void, onDelete: async () => void }
+ */
+function renderEditableItem(container, text, callbacks) {
+    const row = container.createDiv({ cls: 'agora-item-row' });
+    const textSpan = row.createSpan({ text, cls: 'agora-item-text' });
+
+    const actions = row.createDiv({ cls: 'agora-item-actions' });
+
+    // Edit
+    const editBtn = actions.createEl('button', {
+        cls: 'agora-item-btn', attr: { title: 'Edytuj' }
+    });
+    editBtn.textContent = '✏️';
+    editBtn.addEventListener('click', () => {
+        textSpan.style.display = 'none';
+        actions.style.display = 'none';
+
+        const editRow = row.createDiv({ cls: 'agora-edit-row' });
+        const input = editRow.createEl('input', {
+            cls: 'agora-inline-input',
+            value: text,
+            attr: { type: 'text' }
+        });
+        const saveBtn = editRow.createEl('button', { cls: 'agora-edit-save', text: '✓' });
+        const cancelBtn = editRow.createEl('button', { cls: 'agora-edit-cancel', text: '✕' });
+
+        const cancelEdit = () => {
+            editRow.remove();
+            textSpan.style.display = '';
+            actions.style.display = '';
+        };
+
+        saveBtn.addEventListener('click', async () => {
+            const newVal = input.value.trim();
+            if (newVal && newVal !== text) {
+                await callbacks.onSave(newVal);
+            } else {
+                cancelEdit();
+            }
+        });
+        cancelBtn.addEventListener('click', cancelEdit);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveBtn.click();
+            if (e.key === 'Escape') cancelEdit();
+        });
+        input.focus();
+    });
+
+    // Delete
+    const delBtn = actions.createEl('button', {
+        cls: 'agora-item-btn agora-item-delete', attr: { title: 'Usuń' }
+    });
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', async () => {
+        await callbacks.onDelete();
+    });
+}
+
+/**
+ * Render an add form (input + button).
+ * @param {HTMLElement} container
+ * @param {Function} onAdd - async (value) => void
+ * @param {string} [placeholder='Dodaj...']
+ */
+function renderAddForm(container, onAdd, placeholder = 'Dodaj...') {
+    const form = container.createDiv({ cls: 'agora-add-form' });
+    const input = form.createEl('input', {
+        cls: 'agora-add-input',
+        attr: { type: 'text', placeholder }
+    });
+    const addBtn = form.createEl('button', { cls: 'agora-add-btn', text: '+' });
+
+    const doAdd = async () => {
+        const val = input.value.trim();
+        if (!val) return;
+        await onAdd(val);
+    };
+    addBtn.addEventListener('click', doAdd);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doAdd();
+    });
+}

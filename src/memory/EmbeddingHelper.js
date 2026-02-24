@@ -1,92 +1,86 @@
 /**
- * Wrapper na SmartEmbedModel dla łatwego użycia w RAG
+ * Wrapper na SmartEmbedModel adapter dla łatwego użycia w RAG.
+ * Używa tej samej ścieżki co vault_search (adapter.embed_batch).
  */
 export class EmbeddingHelper {
     constructor(env) {
         this.env = env;
-        this._embedModel = null;
+        this._embedAdapter = null;
     }
 
     /**
-     * Znajduje model embeddings w różnych miejscach env
+     * Znajduje adapter embeddings (ten sam co vault_search).
+     * smart_sources.embed_model → embedding_models.default.instance
      */
-    _findEmbedModel() {
-        // Try various paths where embed model might be
-        if (this.env?.smart_embed_model?.embed) {
-            return this.env.smart_embed_model;
-        }
-        // Try through modules
-        if (this.env?.modules?.smart_embed_model?.embed) {
-            return this.env.modules.smart_embed_model;
-        }
-        // Try through collections (smart_sources use embed model)
-        if (this.env?.smart_sources?.embed_model?.embed) {
-            return this.env.smart_sources.embed_model;
-        }
-        // Try smart_blocks
-        if (this.env?.smart_blocks?.embed_model?.embed) {
-            return this.env.smart_blocks.embed_model;
-        }
+    _findEmbedAdapter() {
+        // Path 1: through smart_sources (same as vault_search - proven working)
+        try {
+            const adapter = this.env?.smart_sources?.embed_model;
+            if (adapter?.embed_batch) return adapter;
+        } catch { /* not ready */ }
+
+        // Path 2: through embedding_models collection (.instance = adapter)
+        try {
+            const model = this.env?.embedding_models?.default;
+            if (model?.instance?.embed_batch) return model.instance;
+        } catch { /* not ready */ }
+
         return null;
     }
 
     /**
-     * Sprawdza czy model jest gotowy
+     * Sprawdza czy adapter jest gotowy
      */
     isReady() {
-        this._embedModel = this._findEmbedModel();
-        return !!this._embedModel;
+        this._embedAdapter = this._findEmbedAdapter();
+        return !!this._embedAdapter;
     }
 
     /**
-     * Embeduje pojedynczy tekst
+     * Embeduje pojedynczy tekst (ta sama ścieżka co vault_search).
      * @param {string} text - Tekst do zembedowania
      * @returns {Promise<number[]>} Vector
      */
     async embed(text) {
         if (!this.isReady()) throw new Error('Embed model not ready');
 
-        // SmartEmbedModel.embed() expects just the text string, not {input: text}
-        const result = await this._embedModel.embed(text);
+        const results = await this._embedAdapter.embed_batch([{ embed_input: text }]);
 
-        // Handle various result formats
-        if (Array.isArray(result)) {
-            return result;
+        if (!results?.length || !results[0]?.vec) {
+            throw new Error('Embed result is empty');
         }
-        if (result?.vec) {
-            return result.vec;
-        }
-        if (result?.embedding) {
-            return result.embedding;
-        }
-        if (result?.data?.[0]?.embedding) {
-            return result.data[0].embedding;
-        }
-
-        console.warn('[EmbeddingHelper] Unknown result format:', result);
-        throw new Error('Embed result has unknown format');
+        return results[0].vec;
     }
 
     /**
-     * Embeduje wiele tekstów (batch)
+     * Embeduje wiele tekstów (batch).
+     * Trackuje indeksy — adapter może odfiltrować puste inputy,
+     * więc mapujemy wyniki z powrotem na oryginalne pozycje.
      * @param {string[]} texts - Lista tekstów do zembedowania
-     * @returns {Promise<number[][]>} Lista wektorów
+     * @returns {Promise<(number[]|null)[]>} Lista wektorów (null dla pustych/odfiltrowanych)
      */
     async embedBatch(texts) {
         if (!this.isReady()) throw new Error('Embed model not ready');
 
-        // Użyj embed_batch jeśli dostępne
-        if (this._embedModel.embed_batch) {
-            try {
-                const result = await this._embedModel.embed_batch({ input: texts });
-                return result.vecs || result.embeddings || result;
-            } catch (e) {
-                console.warn("SmartEmbedModel.embed_batch failed, falling back to iterative embed:", e);
+        // Zapamiętaj które indeksy mają niepusty tekst
+        const validEntries = [];
+        for (let i = 0; i < texts.length; i++) {
+            if (texts[i] && texts[i].trim().length > 0) {
+                validEntries.push({ originalIndex: i, text: texts[i] });
             }
         }
 
-        // Fallback: iterate
-        return Promise.all(texts.map(text => this.embed(text)));
+        if (validEntries.length === 0) return texts.map(() => null);
+
+        const inputs = validEntries.map(e => ({ embed_input: e.text }));
+        const results = await this._embedAdapter.embed_batch(inputs);
+
+        // Odbuduj tablicę o oryginalnej długości — null dla pustych pozycji
+        const output = new Array(texts.length).fill(null);
+        for (let j = 0; j < validEntries.length; j++) {
+            output[validEntries[j].originalIndex] = results[j]?.vec ?? null;
+        }
+        return output;
     }
 
     /**
@@ -97,8 +91,7 @@ export class EmbeddingHelper {
      */
     cosineSimilarity(vecA, vecB) {
         if (!vecA || !vecB || vecA.length !== vecB.length) {
-            console.warn("Invalid vectors for cosineSimilarity");
-            return 0;
+            return 0; // null vektory to oczekiwana sytuacja (puste snippety)
         }
 
         let dotProduct = 0;

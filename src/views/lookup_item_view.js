@@ -1,6 +1,6 @@
 import { SmartItemView } from 'obsidian-smart-env/views/smart_item_view.js';
 export class LookupItemView extends SmartItemView {
-  static get view_type() { return 'smart-lookup-view'; }
+  static get view_type() { return 'pkm-lookup-view'; }
   static get display_text() { return 'Lookup'; }
   static get icon_name() { return 'smart-lookup'; }
 

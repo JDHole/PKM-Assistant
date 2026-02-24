@@ -52,8 +52,10 @@ export class AgentLoader {
                 return agents;
             }
 
-            // Load each YAML file
+            // Load each YAML file (skip _overrides files — those are for built-in agents)
             for (const filePath of listed.files) {
+                const fileName = filePath.split('/').pop() || '';
+                if (fileName.includes('_overrides')) continue;
                 if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
                     try {
                         const agent = await this.loadAgentFromFile(filePath);
@@ -185,9 +187,9 @@ export class AgentLoader {
             const data = parseYaml(content);
             if (!data) return;
 
-            // Merge overrides into the agent
+            // Merge override permissions INTO existing (preserves built-in defaults like mcp:true)
             if (data.default_permissions) {
-                agent.update({ default_permissions: data.default_permissions });
+                agent.permissions = { ...agent.permissions, ...data.default_permissions };
             }
             if (data.skills) agent.skills = data.skills;
             if (data.minion !== undefined) agent.minion = data.minion;

@@ -1,5 +1,57 @@
 
 /**
+ * Polish names and icons for MCP tools.
+ * Exported for reuse in BackstageViews.
+ */
+export const TOOL_INFO = {
+    vault_read:      { icon: '📖', label: 'Odczyt notatki' },
+    vault_write:     { icon: '✏️', label: 'Zapis notatki' },
+    vault_search:    { icon: '🔍', label: 'Wyszukiwanie w vaultcie' },
+    vault_list:      { icon: '📁', label: 'Lista plików' },
+    vault_delete:    { icon: '🗑️', label: 'Usunięcie notatki' },
+    memory_search:   { icon: '🧠', label: 'Przeszukanie pamięci' },
+    memory_update:   { icon: '🧠', label: 'Aktualizacja pamięci' },
+    memory_status:   { icon: '🧠', label: 'Stan pamięci' },
+    skill_list:      { icon: '📚', label: 'Lista umiejętności' },
+    skill_execute:   { icon: '🎯', label: 'Aktywacja skilla' },
+    minion_task:     { icon: '🔧', label: 'Zadanie miniona' },
+    master_task:     { icon: '🧠', label: 'Konsultacja z ekspertem' },
+    agent_message:   { icon: '💬', label: 'Wiadomość do agenta' },
+    agent_delegate:  { icon: '🤝', label: 'Propozycja delegacji' },
+    chat_todo:       { icon: '📋', label: 'Lista zadań' },
+    plan_action:     { icon: '📋', label: 'Plan działania' },
+    agora_read:      { icon: '🏛️', label: 'Odczyt z Agory' },
+    agora_update:    { icon: '🏛️', label: 'Aktualizacja Agory' },
+    agora_project:   { icon: '🏛️', label: 'Projekt w Agorze' },
+};
+
+/**
+ * Human-readable Polish descriptions for MCP tools (for Backstage UI).
+ * Short, non-technical — 1-2 sentences each.
+ */
+export const TOOL_DESCRIPTIONS = {
+    vault_read:      'Odczytuje zawartość notatki z vaulta. Podajesz ścieżkę, dostajesz cały tekst Markdown.',
+    vault_write:     'Tworzy nową notatkę lub edytuje istniejącą. Może dopisać tekst, zastąpić treść lub wstawić na początek.',
+    vault_search:    'Wyszukiwanie semantyczne w vaultcie — szuka po znaczeniu, nie tylko po słowach kluczowych.',
+    vault_list:      'Wyświetla zawartość folderu. Może rekurencyjnie przejść podfoldery.',
+    vault_delete:    'Trwale usuwa notatkę z vaulta. Zawsze wymaga potwierdzenia użytkownika.',
+    memory_search:   'Przeszukuje pamięć agenta: brain, sesje i podsumowania. Semantyczne dopasowanie.',
+    memory_update:   'Aktualizuje pamięć długoterminową (brain.md). Dodaje, usuwa lub odczytuje fakty o użytkowniku.',
+    memory_status:   'Pokazuje statystyki pamięci: ile sesji, rozmiar brain, ostatnia aktywność.',
+    skill_list:      'Zwraca listę dostępnych umiejętności (skilli) agenta z opisami.',
+    skill_execute:   'Uruchamia wybrany skill — zwraca procedurę krok-po-kroku z pliku skilla.',
+    minion_task:     'Deleguje zadanie tańszemu modelowi AI (minionowi). Dobry do przeszukiwania wielu plików.',
+    master_task:     'Przekazuje trudne zadanie najsilniejszemu modelowi (Masterowi). Głęboka analiza.',
+    agent_message:   'Wysyła wiadomość do innego agenta — asynchronicznie, przez skrzynkę odbiorczą.',
+    agent_delegate:  'Proponuje przekazanie rozmowy innemu agentowi. Użytkownik musi potwierdzić.',
+    chat_todo:       'Interaktywna lista zadań z checkboxami, wyświetlana w oknie czatu.',
+    plan_action:     'Wieloetapowy plan z krokami, statusami i podzadaniami w chacie.',
+    agora_read:      'Odczytuje ze wspólnej bazy wiedzy agentów: profile, mapy, projekty.',
+    agora_update:    'Aktualizuje wspólną bazę wiedzy — profil użytkownika, mapę vaulta, tablice aktywności.',
+    agora_project:   'Zarządza projektami współdzielonymi między agentami — zadania, checkboxy, członkowie.',
+};
+
+/**
  * Creates a collapsible tool call display element
  * @param {Object} toolCall - Tool call data: {name, input, output, status, error?}
  * @returns {HTMLElement}
@@ -11,25 +63,6 @@ export function createToolCallDisplay(toolCall) {
     // Header
     const header = container.createDiv({ cls: 'tool-call-header' });
 
-    // Icon + Polish names
-    const TOOL_INFO = {
-        vault_read:      { icon: '📖', label: 'Odczyt notatki' },
-        vault_write:     { icon: '✏️', label: 'Zapis notatki' },
-        vault_search:    { icon: '🔍', label: 'Wyszukiwanie w vaultcie' },
-        vault_list:      { icon: '📁', label: 'Lista plików' },
-        vault_delete:    { icon: '🗑️', label: 'Usunięcie notatki' },
-        memory_search:   { icon: '🧠', label: 'Przeszukanie pamięci' },
-        memory_update:   { icon: '🧠', label: 'Aktualizacja pamięci' },
-        memory_status:   { icon: '🧠', label: 'Stan pamięci' },
-        skill_list:      { icon: '📚', label: 'Lista umiejętności' },
-        skill_execute:   { icon: '🎯', label: 'Aktywacja skilla' },
-        minion_task:     { icon: '🔧', label: 'Zadanie miniona' },
-        master_task:     { icon: '🧠', label: 'Konsultacja z ekspertem' },
-        agent_message:   { icon: '💬', label: 'Wiadomość do agenta' },
-        agent_delegate:  { icon: '🤝', label: 'Propozycja delegacji' },
-        chat_todo:       { icon: '📋', label: 'Lista zadań' },
-        plan_action:     { icon: '📋', label: 'Plan działania' },
-    };
     const info = TOOL_INFO[toolCall.name] || { icon: '🔧', label: toolCall.name };
     header.createSpan({ cls: 'tool-call-icon', text: info.icon });
 

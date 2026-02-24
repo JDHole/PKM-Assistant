@@ -88,7 +88,7 @@ export async function render(result_scope, params = {}) {
 export async function post_process(result_scope, container, params = {}) {
   const { item } = result_scope;
   const env = item.env;
-  const plugin = env.smart_connections_plugin;
+  const plugin = env.main;
   const app = plugin.app;
   const connections_settings = params.connections_settings
     ?? env.connections_lists.settings

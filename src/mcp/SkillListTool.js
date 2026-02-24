@@ -6,13 +6,13 @@
 export function createSkillListTool(app) {
     return {
         name: 'skill_list',
-        description: 'Pokaż listę dostępnych umiejętności (skilli) agenta - nazwy i opisy. Użyj żeby sprawdzić jakie skille masz do dyspozycji.',
+        description: 'Wyświetl listę swoich skilli (gotowych procedur/instrukcji). Każdy skill to przepis krok-po-kroku na konkretne zadanie.\n\nKIEDY UŻYWAĆ:\n- User pyta "co umiesz?", "jakie masz skille?", "pokaż umiejętności"\n- Chcesz sprawdzić czy masz skill pasujący do zadania usera\n- Na początku sesji — sprawdź co masz do dyspozycji\n\nKIEDY NIE UŻYWAĆ:\n- Już wiesz jaki skill chcesz aktywować → od razu skill_execute\n- System prompt już zawiera listę skilli — sprawdź najpierw tam\n\nCO ZWRACA:\n- Lista skilli z: name (nazwa), description (opis), category (kategoria)\n- Użyj skill_execute z nazwą skilla żeby go aktywować',
         inputSchema: {
             type: 'object',
             properties: {
                 category: {
                     type: 'string',
-                    description: 'Opcjonalnie filtruj po kategorii (np. productivity, writing, organization)'
+                    description: 'Filtruj po kategorii. Przykłady: "productivity", "writing", "organization", "analysis". Puste = wszystkie skille.'
                 }
             },
             required: []

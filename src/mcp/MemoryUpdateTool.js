@@ -6,27 +6,27 @@
 export function createMemoryUpdateTool(app) {
     return {
         name: 'memory_update',
-        description: 'Manage your long-term memory (brain.md). Use when user says "zapamiętaj", "zapomnij", "co o mnie wiesz" etc. Operations: read_brain, update_brain, delete_from_brain.',
+        description: 'Zarządzaj swoją długoterminową pamięcią (brain.md). Brain to plik z trwałymi faktami o userze — przetrwa restart pluginu.\n\nOPERACJE:\n- "read_brain" — odczytaj aktualną zawartość brain.md (nie wymaga uprawnień write)\n- "update_brain" — dodaj nowy fakt lub zaktualizuj istniejący\n- "delete_from_brain" — usuń fakt z pamięci\n\nKIEDY UŻYWAĆ:\n- User mówi "zapamiętaj że...", "zapomnij o...", "co o mnie wiesz?"\n- Dowiedziałeś się czegoś ważnego o userze (imię, preferencje, cele, ustalenia)\n- User prosi żebyś coś zapamiętał na stałe\n\nKIEDY NIE UŻYWAĆ:\n- Do przeszukiwania pamięci → użyj memory_search\n- Do sprawdzenia statystyk → użyj memory_status\n- Do zapisu notatek usera → użyj vault_write\n\nSEKCJE BRAIN:\n- "## User" — fakty o userze (imię, zawód, zainteresowania)\n- "## Preferencje" — preferencje (styl komunikacji, ulubione narzędzia)\n- "## Ustalenia" — decyzje i ustalenia ("zawsze używaj X", "nigdy nie rób Y")\n- "## Bieżące" — aktualne tematy i kontekst\n\nFORMAT FAKTÓW:\n- Pisz w 3. osobie: "User lubi kawę" (nie "Lubisz kawę")\n- Każdy fakt = jeden punkt (bullet point)\n- ZAWSZE sprawdź read_brain przed dodaniem — nie dodawaj duplikatów!',
         inputSchema: {
             type: 'object',
             properties: {
                 operation: {
                     type: 'string',
                     enum: ['read_brain', 'update_brain', 'delete_from_brain'],
-                    description: 'Operation to perform. read_brain: see current memory. update_brain: add/update a fact. delete_from_brain: remove a fact.'
+                    description: '"read_brain" = odczytaj brain.md (bezpieczne, bez uprawnień write). "update_brain" = dodaj/zaktualizuj fakt. "delete_from_brain" = usuń fakt.'
                 },
                 content: {
                     type: 'string',
-                    description: 'For update_brain: the fact to remember (e.g. "User lubi kawę"). For delete_from_brain: text to find and remove.'
+                    description: 'Dla update_brain: fakt do zapamiętania w 3. osobie (np. "User pracuje jako grafik"). Dla delete_from_brain: tekst do znalezienia i usunięcia.'
                 },
                 section: {
                     type: 'string',
                     enum: ['## User', '## Preferencje', '## Ustalenia', '## Bieżące'],
-                    description: 'Brain section to target. Default: ## User for facts about user, ## Preferencje for preferences, ## Ustalenia for decisions, ## Bieżące for current topics.'
+                    description: 'Sekcja brain.md. "## User" = fakty o userze (domyślnie). "## Preferencje" = preferencje. "## Ustalenia" = decyzje. "## Bieżące" = aktualny kontekst.'
                 },
                 old_content: {
                     type: 'string',
-                    description: 'For update_brain when replacing an existing fact: the old text to find and replace.'
+                    description: 'Tylko dla update_brain gdy AKTUALIZUJESZ istniejący fakt: stary tekst do zastąpienia. Np. old_content="User ma 2 koty", content="User ma 3 koty".'
                 }
             },
             required: ['operation']

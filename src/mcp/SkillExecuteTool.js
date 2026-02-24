@@ -6,13 +6,13 @@
 export function createSkillExecuteTool(app) {
     return {
         name: 'skill_execute',
-        description: 'Aktywuj skill po nazwie - zwraca pełne instrukcje skilla. Najpierw użyj skill_list żeby zobaczyć dostępne skille.',
+        description: 'Aktywuj skill po nazwie — zwraca PEŁNE instrukcje (prompt) skilla. Po otrzymaniu instrukcji WYKONUJ je krok po kroku.\n\nKIEDY UŻYWAĆ:\n- User kliknął guzik skilla w UI\n- User prosi o konkretne zadanie i masz pasujący skill (np. "zrób daily review")\n- Chcesz wykonać procedurę z gotowym przepisem\n\nJAK UŻYWAĆ:\n1. Wywołaj skill_execute z nazwą skilla\n2. Otrzymasz pełny prompt z instrukcjami\n3. WYKONUJ instrukcje — używaj narzędzi wg przepisu skilla\n4. Skill może wymagać vault_read, vault_write, vault_search itp.\n\nCO ZWRACA:\n- name, description, category — metadane\n- prompt — PEŁNE instrukcje do wykonania (to jest najważniejsze!)\n\nUWAGI:\n- Skill musi być przypisany do Twojego agenta\n- Jeśli nie znasz nazwy, użyj najpierw skill_list',
         inputSchema: {
             type: 'object',
             properties: {
                 skill_name: {
                     type: 'string',
-                    description: 'Nazwa skilla do aktywacji (np. "daily-review")'
+                    description: 'Dokładna nazwa skilla (case-sensitive). Przykłady: "daily-review", "vault-organization", "note-from-idea", "weekly-review"'
                 }
             },
             required: ['skill_name']

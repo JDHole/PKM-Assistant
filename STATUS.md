@@ -1,7 +1,7 @@
 # PKM Assistant (Obsek) - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-22 (sesja 25)
+> Ostatnia aktualizacja: 2026-02-24 (sesja 40)
 
 ---
 
@@ -185,24 +185,213 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] ToolCallDisplay: polskie nazwy dla chat_todo i plan_action (sesja 25)
 - [x] Ustawienie "Pokaz myslenie AI" (obsek.showThinking) (sesja 25)
 - [x] Build: 6.7MB, wersja 1.0.6 (sesja 25)
+- [x] **Sidebar Navigation System + Zaplecze** (sesja 26)
+- [x] SidebarNav: stack-based nawigacja push/pop/replace/goHome (sesja 26)
+- [x] Zero modali: profil agenta, komunikator, usuwanie - wszystko inline w sidebarze (sesja 26)
+- [x] Zaplecze (Backstage): sekcja na ekranie glownym z linkami do Skills, Narzedzia MCP, Miniony (sesja 26)
+- [x] BackstageViews: lista skilli (nazwa, opis, kategoria), browser narzedzi MCP (6 grup), lista minionow (sesja 26)
+- [x] DetailViews: podglad szczegolowy skilla/miniona z pelnym promptem i cross-referencjami agentow (sesja 26)
+- [x] Cross-referencing: z profilu agenta do skilla/miniona i odwrotnie (nawigacja kliknieciem) (sesja 26)
+- [x] AgentProfileView: 5 zakladek inline (Profil, Uprawnienia, Umiejetnosci, Pamiec, Statystyki) (sesja 26)
+- [x] CommunicatorView: inline komunikator w sidebarze (chipy agentow, inbox, compose) (sesja 26)
+- [x] CSS bug fix: AgentSidebar.css importowany ale nigdy nie aplikowany via adoptedStyleSheets (sesja 26)
+- [x] TOOL_INFO wyeksportowane z ToolCallDisplay.js do uzycia w Backstage (sesja 26)
+- [x] Build: 6.7MB, wersja 1.0.7 (sesja 26)
+- [x] **Sesja 27: Panel artefaktów + Todo v2 + Plan kreacji v2** (sesja 27)
+- [x] ArtifactManager.js - zapis/odczyt artefaktow (todo, plany) na dysku jako JSON (sesja 27)
+- [x] Persistence: artefakty przetrwaja restart pluginu (.pkm-assistant/agents/{name}/artifacts/) (sesja 27)
+- [x] Auto-save: kazda zmiana todo/planu (checkbox, edycja, dodanie) zapisuje sie na dysk (sesja 27)
+- [x] Layout chatu: flex row (main + toolbar), bottom panel (skille + input unified) (sesja 27)
+- [x] Right toolbar: prawy pasek z ikonkami (artefakty, skille, tryby) (sesja 27)
+- [x] Artifact panel: overlay z lista artefaktow sesji, klik scrolluje do widgetu (sesja 27)
+- [x] Todo v2: inline edit (dblclick), dodawanie (+), usuwanie (x), modal pelnej edycji (sesja 27)
+- [x] TodoEditModal.js - modal z edycja tytulu, elementow, checkboxow (sesja 27)
+- [x] Plan kreacji v2: inline edit kroków, dodawanie/usuwanie, zmiana statusu kliknieciem (sesja 27)
+- [x] Plan kreacji v2: komentarz do kroku -> wysylka do chatu, przycisk "Pelny widok" (sesja 27)
+- [x] PlanEditModal.js - modal z edycja tytulu, kroków, statusów, opisów (sesja 27)
+- [x] Session end: zapis artefaktów + czyszczenie store'ów przy nowej sesji (sesja 27)
+- [x] Build: 6.8MB, wersja 1.0.7 (sesja 27)
+- [x] **Sesja 27 kontynuacja: Subtaski w planie + Artefakty globalne** (sesja 27)
+- [x] Plan subtaski: kazdy krok planu ma checklistę podzadan (subtasks: [{text, done}]) (sesja 27)
+- [x] PlanTool.js: nowe akcje add_subtask, toggle_subtask (sesja 27)
+- [x] PlanArtifact.js: rendering subtaskow z checkboxami, inline dodawanie, usuwanie (sesja 27)
+- [x] PlanEditModal.js: edycja subtaskow w modalu (deep copy fix) (sesja 27)
+- [x] ArtifactManager.js PRZEBUDOWA: globalny folder .pkm-assistant/artifacts/ (sesja 27)
+- [x] Slugify: czytelne nazwy plikow z tytulu (np. Lista-zadan.json zamiast todo_1708123456789.json) (sesja 27)
+- [x] Migracja: stare pliki z agents/{name}/artifacts/ przenoszone automatycznie (sesja 27)
+- [x] Artefakty NIE znikaja przy nowej sesji - zyja globalnie, niezaleznie od agenta (sesja 27)
+- [x] Artifact panel rozbudowany: pogrupowany typami, badge agenta, modal edit, kopiuj do vaulta, usun (sesja 27)
+- [x] Artifact discovery: akcja "list" w chat_todo i plan_action + wstrzykiwanie do system promptu (sesja 27)
+- [x] 3 sesje testowe: pelna weryfikacja subtaskow, globalnych artefaktow, discovery (sesja 27)
+- [x] Build: 6.8MB, wersja 1.0.7 (sesja 27)
+- [x] **Sesja 28: Strategiczny checkpoint polowy drogi** (sesja 28)
+- [x] CHECKPOINT_sesja28.md - pelny przeglad 19 obszarow pluginu (zero zmian w kodzie) (sesja 28)
+- [x] Glowne odkrycie: kod gotowy w ~90%, priorytetem sa PROMPTY (sesja 28)
+- [x] Nowe koncepcje: monetyzacja (3 sciezki), onboarding wizard (Jaskier mentor), dokumentacja = edukacja (sesja 28)
+- [x] Roadmap: 5 faz od stabilizacji do release v1.0 (sesja 28)
+- [x] **Sesja 29: SC removal decyzja + aktualizacja WIZJA/PLAN** (sesja 29)
+- [x] Pelna analiza SC dependency: 19 plikow, streaming flow, embeddingi (sesja 29)
+- [x] Odkrycie: vault_search uzywa indexOf (glupie!), nie embeddingów (sesja 29)
+- [x] Decyzja: SC removal = priorytet #1, Level 2 (wyrwac + wyrzucic) (sesja 29)
+- [x] Sprint Roadmap: S1 SC removal → S2 embeddingi → S3-S9 (sesja 29)
+- [x] WIZJA.md: +~300 linii (Prompt Transparency, Oczko, MasterRunner, VaultIndex, arch bez SC) (sesja 29)
+- [x] PLAN.md: +~200 linii (Sprint Roadmap S1-S9 + checkboxy w FAZach) (sesja 29)
+- [x] Handoffy SC removal przygotowane (podział na sesje) (sesja 29)
+- [x] **Sesja 30: Sprint S1+S2 WYKONANY - Smart Connections WYRZUCONE** (sesja 30)
+- [x] PKMEnv.js: zamiennik SmartEnv BEZ singletona window.smart_env (modul-scoped PKM_SCOPE) (sesja 30)
+- [x] PKMPlugin.js: zamiennik SmartPlugin, rozszerza Obsidian Plugin bezposrednio (sesja 30)
+- [x] main.js: SmartPlugin → PKMPlugin, SmartEnv → PKMEnv (sesja 30)
+- [x] Embeddingi WLACZONE: process_embed_queue: true, vault indeksowany automatycznie (sesja 30)
+- [x] vault_search SEMANTYCZNY: SmartSources.lookup() zamiast glupiego indexOf (sesja 30)
+- [x] memory_search SEMANTYCZNY: EmbeddingHelper + cosine similarity (sesja 30)
+- [x] Rebranding: 15 SC ghost strings usunietych (view types, codeblocks, links, logs) (sesja 30)
+- [x] 5 martwych modulow SC usunietych (smart-actions/clusters/completions/directories) (sesja 30)
+- [x] Koegzystencja: PKM Assistant + Smart Connections moga dzialac jednoczesnie (sesja 30)
+- [x] Build: 6.8MB, wersja 1.0.9 (sesja 30)
+- [x] **Sesja 32: Stabilizacja + Embedding fix + Pelny rebranding** (sesja 32) ✅
+- [x] Logger.js: centralny system logowania z debug/info/warn/error (sesja 32)
+- [x] Fix: ChatView crash w get_chat_model() (sesja 32)
+- [x] Fix: minion_task permission — ACTION_TYPE_MAP nie mapowany (sesja 32)
+- [x] Fix: _overrides agent skip — nie crashuje gdy brak pliku (sesja 32)
+- [x] Fix: Concatenated tool calls — splitter rozdziela sklejone wywolania (sesja 32)
+- [x] Fix: GitHub 404 w check_for_update — silenced (brak releases) (sesja 32)
+- [x] Fix: Embedding model — TaylorAI → Ollama/snowflake-arctic-embed2 (sesja 32)
+- [x] 4 dostawcy embeddingu: Ollama, OpenAI, Gemini, LM Studio w konfiguracji (sesja 32)
+- [x] ObsekEmbeddingModels — default_provider_key czyta z ustawien usera (sesja 32)
+- [x] AJSON wyczyszczony: 23 smieciowe TaylorAI → 1 poprawny Ollama (sesja 32)
+- [x] Status bar: wlasny "PKM Assistant" zamiast "SmartEnv 2.2.7" (sesja 32)
+- [x] Status bar: spinner + "Indeksowanie X/Y (Z%)" podczas embeddingu (sesja 32)
+- [x] PKMNotices: naglowek "[PKM Assistant v1.0.9]" zamiast "[Smart Env v2.2.7]" (sesja 32)
+- [x] 30+ powiadomien po polsku (Ladowanie, Zapisywanie, Indeksowanie...) (sesja 32)
+- [x] Settings tab: "Ladowanie PKM Assistant..." zamiast "Smart Environment is loading..." (sesja 32)
+- [x] SC status_bar component wylaczony (no-op w konfiguracji) (sesja 32)
+- [x] Connections codeblock: polskie teksty (sesja 32)
+- [x] Build: 6.8MB, wersja 1.0.9 (sesja 32)
+- [x] **Sesja 33: Embedding loop fix + EmbeddingHelper rewrite + Batch optimization** (sesja 33) ✅
+- [x] Fix: Re-embedding loop (2257 sources every restart) — SmartBlock.init()/queue_embed() conditional (sesja 33)
+- [x] Fix: SmartEntity.init_without_embed() — lekki init bez vec setter side-effect (sesja 33)
+- [x] Fix: EmbeddingHelper rewrite — adapter-first path (ta sama co vault_search) (sesja 33)
+- [x] Fix: EmbeddingHelper.embedBatch() — naprawiony format inputu (sesja 33)
+- [x] Fix: RAGRetriever batch indexing — 60 HTTP calls → 1-2 (limit 20 sesji) (sesja 33)
+- [x] Fix: MemorySearchTool batch search — N HTTP calls → 1-2 (limit 30 docs) (sesja 33)
+- [x] Timing logs w send_message pipeline (ensureRAG, system prompt, RAG, minion, total) (sesja 33)
+- [x] Embed queue: 0 sources, 0 blocks po restarcie (potwierdzone!) (sesja 33)
+- [x] **Sesja 34: Embedding fix "Invalid vectors" + Audyt SC** (sesja 34) ✅
+- [x] Fix: "Invalid vectors for cosineSimilarity" spam — embedBatch() z trackingiem indeksow (sesja 34)
+- [x] Fix: cosineSimilarity() cichy return 0 zamiast console.warn (sesja 34)
+- [x] Fix: MemorySearchTool + RAGRetriever pre-filter pustych docs/sesji (sesja 34)
+- [x] Audyt SC: 10 modulow uzywanych, 5 martwych (nie trafia do bundla) (sesja 34)
+- [x] Embedding uzywany w 4 miejscach: vault_search, memory_search, RAG, connections panel (sesja 34)
+- [x] Konsola czysta: ZERO warningow embedding po restarcie (sesja 34)
+- [x] **Sesja 35: AGORA — Wspólna Baza Wiedzy Agentów** (sesja 35) ✅
+- [x] AgoraManager.js: core moduł Agory (profil, aktywność, mapa, projekty, dostęp) (sesja 35)
+- [x] 3 nowe MCP tools: agora_read, agora_update, agora_project (sesja 35)
+- [x] MCP narzedzia: 20 total (17 + agora_read + agora_update + agora_project) (sesja 35)
+- [x] AgoraView.js: pełny sidebar UI z 5 zakładkami (Profil, Aktywność, Projekty, Mapa, Dostęp) (sesja 35)
+- [x] Inline CRUD: formularze zamiast raw file editorów, edit/delete per item (sesja 35)
+- [x] Projekty współdzielone: tworzenie, zadania z checkboxami, dodawanie/usuwanie agentów, ping (sesja 35)
+- [x] Access control: 3 poziomy (admin/contributor/reader), inline zmiana z UI (sesja 35)
+- [x] Prompt context: buildPromptContext() wstrzykuje Agorę do system promptu agenta (sesja 35)
+- [x] Minion context: buildMinionContext() daje minionowi wiedzę z Agory (sesja 35)
+- [x] Usuwanie projektu z potwierdzeniem + wykluczanie agenta z projektu (sesja 35)
+- [x] Build: 6.9MB, wersja 1.0.9 (sesja 35)
+- [x] **Sesja 36: 2.2 Opisy MCP Tools — przepisanie 20 narzedzi + system prompt** (sesja 36) ✅
+- [x] Opisy 20 MCP tools przepisane z ~25 tokenow na ~200-400 tokenow/tool (sesja 36)
+- [x] Kazdy opis zawiera: KIEDY UZYWAC, KIEDY NIE UZYWAC, UWAGI, PRZYKLADY, guardrails (sesja 36)
+- [x] 100% po polsku (wczesniej 5 narzedzi po angielsku) (sesja 36)
+- [x] Agent.js system prompt: przepisany blok narzedzi (local + cloud model) (sesja 36)
+- [x] Cloud model: structured sekcje Vault/Pamiec/Skille/Minion/Master/Komunikator/Artefakty/Agora (sesja 36)
+- [x] Local model: zwiezla wersja z kluczowymi zasadami i wszystkimi 20 narzedziami (sesja 36)
+- [x] ToolCallDisplay.js: 3 nowe pozycje Agory (agora_read, agora_update, agora_project) (sesja 36)
+- [x] Drzewa decyzyjne: vault_search vs memory_search vs minion_task (sesja 36)
+- [x] Guardrails: "nie nadpisuj bez pytania", "nie usuwaj bez prosby", "sprawdz duplikaty w brain" (sesja 36)
+- [x] Parametry narzedzi: pelne opisy z przykladami i formatami (sesja 36)
+- [x] Build: 6.9MB, wersja 1.0.9 (sesja 36)
+- [x] **Sesja 37: 2.3 PromptBuilder + Prompt Inspector + Tool Filtering** (sesja 37) ✅
+- [x] PromptBuilder.js: modularny system budowania promptu z sekcjami i tokenami (sesja 37)
+- [x] Prompt Inspector: panel w Settings z sekcjami, tokenami, pogrupowany wg kategorii (sesja 37)
+- [x] TOOL_GROUPS: 7 grup narzedzi MCP do filtrowania per-agent (sesja 37)
+- [x] Per-agent tool filtering: enabledTools[] + UI w AgentProfileView (sesja 37)
+- [x] Agent.js refaktor: monolityczny getSystemPrompt() → PromptBuilder.build() (sesja 37)
+- [x] AgentManager: enriched context (_buildBaseContext + getPromptInspectorData) (sesja 37)
+- [x] Build: 7.0MB, wersja 1.0.9 (sesja 37)
+- [x] **Sesja 38: PromptBuilder fixes + 7 usprawnien promptu** (sesja 38) ✅
+- [x] Fix: "Pokaz prompt" modal crash (dynamic import → static import Modal) (sesja 38)
+- [x] Fix: agent bez MCP "obiecuje" narzedzia (dodany explicit "NIE MASZ NARZEDZI") (sesja 38)
+- [x] Fix: agora_update po delegacji (dodana regula "PO DELEGACJI: koniec tury") (sesja 38)
+- [x] Fix: permissions override resetowala mcp:false (_mergeBuiltInOverrides) (sesja 38)
+- [x] PKM System + Srodowisko edytowalne z Settings (2x textarea, puste=default) (sesja 38)
+- [x] L1 pointer zamiast pelnego tekstu (~1500 tok → ~50 tok oszczednosci) (sesja 38)
+- [x] Inbox akcjowalny z vault_read sciezka + instrukcja dla agenta (sesja 38)
+- [x] Zasady adaptacyjne wg permissions (bez MCP → tylko "po polsku") (sesja 38)
+- [x] Komunikator z unread info + vault_read path do inbox (sesja 38)
+- [x] Focus Folders przeniesione z Uprawnienia → Srodowisko (sesja 38)
+- [x] PLAN_v2.md: dodany master_task per-agent toggle (sesja 38)
+- [x] Build: 7.0MB, wersja 1.0.9 (sesja 38)
+- [x] **Sesja 39: 2.4 Oczko — Świadomość Aktywnej Notatki** (sesja 39) ✅
+- [x] _buildActiveNoteContext(): tytuł + ścieżka + frontmatter (z metadataCache) + treść do 2000 znaków (z cachedRead) (sesja 39)
+- [x] Wstrzyknięcie w send_message() — po system prompcie, przed artefaktami (sesja 39)
+- [x] Guzik 👁️ w toolbarze chatu — toggle enableOczko, klasa .active, zapis na dysk (sesja 39)
+- [x] Toggle "Oczko" w Settings (sekcja Pamięć) — obsek.enableOczko, domyślnie WŁĄCZONE (sesja 39)
+- [x] Filtr: tylko pliki .md, graceful fail przy braku pliku (sesja 39)
+- [x] Build: 7.0MB, wersja 1.0.9 (sesja 39)
+- [x] **Sesja 40: 2.5 Prompt Transparency — Pełna Transparentność** (sesja 40) ✅
+- [x] TokenTracker: śledzenie tokenów per-wiadomość i per-sesja z podziałem main/minion/master (sesja 40)
+- [x] streamHelper.js: propagacja usage z API (text + usage) do wszystkich callerów (sesja 40)
+- [x] Token panel UI: klikalny counter → panel "Sesja: Xin/Yout · Main/Minion/Master" (sesja 40)
+- [x] SubAgentBlock: zwijalne bloki w chacie dla auto-prep/minion_task/master_task (sesja 40)
+- [x] Prompt Inspector toggles: włączanie/wyłączanie sekcji promptu z Settings (sesja 40)
+- [x] Backstage MCP redesign: TOOL_DESCRIPTIONS po polsku, cross-ref agentów, kategoria Agora (sesja 40)
+- [x] ThinkingBlock compact: mniejszy zwinięty dymek (~22px zamiast ~29px) (sesja 40)
+- [x] Build: 7.0MB, wersja 1.0.9 (sesja 40)
+- [x] Fix: TokenTracker liczy tokeny z tekstu (tiktoken) — nie polega na API usage (sesja 40)
+- [x] Fix: Auto-prep SubAgentBlock wewnątrz bańki asystenta — nie znika przy scrollowaniu (sesja 40)
+- [x] Fix: Token popup overlay z try-catch, "nie użyty" zamiast "brak użycia" (sesja 40)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
 - [ ] Strefy vaulta (VaultZones - konfiguracja jest w .pkm-assistant/config.yaml)
 - [ ] Workflow parser i loader
 
-## Nastepne kroki (pelny plan w PLAN.md)
+## Nastepne kroki (pelny plan w PLAN_v2.md)
 
-Aktualnie: **FAZA 0** (13/15) + **FAZA 1** (15/17) + **FAZA 2** (DONE!) + **FAZA 3** (DONE!) + **FAZA 4** (DONE!) + **FAZA 5** (prawie DONE! 2 backlog)
-- Postep: ~130/270 checkboxow (~48%)
-- Wersja: 1.0.6
-- Sesja 25: FAZA 5 kompletna - extended thinking, animacje, inline comments, todo listy, creation plans + 3 fixy
-- [ ] FAZA 5.7: Panel artefaktow + manualna edycja (backlog)
-- [ ] FAZA 5.8: Agora - tablica aktywnosci agentow (backlog)
-- [ ] FAZA 6: Onboarding wizard
-- [ ] FAZA 7: Solidnosc + Release v1.0
-- [ ] obsidian_settings MCP tool (odlozone)
-- [ ] JS sandbox w skillach (odlozone)
+> **PLAN_v2.md** zastapil stary PLAN.md (ktory zostal zbyt pomieszany sesjami/sprintami).
+> Nowy plan: CZESC 1 (zrobione ~170 checkboxow) + CZESC 2 (do v1.0 ~95 checkboxow) + CZESC 3 (post v1.0)
+
+- Postep: **~207/300 checkboxow (~69%)** - prawie 70%!
+- Wersja: 1.0.9
+- **Kluczowy wniosek (sesja 28):** Kod gotowy w ~90%. Problem jest w PROMPTACH.
+- **Kluczowy wniosek (sesja 33-34):** Embedding system KOMPLETNY — 0 re-embed, batch, czysta konsola, 4 miejsca uzycia.
+- **Sesja 35:** AGORA zaimplementowana — wspólna baza wiedzy agentów z pełnym UI.
+- **Sesja 36:** 2.2 MCP Tool Descriptions ZROBIONE — 20 narzedzi z pelną dokumentacją, system prompt przepisany.
+- **Sesja 37:** 2.3 PromptBuilder — modularny system promptu z Prompt Inspector i tool filtering.
+- **Sesja 38:** 4 bug fixy + 7 usprawnień promptu (edytowalne sekcje, L1 pointer, zasady adaptacyjne).
+- **Sesja 39:** 2.4 Oczko ZROBIONE — agent widzi aktywną notatkę (tytuł + frontmatter + treść), toggle 👁️ w toolbarze.
+- **Sesja 40:** 2.5 Prompt Transparency ZROBIONE — TokenTracker, SubAgentBlock, toggles, Backstage MCP redesign.
+
+### Nastepny: 2.1 Stabilizacja — bugi ZROBIONE, daily use
+- [x] Bug: agent update todo renderuje nowy widget zamiast aktualizowac istniejacy ✅
+- [x] Bug: wczytanie starej sesji crashuje chat, artefakty niedostepne ✅
+- [x] Bug: agenci ponawiaja tool call po odmowie uprawnien przez usera ✅
+- [ ] Daily use: minimum 3 dni codziennego uzywania bez krytycznych bledow
+
+### Nastepny: 2.2 Opisy MCP Tools — ZROBIONE ✅ (sesja 36)
+- [x] 19/19 narzedzi przepisanych (+ 1 weryfikacja do zrobienia w daily use)
+- [x] System prompt Agent.js przepisany (local + cloud)
+- [x] ToolCallDisplay.js: 3 nowe pozycje Agory
+
+### Kolejnosc do v1.0 (z PLAN_v2.md):
+1. ~~2.1 Stabilizacja — 3 bugi~~ ✅ ZROBIONE
+2. ~~2.2 Opisy MCP Tools~~ ✅ ZROBIONE (sesja 36)
+3. ~~2.3 System Prompt~~ ✅ ZROBIONE (sesja 37-38)
+4. ~~2.4 Oczko~~ ✅ ZROBIONE (sesja 39)
+5. ~~2.5 Prompt Transparency~~ ✅ ZROBIONE (sesja 40) — TokenTracker, SubAgentBlock, toggles, Backstage
+6. 2.6 Personalizacja Agenta — najwazniejszy gap
+7. 2.7 MasterRunner + 2.8 Skille v2
+8. 2.9 Pamiec fix + 2.10 UX Chatu + 2.11 Warstwa Wizualna
+9. 2.12-2.13 Inline + Sidebar fixy
+10. 2.14 Dokumentacja + Onboarding
+11. 2.15 Release v1.0
 
 ## Wazne sciezki
 
@@ -213,6 +402,7 @@ Aktualnie: **FAZA 0** (13/15) + **FAZA 1** (15/17) + **FAZA 2** (DONE!) + **FAZA
 - **Sesje Jaskiera:** `.pkm-assistant/agents/jaskier/memory/sessions/`
 - **Podsumowania L1:** `.pkm-assistant/agents/jaskier/memory/summaries/L1/`
 - **Podsumowania L2:** `.pkm-assistant/agents/jaskier/memory/summaries/L2/`
+- **Artefakty (globalne):** `.pkm-assistant/artifacts/` (czytelne nazwy: Lista-zadan.json)
 - **Skille:** `.pkm-assistant/skills/{name}/skill.md`
 - **Miniony:** `.pkm-assistant/minions/{name}/minion.md`
 - **Build:** `npm run build` w `C:\Users\jdziu\Desktop\Obsek\Obsek Plugin\`
@@ -231,7 +421,8 @@ Obsek Plugin/
 │   ├── core/               # AgentManager, MinionLoader, MinionRunner, PermissionSystem
 │   ├── mcp/                # Narzedzia: vault, pamiec, skille, minion_task
 │   ├── memory/             # Pamiec: RAG, rolling window, summarizer
-│   ├── views/              # Wyglad: chat, sidebar, modalne, ustawienia
+│   ├── views/              # Wyglad: chat, sidebar (z nawigacja), modalne, ustawienia
+│   │   └── sidebar/        # Sidebar views: SidebarNav, Home, Profile, Communicator, Backstage, Detail
 │   ├── utils/              # Male funkcje pomocnicze
 │   ├── components/         # UI komponenty
 │   ├── collections/        # Kolekcje danych
@@ -251,22 +442,31 @@ Obsek Plugin/
 
 ---
 
-## Baza kodu (Smart Connections v4.1.7)
+## Baza kodu - stan po Sprint S1+S2 (sesja 30)
 
-Plugin bazuje na Smart Connections - popularnym pluginie do Obsidiana.
-Z bazy dostajemy za darmo:
-- Embeddingi (indeksowanie notatek semantycznie)
-- Semantic search (szukanie powiazanych notatek)
-- System chat view
-- Multi-provider AI (Anthropic, OpenAI, Ollama, OpenRouter)
-- Smart Environment (framework pluginu)
+> **SC singleton WYELIMINOWANY** (sesja 30). Plugin stoi na wlasnych nogach.
+> PKM Assistant moze dzialac obok Smart Connections bez konfliktu.
 
-Nasza warstwa (dodana na wierzch):
-- System agentow
-- System pamieci
-- MCP integration
-- Permission system
-- Agent sidebar + creator
+**Co zrobiono (sesja 30):**
+- **PKMEnv** zastapil SmartEnv - module-scoped `PKM_SCOPE` zamiast `window.smart_env`
+- **PKMPlugin** zastapil SmartPlugin - rozszerza Obsidian.Plugin bezposrednio
+- **Embeddingi WLACZONE** - vault automatycznie indeksowany przy starcie
+- **vault_search SEMANTYCZNY** - SmartSources.lookup() zamiast indexOf
+- **memory_search SEMANTYCZNY** - EmbeddingHelper + cosine similarity
+- **15 SC ghost strings** usunietych z UI (view types, codeblocks, links)
+- **5 martwych modulow SC** usunietych
+
+**Co pozostaje z SC (external-deps/):**
+- Adaptery streamingowe (11 platform) - uzywane przez SmartChatModel
+- SmartSources/SmartBlocks - pipeline embeddingowy (juz dziala!)
+- SmartItemView - bazowa klasa widokow (dziala z PKMEnv)
+- **Opcjonalnie do zrobienia pozniej**: pelna ekstrakcja adapterow do src/ i usuniecie external-deps/ (build 6.8MB → ~1-2MB)
+
+Nasza warstwa:
+- PKMEnv + PKMPlugin (wlasny fundament)
+- System agentow, pamiec, MCP, permission system
+- Semantyczny vault_search + memory_search
+- Agent sidebar + creator, komunikator, artefakty
 
 ---
 

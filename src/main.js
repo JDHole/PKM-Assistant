@@ -6,7 +6,7 @@ const {
   Platform,
 } = Obsidian;
 
-import { SmartEnv } from 'obsidian-smart-env';
+import { PKMEnv } from './core/PKMEnv.js';
 import { smart_env_config } from "../smart_env.config.js";
 import { open_note } from "obsidian-smart-env/utils/open_note.js";
 
@@ -14,9 +14,9 @@ import { ReleaseNotesView }    from "./views/release_notes_view.js";
 
 import { get_random_connection } from "./utils/get_random_connection.js";
 import { add_smart_dice_icon, add_obsek_icon } from "./utils/add_icons.js";
+import { add_smart_connections_icon, add_smart_lookup_icon } from "obsidian-smart-env/utils/add_icons.js";
 
-// v4
-import { SmartPlugin } from "obsidian-smart-env/smart_plugin.js";
+import { PKMPlugin } from './core/PKMPlugin.js';
 import { ConnectionsItemView } from "./views/connections_item_view.js";
 import { LookupItemView } from "./views/lookup_item_view.js";
 import { register_smart_connections_codeblock } from "./views/connections_codeblock.js";
@@ -48,15 +48,61 @@ import { createAgentMessageTool } from "./mcp/AgentMessageTool.js";
 import { createAgentDelegateTool } from "./mcp/AgentDelegateTool.js";
 import { createChatTodoTool } from "./mcp/ChatTodoTool.js";
 import { createPlanTool } from "./mcp/PlanTool.js";
+import { createAgoraReadTool } from "./mcp/AgoraReadTool.js";
+import { createAgoraUpdateTool } from "./mcp/AgoraUpdateTool.js";
+import { createAgoraProjectTool } from "./mcp/AgoraProjectTool.js";
+import { AgoraManager } from "./core/AgoraManager.js";
 import { registerAgentSidebar, openAgentSidebar } from "./views/AgentSidebar.js";
 import { SendToAgentModal } from "./views/SendToAgentModal.js";
 import { InlineCommentModal } from "./views/InlineCommentModal.js";
+import { ArtifactManager } from "./core/ArtifactManager.js";
+import { log } from "./utils/Logger.js";
 
-export default class ObsekPlugin extends SmartPlugin {
-  SmartEnv = SmartEnv;
+// Embedding model providers (embedding_models collection only has transformers by default)
+import ollamaEmbedProvider from "../external-deps/jsbrains/smart-models/adapters/embedding/ollama.js";
+import openaiEmbedProvider from "../external-deps/jsbrains/smart-models/adapters/embedding/openai.js";
+import lmStudioEmbedProvider from "../external-deps/jsbrains/smart-models/adapters/embedding/lm_studio.js";
+import geminiEmbedProvider from "../external-deps/jsbrains/smart-models/adapters/embedding/google.js";
+import { EmbeddingModels } from "../external-deps/jsbrains/smart-models/collections/embedding_models.js";
+
+/**
+ * Override: default_provider_key reads from user settings instead of hardcoded 'transformers'.
+ * This ensures the collection creates models with the user's preferred provider (e.g. Ollama).
+ */
+class ObsekEmbeddingModels extends EmbeddingModels {
+  get default_provider_key() {
+    const adapter = this.env?.settings?.smart_sources?.embed_model?.adapter;
+    return adapter || 'transformers';
+  }
+}
+
+export default class ObsekPlugin extends PKMPlugin {
+  PKMEnv = PKMEnv;
   get smart_env_config() {
     if(!this._smart_env_config){
       this._smart_env_config = smart_env_config;
+      // Register all embedding providers and override class
+      // SC's default EmbeddingModels always creates transformers models — we fix that
+      if (!this._smart_env_config.collections) this._smart_env_config.collections = {};
+      if (!this._smart_env_config.collections.embedding_models) {
+        this._smart_env_config.collections.embedding_models = {};
+      }
+      // Override class so default_provider_key reads from user settings
+      this._smart_env_config.collections.embedding_models.class = ObsekEmbeddingModels;
+      if (!this._smart_env_config.collections.embedding_models.providers) {
+        this._smart_env_config.collections.embedding_models.providers = {};
+      }
+      Object.assign(this._smart_env_config.collections.embedding_models.providers, {
+        ollama: ollamaEmbedProvider,
+        openai: openaiEmbedProvider,
+        gemini: geminiEmbedProvider,
+        lm_studio: lmStudioEmbedProvider,
+      });
+      // Override SC status_bar component — we use our own in PKMEnv.register_status_bar()
+      if (!this._smart_env_config.components) this._smart_env_config.components = {};
+      this._smart_env_config.components.status_bar = {
+        render: function() { return document.createElement('span'); }
+      };
     }
     return this._smart_env_config;
   }
@@ -75,15 +121,21 @@ export default class ObsekPlugin extends SmartPlugin {
   get obsidian() { return Obsidian; }
   get api() { return this._api; }
   onload() {
-    this.app.workspace.onLayoutReady(this.initialize.bind(this)); // initialize when layout is ready
-    this.SmartEnv.create(this, this.smart_env_config);
-    this.addSettingTab(new this.ConnectionsSettingsTab(this.app, this)); // add settings tab
+    log.info('Plugin', `=== PKM Assistant v${this.manifest.version} START ===`);
+    log.debug('Plugin', 'onload() — rejestracja komponentów');
+    this.app.workspace.onLayoutReady(this.initialize.bind(this));
+    this.PKMEnv.create(this, this.smart_env_config);
+    log.debug('Plugin', 'PKMEnv.create() wywołane');
+    this.addSettingTab(new this.ConnectionsSettingsTab(this.app, this));
     add_smart_dice_icon();
     add_obsek_icon();
-    this.register_commands(); // from SmartPlugin
-    this.register_item_views(); // from SmartPlugin
-    this.register_ribbon_icons(); // from SmartPlugin
+    add_smart_connections_icon();
+    add_smart_lookup_icon();
+    this.register_commands();
+    this.register_item_views();
+    this.register_ribbon_icons();
     registerAgentSidebar(this);
+    log.debug('Plugin', 'onload() zakończone — czekam na layoutReady → initialize()');
   }
   onunload() {
     console.log("Unloading Obsek plugin");
@@ -92,28 +144,79 @@ export default class ObsekPlugin extends SmartPlugin {
   }
 
   async initialize() {
+    const initStart = Date.now();
+    log.info('Plugin', 'initialize() START — czekam na PKMEnv...');
+
+    // Restore debug mode from settings as early as possible
+    const earlyObsek = this.env?.settings?.obsek;
+    if (earlyObsek?.debugMode) {
+      log.setDebug(true);
+    }
+
     // New-user onboarding: open Obsek chat on first run
     this.is_new_user().then(async (is_new) => {
       if (!is_new) return;
-      await this.SmartEnv.wait_for({ loaded: true });
+      log.info('Plugin', 'Nowy użytkownik wykryty — otwieram chat');
+      await this.PKMEnv.wait_for({ loaded: true });
       setTimeout(() => {
         this.open_chat_view();
       }, 1000);
       this.add_to_gitignore("\n\n# Ignore Smart Environment folder\n.smart-env");
     });
 
-    await this.SmartEnv.wait_for({ loaded: true });
+    await this.PKMEnv.wait_for({ loaded: true });
+    log.timing('Plugin', 'PKMEnv loaded', initStart);
+
+    // Re-check debug mode after env is loaded (settings now available)
+    const obsekSettings = this.env?.settings?.obsek;
+    if (obsekSettings?.debugMode) {
+      log.setDebug(true);
+    }
+
+    // Bridge: sync user's embed model preference to new embedding_models collection
+    this._syncEmbeddingModelSettings();
 
     // AgentManager
     try {
+      log.debug('Plugin', 'Inicjalizacja AgentManager...');
       this.agentManager = new AgentManager(this.app.vault, this.env?.settings || {});
       await this.agentManager.initialize();
+      const agentCount = this.agentManager.agents?.size || 0;
+      const activeAgent = this.agentManager.activeAgent?.name || 'brak';
+      log.info('Plugin', `AgentManager OK: ${agentCount} agentów, aktywny: ${activeAgent}`);
     } catch (e) {
-      console.error('[Obsek] Failed to initialize AgentManager:', e);
+      log.error('Plugin', 'AgentManager FAIL:', e);
+    }
+
+    // ArtifactManager + restore ALL persisted artifacts (global)
+    try {
+      log.debug('Plugin', 'Inicjalizacja ArtifactManager...');
+      this.artifactManager = new ArtifactManager(this.app.vault);
+      this._chatTodoStore = this._chatTodoStore || new Map();
+      this._planStore = this._planStore || new Map();
+      await this.artifactManager.migrateFromAgentFolders();
+      await this.artifactManager.restoreToStores(this._chatTodoStore, this._planStore);
+      log.info('Plugin', `ArtifactManager OK: ${this._chatTodoStore.size} todos, ${this._planStore.size} planów`);
+    } catch (e) {
+      log.error('Plugin', 'ArtifactManager FAIL:', e);
+    }
+
+    // AgoraManager (shared knowledge base)
+    try {
+      log.debug('Plugin', 'Inicjalizacja AgoraManager...');
+      this.agoraManager = new AgoraManager(this.app.vault);
+      await this.agoraManager.initialize();
+      if (this.agentManager) {
+        this.agentManager.agoraManager = this.agoraManager;
+      }
+      log.info('Plugin', 'AgoraManager OK');
+    } catch (e) {
+      log.error('Plugin', 'AgoraManager FAIL:', e);
     }
 
     // MCP system
     try {
+      log.debug('Plugin', 'Inicjalizacja MCP system...');
       this.vaultZones = new VaultZones(this.app.vault);
       await this.vaultZones.initialize();
 
@@ -140,14 +243,19 @@ export default class ObsekPlugin extends SmartPlugin {
       this.toolRegistry.registerTool(createAgentDelegateTool(this.app));
       this.toolRegistry.registerTool(createChatTodoTool(this.app));
       this.toolRegistry.registerTool(createPlanTool(this.app));
+      this.toolRegistry.registerTool(createAgoraReadTool(this.app));
+      this.toolRegistry.registerTool(createAgoraUpdateTool(this.app));
+      this.toolRegistry.registerTool(createAgoraProjectTool(this.app));
 
       this.toolLoader = new ToolLoader(this.app.vault);
       const customTools = await this.toolLoader.loadAllTools();
       for (const tool of customTools) {
         this.toolRegistry.registerTool(tool);
       }
+      const toolCount = this.toolRegistry.tools?.size || 0;
+      log.info('Plugin', `MCP system OK: ${toolCount} narzędzi zarejestrowanych`);
     } catch (e) {
-      console.error('[Obsek] Failed to initialize MCP system:', e);
+      log.error('Plugin', 'MCP system FAIL:', e);
     }
 
     register_smart_connections_codeblock(this);
@@ -178,6 +286,8 @@ export default class ObsekPlugin extends SmartPlugin {
     );
 
     await this.check_for_updates();
+    log.timing('Plugin', 'PEŁNA INICJALIZACJA', initStart);
+    log.info('Plugin', `=== PKM Assistant v${this.manifest.version} GOTOWY ===`);
   }
 
   /**
@@ -270,7 +380,69 @@ export default class ObsekPlugin extends SmartPlugin {
         this.update_available = true;
       }
     } catch (error) {
-      console.error(error);
+      // Silence 404 errors (no releases published yet)
+      if (error?.status === 404 || error?.message?.includes('404')) {
+        log.debug('Plugin', 'check_for_update: brak opublikowanych releases (404)');
+      } else {
+        log.warn('Plugin', 'check_for_update error:', error?.message || error);
+      }
+    }
+  }
+
+  /**
+   * Bridge: sync user's embed model preference to new embedding_models collection.
+   * The settings tab saves to env.settings.smart_sources.embed_model[adapter].model_key
+   * but the new SC system uses embedding_models collection with EmbeddingModel items.
+   * If provider changed (e.g. transformers → ollama), creates a new model item.
+   */
+  _syncEmbeddingModelSettings() {
+    try {
+      const userEmbedSettings = this.env?.settings?.smart_sources?.embed_model;
+      if (!userEmbedSettings) return;
+
+      const userAdapter = userEmbedSettings.adapter || 'transformers';
+      const userModelKey = userEmbedSettings?.[userAdapter]?.model_key;
+      if (!userModelKey) return;
+
+      const embeddingModels = this.env?.embedding_models;
+      if (!embeddingModels) {
+        log.debug('Plugin', 'embedding_models collection not available yet');
+        return;
+      }
+
+      const defaultModel = embeddingModels.default;
+      if (!defaultModel) {
+        log.debug('Plugin', 'No default embedding model in collection');
+        return;
+      }
+
+      const currentProvider = defaultModel.data.provider_key;
+      const currentModelKey = defaultModel.data.model_key;
+
+      // Already correct — nothing to do
+      if (currentProvider === userAdapter && currentModelKey === userModelKey) {
+        log.debug('Plugin', `Embedding already correct: ${userAdapter}/${userModelKey}`);
+        return;
+      }
+
+      log.info('Plugin', `Embedding bridge: ${currentProvider}/${currentModelKey} → ${userAdapter}/${userModelKey}`);
+
+      if (currentProvider !== userAdapter) {
+        // Provider changed (e.g. transformers → ollama) — need a new model item
+        // because the adapter class is different
+        const newModel = embeddingModels.new_model({
+          provider_key: userAdapter,
+          model_key: userModelKey,
+          api_key: (userAdapter === 'ollama' || userAdapter === 'lm_studio') ? 'na' : '',
+        });
+        log.info('Plugin', `Created new embedding model: ${newModel.key} (${userAdapter}/${userModelKey})`);
+      } else {
+        // Same provider, just different model — update in place
+        defaultModel.data.model_key = userModelKey;
+        defaultModel.queue_save();
+      }
+    } catch (e) {
+      log.warn('Plugin', 'Embedding bridge error:', e?.message || e);
     }
   }
 

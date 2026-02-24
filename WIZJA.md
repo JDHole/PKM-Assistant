@@ -1,18 +1,58 @@
 # PKM Assistant - Wizja Finalnego Produktu
 
 > **Kopiuj ten plik do czatu z AI** zeby dac kontekst o tym DOKAD zmierzamy.
-> Ostatnia aktualizacja: 2026-02-22 (sesja 18)
+> Ostatnia aktualizacja: 2026-02-23 (sesja 29)
 
 ---
 
 ## Jednym zdaniem
 
-**Zespol AI agentow w Obsidianie** - kazdy z wlasna osobowoscia, pamiecia, umiejetnosciami
-i minionem, ktorzy pomagaja budowac i zarzadzac baza wiedzy (PKM) uzytkownika.
+**Platforma do budowania wlasnych agentow AI w Obsidianie** - z pelna przejrzystoscia
+i kontrola nad kazdym elementem promptu. Kazdy agent z wlasna osobowoscia, pamiecia,
+umiejetnosciami i minionem, ktorzy pomagaja budowac i zarzadzac baza wiedzy (PKM) uzytkownika.
 
-**Kluczowa zasada:** Inteligencja agenta NIE zalezy od wielkosci modelu.
+### Filozofia produktu
+
+**Inteligencja agenta = suma wszystkich tekstow ktore trafiaja do API.**
+Skill, prompt, opis narzedzia, pamiec - to wszystko jest tekst.
+User ma pelna kontrole nad kazdym kawalkiem tego tekstu.
+Jaskier pomaga to skladac efektywnie.
+
+Zadne z istniejacych narzedzi AI (Claude Code, Cursor, Antigravity) nie daje
+userowi wgladu w to co sie dzieje pod maska. User nie widzi system promptu.
+Nie wie jakie instrukcje dostaje model. Nie moze tego zmienic.
+
+**PKM Assistant mowi: "Tu nie ma magii. Twoj agent to prompt. Oto z czego sie sklada. Zmien co chcesz."**
+
+To jest fundamentalnie inne podejscie niz reszta rynku. Dajemy userowi:
+1. **Strukture** - agent, skill, playbook, brain, opisy narzedzi
+2. **Narzedzia do budowania** - UI edycji, Jaskier jako mentor
+3. **Automatyzacje** - auto-prep, pamiec, artefakty
+4. **Przejrzystosc** - user WIDZI co idzie do API
+
+### Kluczowa zasada
+
+Inteligencja agenta NIE zalezy od wielkosci modelu.
 Agent z malym 11B modelem offline powinien dzialac prawie tak dobrze
 jak agent z Opus 4.6, bo moc bierze ze **skilli, pamieci i minionow** - nie z samego LLM.
+
+Jaki prompt bedzie - to zalezy od uzytkownika i jego modelu.
+My dajemy jasna droge: "Patrz, masz agenta, ale to nic wiecej niz jeden prompt.
+Ten prompt musi zawierac A, B, C... Z, zeby dal Ci oczekiwany rezultat.
+Teraz patrz - tu masz WSZYSTKIE MOZLIWE OPCJE zmiany tego promptu.
+Baw sie, a Jaskier pomoze Ci to robic skutecznie."
+
+### Skala promptu - ile mamy do dyspozycji *(nowe - sesja 29)*
+
+Dla porownania: Claude Code wysyla ~33,000 tokenow opisu narzedzi w KAZDYM zapytaniu.
+Nasz plugin uzywa ~5,000 tokenow na CALY kontekst (system prompt + pamiec + narzedzia).
+To znaczy ze mamy OGROMNY zapas na rozbudowe promptow bez wplywu na koszty.
+
+**Opisy narzedzi to ukryty fundament jakosci:**
+Kazde narzedzie AI wysyla do API szczegolowe opisy swoich toolow. Claude Code poswięca
+~16,800 tokenow TYLKO na opisy 18 narzedzi. Dlatego model wie kiedy jakiego narzedzia
+uzyc i jak. Im lepszy opis → tym mniej model zgaduje → tym mniej tokenow marnuje na bledy.
+To jest **niewidoczny ale kluczowy element** jakosci agenta.
 
 ---
 
@@ -82,17 +122,17 @@ Kazdy ma:
 
 ### Co jest dostepne od razu
 
-- **Jaskier** - glowny orkiestrator, zna caly system, widzi wszystko
-- **Dexter** - specjalista techniczny, vault builder (skrypty, szablony, dashboardy)
-- **Ezra** - specjalista od budowy agentow i konfiguracji systemu
+- **Jaskier** - jedyny wbudowany agent. Glowny orkiestrator, zna caly system, widzi wszystko.
+  Pomaga userowi zbudowac pierwszego wlasnego agenta i prowadzi przez system.
+- **Dexter** i **Ezra** to **archetypy/szablony** - gotowe osobowosci do uzycia przy tworzeniu
+  nowych agentow, ale nie sa zainstalowani domyslnie.
 
 ### Jak powstaja nowi agenci
 
 1. **Z Jaskierem** - user opisuje jakiego agenta chce, Jaskier pomaga go stworzyc
-   (personality, uprawnienia, strefy, skille)
-2. **Z Agent Creatorem** - panel UI do recznego tworzenia
-3. **Z marketplace** - gotowi agenci do sciagniecia jednym klikiem
-4. **Z Ezra** - specjalista od budowy agentow (dostepny na marketplace)
+   (personality, uprawnienia, strefy, skille) - skill "create-agent" prowadzi caly proces
+2. **Z Agent Managera** - panel UI do recznego tworzenia (formularz z zakladkami)
+3. **Z marketplace** - gotowi agenci do sciagniecia jednym klikiem (przyszlosc)
 
 ### 3 kluczowe pliki agenta
 
@@ -134,6 +174,39 @@ System prompt agenta jest lekki (~500 tokenow). Zawiera:
 
 Cala "ciezka" wiedza techniczna jest w plikach na dysku.
 Agent nie musi tego pamietac - ma miniona ktory to sprawdza.
+
+### 6 kluczowych luk w systemie agentow *(zidentyfikowane - sesja 28/29)*
+
+> Te punkty definiuja roznice miedzy "dekoracyjnym" a "prawdziwym" agentem.
+
+**3a. Rola agenta musi wplywac na prompt + narzedzia**
+Teraz: rola agenta (np. "vault builder") to dekoracja - kazdy agent dostaje te same narzedzia
+i ten sam format system promptu. Docelowo: rola determinuje KTORE narzedzia sa aktywne,
+JAKIE instrukcje sa w prompcie, JAK agent sie zachowuje.
+
+**3b. Archetypy musza budowac CALEGO agenta**
+Teraz: archetyp daje 1 linijke personality. Docelowo: archetyp to pelny szablon -
+system prompt + lista skilli + konfiguracja miniona + playbook + vault_map + uprawnienia.
+User klika "Dexter" i dostaje gotowego, skonfigurowanego agenta.
+
+**3c. Playbook/vault_map jako czesc procesu tworzenia**
+Tworzenie agenta MUSI obejmowac: "jakie pliki znasz? jakie narzedzia uzywasz?
+jakie sa Twoje procedury?" - nie tylko "jak sie nazywasz i jaki masz emoji".
+
+**3d. Uprawnienia → agent musi WIEDZIEC o swoich ograniczeniach**
+Teraz: uprawnienia sa egzekwowane ale agent NIE WIE ze ich nie ma.
+Wywoluje vault_delete, dostaje odmowe, probuje znowu. Docelowo: system prompt
+mowi agentowi "NIE masz prawa usuwac plikow" - agent nawet nie probuje.
+
+**3e. Focus folders → twarde blokowanie, nie miekka sugestia**
+Teraz: vault_map.md mowi "masz dostep do Projects/" ale agent moze czytac wszedzie.
+Docelowo: vault_read/list/search respektuja focus folders - agent FIZYCZNIE nie widzi
+plikow poza swoimi strefami.
+
+**3f. System prompt → rozbudowa z ~500 do ~2000+ tokenow**
+Teraz: system prompt jest lekki (~500 tok). Za lekki. Docelowo: pelne instrukcje
+zachowania, lista narzedzi z opisami, uprawnienia, kontekst roli, procedury.
+Mamy zapas tokenow (patrz: Skala promptu) - warto go wykorzystac.
 
 ### Osobowosci agentow to sprawa USERA
 
@@ -191,6 +264,28 @@ nie per agent. Kazdy agent ma liste przypisanych skilli w konfiguracji.
 | Tworca | Jednorazowo przy tworzeniu agenta | Ciagle tworzone/doskonalone |
 | Kod | Nigdy | Opcjonalnie (JS) |
 
+### Skille v2 - rozszerzenia *(nowe - sesja 29)*
+
+**Per-agent wersje skilli:**
+Globalna biblioteka skilli + mozliwosc per-agent copy. Agent ma swoja wersje skilla
+ktora moze modyfikowac (np. Lexie ma "write-article" z innym stylem niz Jaskier).
+
+**Auto-inject listy skilli do system promptu:**
+Agent musi WIEDZIEC jakie skille ma dostepne - lista z krotkimi opisami
+wstrzykiwana do system promptu (nie tylko guziki w UI).
+
+**Kreator skilli w UI:**
+Formularz do tworzenia skilla: nazwa, opis, prompt, kategoria, opcjonalny JS.
+Alternatywa: Jaskier prowadzi przez tworzenie skilla rozmowa.
+
+**Workflow engine:**
+Skill moze definiowac SEKWENCJE: klik → minion zbiera kontekst → master planuje →
+main realizuje. Kazdy krok automatycznie przekazuje wynik do nastepnego.
+
+**Pytania uzupelniajace:**
+Skill moze definiowac "zapytaj usera o X, Y, Z zanim zaczniesz" -
+agent wie jakie informacje zebrac przed uruchomieniem skilla.
+
 ---
 
 ## 5. Architektura AI
@@ -237,6 +332,32 @@ Master ZAWSZE dostaje przygotowany kontekst:
 3. Minion zbiera kontekst z vaulta/pamieci
 4. Przygotowany pakiet → Master
 5. Master odpowiada → Main prezentuje userowi
+
+### MasterRunner - pelny ekosystem Mastera *(nowe - sesja 29)*
+
+Master ma taki sam ekosystem jak Minion - nie jest jednorazowym wywolaniem:
+
+```
+.pkm-assistant/agents/{agent}/
+├── minion.md      <- instrukcje dla miniona (juz jest)
+└── master.md      <- instrukcje dla mastera (NOWE)
+```
+
+**master.md** - notatka techniczna Mastera:
+- Kiedy Master jest potrzebny (typy zadan)
+- Jak przygotowac kontekst (co zbierac z vaulta/pamieci)
+- Format odpowiedzi (co Master powinien zwrocic)
+- Ograniczenia i zasady
+
+**MasterRunner** (wzor: MinionRunner):
+- Auto-prep: zbiera kontekst ZANIM wysle do Mastera
+- Tool-calling loop: Master moze uzywac narzedzi (vault_read, memory_search)
+- Pelna petla agentowa (streamToCompleteWithTools)
+- Typing indicator: "Master analizuje..."
+
+Roznica vs obecny master_task:
+- Teraz: jednorazowe wywolanie → Master dostaje prompt → odpowiada raz
+- Docelowo: pelna petla → Master moze pytac o dodatkowe dane → iteruje → zwraca wynik
 
 ### Minion - tani pracownik w tle
 
@@ -287,6 +408,26 @@ Zamiast tego:
 - Dziala nawet z malym 8B modelem (bo minion robi research)
 - User widzi inteligentnego agenta, ktory wie co robi
 
+### Opisy narzedzi - ukryty fundament jakosci
+
+Kazde narzedzie AI (Claude Code, Cursor, Antigravity) wysyla do API **szczegolowe opisy**
+kazdego narzedzia. Claude Code poswięca ~16,800 tokenow TYLKO na opisy 18 narzedzi.
+To dlatego model wie kiedy jakiego narzedzia uzyc i jak.
+
+Nasz plugin musi robic to samo - kazdy MCP tool potrzebuje:
+- **Co** robi (krotki opis)
+- **Kiedy** go uzywac (a kiedy uzyc czegos innego)
+- **Jak** go uzywac (przyklady parametrow)
+- **Czego NIE robic** (pulapki, ograniczenia)
+- **Alternatywy** (jesli to nie pasuje, uzyj tamtego)
+
+Im lepszy opis narzedzia → tym mniej model zgaduje → tym mniej sie zapetla → tym mniej
+tokenow marnuje na bledy. Dluzszy opis zzera wiecej tokenow na starcie, ale OSZCZEDZA
+potem bo model nie robi 3 nieudane proby zanim trafi.
+
+**Kluczowe:** User ma pelny wglad w opisy narzedzi i moze je edytowac.
+To jest czesc filozofii "tu nie ma magii" - user widzi DOKLADNIE co agent wie o swoich narzedziach.
+
 ### Tryb Agentic (natywny vs nasz)
 
 Dostawcy AI (Claude, OpenAI) oferuja natywny "agentic mode" - model sam uzywa narzedzi
@@ -335,7 +476,7 @@ Jesli cos w srodku sie zmieni, cache od tego miejsca "peka".
 - Szybszy czas odpowiedzi (cached tokeny przetwarzane szybciej)
 - Zero wplywu na jakosc odpowiedzi
 
-### Model embeddingów
+### Model embeddingów i wyszukiwanie semantyczne
 
 Model embeddingów zamienia tekst na wektor liczb (embedding). Dwa teksty
 o podobnym znaczeniu maja podobne wektory - to jest serce wyszukiwania semantycznego.
@@ -355,6 +496,62 @@ Power user moze zmienic w ustawieniach na:
 - Standardowy (Nomic) - domyslny
 - Zaawansowany (Jina-v2, 8192 tok) - najlepsza jakosc
 - API (OpenAI/Mistral) - najlepsza mozliwa jakosc (platne)
+
+### VaultIndex - semantyczne przeszukiwanie vaulta *(nowe - sesja 29)*
+
+Embedding model jest uzywany nie tylko do RAG (kontekst z przeszlych sesji),
+ale do **pelnego semantycznego przeszukiwania** calego vaulta i pamieci agenta.
+
+**VaultIndex** - centralny indeks embeddingów notatek:
+- Przy starcie pluginu: skanuje vault, embeduje notatki
+- Przechowuje: `.pkm-assistant/embeddings/vault-index.json`
+- Przyrostowe: zmieniona notatka → odswiezy tylko jej embedding(i)
+- Obserwuje zmiany: `app.vault.on('modify', ...)` → auto-update
+
+**Block splitting - dlugie notatki NIE sa pomijane:**
+Vault moze zawierac ksiazki, dlugie artykuly, notatki z dziesiatkami sekcji.
+Model embeddingowy ma limit tokenow (512-8192 w zaleznosci od modelu).
+Tekst dluzszy niz limit jest UCINANY - model nie widzi reszty!
+
+Rozwiazanie: VaultIndex dzieli dlugie notatki na **bloki po naglowkach** (`## ...`).
+Kazdy blok dostaje wlasny embedding. Dzieki temu wyszukiwanie znajduje
+**konkretny fragment** dlugiej notatki - nie tylko poczatek.
+
+```
+Notatka "Ksiazka o PKM" (8000 slow, 15 sekcji)
+  ↓ split po ## naglowkach
+  ↓
+Blok 1: "## Wprowadzenie" (400 slow) → embedding_1
+Blok 2: "## Metoda Zettelkasten" (600 slow) → embedding_2
+Blok 3: "## Linking vs Tagging" (500 slow) → embedding_3
+...
+Blok 15: "## Podsumowanie" (300 slow) → embedding_15
+```
+
+Kazdy blok pamieta: plik zrodlowy + naglowek + pozycja.
+Krotkie notatki (< limit tokenow modelu) → jeden embedding na caly plik.
+To jest inspirowane Smart Blocks z SC, ale bez frameworka (~30 LOC splitter vs tysiace LOC SC)
+
+**vault_search (semantyczny):**
+- Agent pyta "jak organizowac notatki" → embeduje pytanie → szuka w VaultIndex
+- Zwraca notatki SEMANTYCZNIE podobne (nie tylko textowe dopasowanie)
+- Fallback na indexOf jesli model embeddingowy niedostepny
+- Wyniki posortowane po trafnosci (similarity score)
+
+**memory_search (semantyczny):**
+- To samo ale przeszukuje pamiec agenta (sesje, brain.md, L1/L2)
+- Agent: "co robilem wczoraj" → znajduje sesje z wczorajsza data + powiazane tematy
+
+**Dlaczego to fundamentalne:**
+
+| Zapytanie agenta | Bez embeddingów (indexOf) | Z embeddingami (semantyczny) |
+|---|---|---|
+| "organizacja notatek" | Szuka DOKLADNIE tych slow | Znajduje "System zarzadzania wiedza", "Jak porzadkowac vault" |
+| "co robilem wczoraj" | Szuka slowa "wczoraj" | Znajduje sesje z datami + powiazane notatki |
+| "projekty z klientami" | Szuka frazy "projekty z klientami" | Znajduje "Lista zlecen", "CRM notatki", "Fakturowanie" |
+
+To jest roznica miedzy **glupim** a **inteligentnym** wyszukiwaniem.
+Embedding model (4. slot) pracuje w tle, a agent dostaje trafne wyniki bez marnowania tokenow.
 
 ---
 
@@ -391,7 +588,7 @@ Hierarchiczna pamiec juz dziala (fazy 0-7 DONE):
 
 ---
 
-## 7. Komunikacja miedzy agentami
+## 7. Komunikacja miedzy agentami [ZAIMPLEMENTOWANE]
 
 ### Komunikator
 
@@ -426,6 +623,14 @@ Po kliknieciu:
 3. Lexie sie laduje i od razu wie o co chodzi
 4. User kontynuuje z Lexie
 
+### Zaimplementowane (sesje 23-26)
+- KomunikatorManager: pliki inbox per agent, parsowanie, zapis, markAsRead
+- MCP tools: agent_message (wyslij), agent_delegate (deleguj z kontekstem)
+- Delegacja: agent proponuje przelaczenie → przycisk w UI → sesja zapisana → nowy agent z kontekstem
+- CommunicatorView: inline w sidebarze (nie modal)
+- Context menu w notatce: "Wyslij do asystenta"
+- Minion czyta inbox przy auto-prep
+
 ### Debata agentow (przyszlosc)
 
 Mozliwosc rozmowy z KILKOMA agentami NARAZ:
@@ -436,7 +641,7 @@ Mozliwosc rozmowy z KILKOMA agentami NARAZ:
 
 ---
 
-## 8. Agent Manager / Creator Panel
+## 8. Agent Manager / Creator Panel [ZAIMPLEMENTOWANE]
 
 Osobna zakladka w pluginie (lub panel) z PELNA kontrola nad agentami.
 
@@ -472,6 +677,92 @@ User MUSI miec pelna kontrole i przejrzystosc:
 - Wie co agent moze robic (i moze to zmienic)
 - Wie jak agent dziala (i moze to ulepszyc)
 - Ukryte foldery (.pkm-assistant) nie sa juz czarna skrzynka
+
+**To jest serce filozofii "tu nie ma magii"** - user widzi KAZDY element
+ktory sklada sie na prompt agenta i moze go zmienic.
+
+### Zaimplementowane (sesje 22-26)
+- AgentProfileView: 5 zakladek inline w sidebarze (Profil, Uprawnienia, Umiejetnosci, Pamiec, Statystyki)
+- Agent Creator: formularz + tworzenie przez rozmowe z Jaskierem (skill create-agent)
+- Usuwanie agenta z archiwizacja pamieci
+- Tylko Jaskier built-in, Dexter/Ezra to archetypy/szablony
+- SidebarNav: stack-based nawigacja (push/pop/replace/goHome) - zero modali
+- Zaplecze (Backstage): listy skilli, narzedzi MCP (6 grup), minionow
+- Cross-referencing: z profilu agenta do skilla/miniona i odwrotnie
+- Edycja plikow ukrytych (brain.md, playbook.md) bezposrednio z UI
+
+---
+
+## 8b. Przejrzystosc promptu *(nowe - sesja 29)*
+
+> **Serce filozofii "tu nie ma magii"** - user widzi DOKLADNIE co idzie do API.
+
+### Problem
+
+Zadne z istniejacych narzedzi AI (Claude Code, Cursor, Antigravity, ChatGPT)
+nie pokazuje userowi PELNEGO promptu ktory trafia do modelu. User nie wie:
+- Jaki system prompt dostaje model
+- Jakie opisy narzedzi sa wstrzykiwane (i ile tokenow to zjada)
+- Jaki kontekst z pamieci/playbooka trafia do promptu
+- Jak wyglada pelna wiadomosc po dodaniu artefaktow, skilli, RAG
+
+PKM Assistant to zmienia. **User widzi KAZDY element promptu.**
+
+### Podglad pelnego promptu
+
+Przed wyslaniem wiadomosci do API user moze zobaczyc:
+1. **System prompt** - osobowosc agenta, zasady, instrukcje
+2. **Brain context** - co agent pamieta o userze
+3. **Auto-prep** - wynik pracy miniona (kontekst z vaulta/pamieci)
+4. **Tool descriptions** - opisy WSZYSTKICH narzedzi (ile tokenow kazdy zjada!)
+5. **Aktywne artefakty** - todo/plany wstrzykiwane do promptu
+6. **Aktywny skill** - jesli uruchomiony
+7. **RAG context** - relevantny kontekst z przeszlych sesji
+8. **Historia czatu** - kompresowana vs pelna
+
+### Edycja kazdego elementu
+
+User NIE TYLKO widzi - moze **edytowac**:
+- Zmienic system prompt agenta
+- Wylaczyc/wlaczyc poszczegolne elementy (np. wylacz RAG, wylacz opisy narzedzi)
+- Zmodyfikowac opisy narzedzi (krotsze/dluzsze/dokladniejsze)
+- Dodac/usunac instrukcje
+- Jaskier pomaga optymalizowac prompt ("za duzo tokenow na narzedzia, skrocmy to")
+
+### Metryki
+
+W podgladzie widoczne:
+- **Liczba tokenow** per element (system prompt: 450 tok, tools: 2100 tok, ...)
+- **Calkowity koszt** wywolania (ile tokenow input/output, ile to kosztuje)
+- **Cache hit** - ile tokenow jest z cache vs swiezych
+
+To nie jest feature "dla zaawansowanych" - to jest **fundamentalna cecha produktu**.
+Kazdy user powinien rozumiec z czego sklada sie jego agent.
+
+## 8c. Oczko - swiadomosc aktywnej notatki *(nowe - sesja 29)*
+
+> Agent wie co user ma otwarte w edytorze.
+
+### Jak to dziala
+
+Agent widzi **aktywna notatke** (ta ktora user wlasnie edytuje/czyta):
+- `app.workspace.getActiveFile()` → sciezka i metadane
+- Kontekst aktywnej notatki wstrzykiwany do promptu agenta
+- Agent moze odniesc sie do tego co user wlasnie robi
+
+### Scenariusze
+
+1. User edytuje notatke "Projekt X" → pyta agenta "co o tym wiesz?" →
+   agent WIE ze chodzi o Projekt X (bez koniecznosci podawania nazwy)
+2. User czyta dziennik → agent proponuje "Chcesz podsumowac dzisiejszy dzien?"
+3. User jest w folderze Projects/ → agent automatycznie skupia sie na projektach
+
+### Konfiguracja
+
+- Toggle w UI: wlacz/wylacz Oczko
+- Gdy wylaczone: agent nie widzi co user ma otwarte
+- Gdy wlaczone: kontekst aktywnej notatki (tytul, pierwsze ~500 tokenow, frontmatter)
+  wstrzykiwany jako dodatkowy element promptu
 
 ---
 
@@ -522,9 +813,32 @@ Agenci MUSZA rozumiec kontekst:
 - Lexie wie ze "artykul na X" = notatka z odpowiednim fronmatterem
 - Kazdy agent tworzy notatki w FORMACIE Obsidiana - zawsze
 
+### Obsidian API goldmine *(nowe - sesja 29)*
+
+Obsidian udostepnia potezne API ktore agent moze wykorzystac:
+
+**metadataCache** - graf wiedzy calego vaulta:
+- Wszystkie tagi, backlinki, frontmatter properties
+- Agent moze pytac "jakie notatki linkuja do X?" bez czytania plikow
+- Mozliwosc budowania mapy powiazan calego vaulta
+
+**app.commands** - orkiestracja calego ekosystemu Obsidiana:
+- Dostep do SETEK polecen z zainstalowanych pluginow (QuickAdd, Templater, Dataview)
+- Agent moze "kliknac" dowolne polecenie - jak user z klawiatury
+- Np. "Stworz notatke z szablonu Daily Note" = jedno polecenie
+
+**fileManager** - inteligentne operacje na plikach:
+- Rename z automatycznym update backlinków (Obsidian to robi natywnie!)
+- Agent przenosi/zmienia nazwe notatki - linki sie nie psuja
+
+**obsidian_command MCP tool** (~50 LOC):
+- Nowy tool dajacy agentowi dostep do commands API
+- Agent moze uruchomic DOWOLNE polecenie Obsidiana
+- Jeden tool = dostep do setek funkcji z pluginow
+
 ---
 
-## 10. Inline interakcja z agentem
+## 10. Inline interakcja z agentem [ZAIMPLEMENTOWANE]
 
 ### Prawy przycisk w notatce
 
@@ -548,9 +862,15 @@ User czyta artykul napisany przez Lexie. Jeden akapit jest zly.
 Zaznacza, pisze "tu zhalucynowala, popraw na podstawie X".
 Lexie dostaje to, poprawia akapit, user widzi zmiane.
 
+### Zaimplementowane (sesja 25)
+- InlineCommentModal: context menu "Komentarz do Asystenta" na zaznaczonym tekscie
+- Agent dostaje: zaznaczony fragment + komentarz usera + sciezke pliku
+- Agent poprawia fragment bezposrednio w pliku
+- Dodatkowo: "Wyslij do asystenta" (SendToAgentModal) - wysyla zaznaczenie do wybranego agenta
+
 ---
 
-## 11. Rozszerzony chat
+## 11. Rozszerzony chat [WIEKSZOSĆ ZAIMPLEMENTOWANE]
 
 ### Creation Plans (artefakty)
 
@@ -618,6 +938,62 @@ Caly chat musi dzialac **plynnie i nowocześnie**:
 - Pasek postepu przy dluzszych operacjach
 - Responsywny design - dziala na roznych rozmiarach panelu
 
+### System artefaktow [ZAIMPLEMENTOWANE - sesje 25-27]
+
+Artefakty to trwale obiekty tworzone przez agenta w chacie (todo listy, plany kreacji).
+Zyja GLOBALNIE - niezaleznie od sesji i agenta. Przetrwaja restart pluginu.
+
+**ArtifactManager** - centralny menedzer artefaktow:
+- Zapis: `.pkm-assistant/artifacts/{slugified-title}.json` (czytelne nazwy plikow)
+- Slugify: polskie znaki → ASCII (ą→a), spacje → myslniki, kolizje → suffix _2/_3
+- Auto-save: kazda zmiana (checkbox, edycja, dodanie) od razu na dysk
+- Migracja: stare per-agent artefakty przenoszone automatycznie
+- Metadata: createdBy, createdAt, updatedAt w kazdym JSON
+- Restore: ladowanie WSZYSTKICH artefaktow przy starcie pluginu
+
+**Todo listy v2:**
+- MCP tool `chat_todo` (create/update/add_item/remove_item/save/list)
+- Interaktywny widget: checkboxy, pasek postepu, animacje
+- Inline edit (double-click), dodawanie (+), usuwanie (x)
+- TodoEditModal: pelna edycja tytulu i elementow
+- Agent odznacza automatycznie w trakcie pracy
+
+**Plany kreacji v2:**
+- MCP tool `plan_action` (create/update_step/add_subtask/toggle_subtask/get/list)
+- Widget: numerowane kroki, cykl statusow (klik zmienia), komentarze
+- **Subtaski**: kazdy krok ma checklistę podzadan `[{text, done}]`
+- PlanEditModal: pelna edycja kroków, statusow, subtaskow
+- Przycisk "Zatwierdz plan" → agent zaczyna realizacje
+
+**Panel artefaktow (toolbar):**
+- Prawy pasek w chacie: ikony 📦 artefakty, ⚡ skille, ⚙️ tryby
+- Overlay z lista WSZYSTKICH artefaktow (todo + plany)
+- Pogrupowanie po typach, badge agenta twórcy
+- Klik → modal edycji, kopiowanie do vaulta, usuwanie
+- Artefakt discovery: summary wstrzykiwane do system promptu agenta
+
+**Delegacja + artefakty:**
+- Przy delegacji agenta aktywne todo/plany automatycznie przekazywane
+- Nowy agent widzi artefakty z poprzedniej rozmowy
+
+### Chat v2 - rozszerzenia *(nowe - sesja 29)*
+
+**Transparentnosc minion/master:**
+Dzialania miniona i mastera widoczne w chacie jako osobne bloki
+(jak thinking block ale dla delegacji). User widzi co robi minion w tle.
+
+**Odejscie od dymkow → styl Claude Code:**
+Chat nie musi wygladac jak WhatsApp. Inspiracja: Claude Code - czytelny,
+techniczny styl z sekcjami, narzędziami i kodem. Lepszy do pracy.
+
+**Pelny zapis sesji:**
+Totalnie WSZYSTKO co sie dzieje w sesji: system prompt, tool calls z inputem/outputem,
+thinking, minion/master, timestamps. Plik .md do analizy i debugowania.
+
+**Dokladny token counter:**
+Nie szacowany - brany z API response `usage` field. Pokazuje:
+input tokens, output tokens, cached tokens, koszt wywolania.
+
 ---
 
 ## 12. Mobile i offline
@@ -668,6 +1044,24 @@ User nie musi byc technicznym zeby uzyc Ollama:
 - One-click setup w ustawieniach pluginu
 - Rekomendacja najlepszych modeli do roznych zadan
 - Minion auto-konfiguracja
+
+### Rozbudowana prywatnosc *(nowe - sesja 29)*
+
+**Wykrywacz wrazliwych danych:**
+Regex na hasla, klucze API, numery kart, dane osobowe.
+Ostrzezenie ZANIM dane trafi do cloud API. Automatyczne maskowanie.
+
+**Blacklist plikow/folderow:**
+User mowi "ten folder NIGDY nie idzie do AI" - nawet jesli agent poprosil.
+Konfiguracja w Agent Manager lub globalnie.
+
+**Wykrywanie prompt injection:**
+Skanowanie tresci z vaulta ZANIM zostanie wstrzyknieta do promptu.
+Wzorce: "IGNORE PREVIOUS", "OVERRIDE", "ACT AS" w notatkach.
+
+**LOCAL vs CLOUD wskaznik:**
+Przy kazdym modelu wyswietlany wskaznik czy dane wychodza na zewnatrz.
+Lokalne modele (Ollama, LM Studio) = zielona ikona. Cloud = pomaranczowa.
 
 ### Optymalizacja pod lokalne modele
 
@@ -763,6 +1157,27 @@ Agent tworzy obrazy do notatek i artykulow:
 
 - Soundscapes, jingle, ambient do pracy
 - Integracja z lokalnymi narzędziami muzycznymi
+
+---
+
+## 14b. Per-agent theming *(nowe - sesja 29)*
+
+Kazdy agent moze miec wlasny styl wizualny:
+
+**CSS variables per agent:**
+```css
+--agent-primary: #4A90D9;    /* kolor glowny (Jaskier = zielony, Dexter = niebieski) */
+--agent-bg: #1A2332;         /* tlo chatu */
+--agent-accent: #FFD700;     /* akcent (linki, przyciski) */
+```
+
+**CSS injection z vaulta:**
+Agent moze miec plik `theme.css` w swoim folderze - ladowany automatycznie
+przy przelaczeniu agenta. User moze go edytowac.
+
+**Design system PRZED budowaniem UI:**
+Paleta kolorow, typografia, ikony, spacing - ustalone raz, uzywane wszedzie.
+Zeby dodanie nowego widgetu nie wymagalo pisania CSS od zera.
 
 ---
 
@@ -887,46 +1302,82 @@ Marketplace: "Salvator - agent finansowy. 4.8/5, 200+ pobranie.
 
 ## 19. Architektura (pelna)
 
+### Niezaleznosc od Smart Connections ✅ *(DONE - sesje 30-32)*
+
+Plugin jest FORKIEM Smart Connections v4.1.7. **Niezaleznosc od SC osiagnieta w v1.0.9.**
+
+**Co zrobiono (sesje 30-32):**
+- PKMPlugin.js zastepuje SmartPlugin (extends Obsidian Plugin bezposrednio)
+- PKMEnv.js zastepuje SmartEnv (module-scoped PKM_SCOPE, zero window.smart_env)
+- ObsekEmbeddingModels — subclass z dynamicznym default_provider_key
+- 4 dostawcy embeddingów: Ollama, OpenAI, Gemini, LM Studio
+- 15 SC ghost strings rebranded, 5 dead modules removed
+- 30+ polskich notice'ow (PKMNotices), wlasny status bar
+- Embedding dziala przez Ollama + snowflake-arctic-embed2 (23k blokow zaindeksowane)
+
+**Co zostalo (backlog, nieblokujace):**
+- external-deps/ nadal w repo (~6.8 MB build) — pelna ekstrakcja adapterow opcjonalna
+- Adaptery czatowe/embeddingowe nadal importowane z external-deps/ (dzialaja, ale nie sa "nasze")
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │                  PKM ASSISTANT PLUGIN                 │
 ├─────────────────────────────────────────────────────┤
 │  UI LAYER                                            │
-│  Chat │ Agent Manager │ Marketplace │ Settings       │
-│  Agent Sidebar │ Inline Comments │ Skill Buttons     │
-│  Todolists │ Creation Plans │ Thinking Block         │
+│  Chat │ Agent Sidebar (SidebarNav) │ Settings        │
+│  Artifact Panel + Toolbar │ Skill Buttons            │
+│  Todolists v2 │ Creation Plans v2 │ Thinking Block   │
+│  Inline Comments │ Communicator │ Backstage          │
+│  AgentProfileView │ TodoEditModal │ PlanEditModal    │
+│  Prompt Inspector │ Oczko Toggle                     │
 │  Image/Video Preview │ Voice Input │ Animations      │
 ├─────────────────────────────────────────────────────┤
 │  CORE                                                │
-│  AgentManager │ SkillEngine │ Komunikator            │
+│  AgentManager │ SkillEngine │ ArtifactManager        │
+│  KomunikatorManager │ PlaybookManager                │
 │  PermissionSystem │ VaultZones │ OnboardingWizard    │
-│  MinionRunner │ MinionLoader │ SkillLoader           │
+│  MinionRunner │ MinionLoader │ MasterRunner (TODO)   │
+│  SkillLoader │ VaultIndex (TODO)                     │
 ├─────────────────────────────────────────────────────┤
-│  NARZEDZIA (MCP)                                     │
-│  vault_read │ vault_write │ vault_search │ ...       │
-│  memory_search │ memory_update │ memory_status       │
-│  skill_list │ skill_execute │ minion_task             │
-│  master_task │ agent_delegate │ agent_message         │
+│  NARZEDZIA (17 MCP tools)                            │
+│  vault_read │ vault_list │ vault_write │ vault_delete │
+│  vault_search (semantyczny) │ memory_search (sem.)   │
+│  memory_update │ memory_status                       │
+│  skill_list │ skill_execute                           │
+│  minion_task │ master_task                            │
+│  agent_message │ agent_delegate                       │
+│  chat_todo │ plan_action                              │
+├─────────────────────────────────────────────────────┤
+│  ADAPTERY (wlasne - bez SC)                          │
+│  ObsekPlugin │ ObsekItemView │ ObsekEnv              │
+│  ObsekEmbedder │ SmartStreamer │ HTTP Adapter         │
+│  11 adapterow: Anthropic │ OpenAI │ DeepSeek │       │
+│  Gemini │ Groq │ OpenRouter │ Ollama │ LM Studio │   │
+│  Azure │ xAI │ Custom                                │
 ├─────────────────────────────────────────────────────┤
 │  AI LAYER (4 modele per agent)                       │
 │  Main Model │ Minion Model │ Embedding │ Master      │
-│  Anthropic │ OpenAI │ DeepSeek │ Ollama │ OpenRouter │
+│  modelResolver → per agent lub globalny              │
 ├─────────────────────────────────────────────────────┤
-│  PAMIEC                                              │
+│  PAMIEC + EMBEDDING                                  │
 │  RollingWindow │ Summarizer │ RAG │ Sessions         │
-│  Brain │ L1/L2 │ Komunikator │ Cross-Agent Memory    │
+│  Brain │ L1/L2 │ MemoryExtractor │ Cross-Agent (TODO)│
+│  VaultIndex (TODO) │ EmbeddingHelper                 │
 ├─────────────────────────────────────────────────────┤
-│  SKILLS + MINIONS                                    │
-│  SkillLoader │ SkillRunner │ MinionLoader            │
-│  MinionRunner │ MarketplaceClient                    │
+│  SKILLS + MINIONS + MASTER                           │
+│  SkillLoader │ MinionLoader │ MinionRunner           │
+│  MasterLoader (TODO) │ MasterRunner (TODO)           │
+│  streamToCompleteWithTools │ MarketplaceClient (TODO) │
 └─────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────┐
 │  VAULT STORAGE (.pkm-assistant/)                     │
 │  agents/{name}/memory/ │ agents/{name}/playbook.md   │
-│  agents/{name}/vault_map.md │ skills/ │ minions/     │
-│  komunikator/ │ marketplace/ │ config.yaml           │
+│  agents/{name}/vault_map.md │ agents/{name}/master.md│
+│  artifacts/ (global) │ embeddings/ (VaultIndex)      │
+│  skills/ │ minions/ │ komunikator/                   │
+│  marketplace/ (TODO) │ config.yaml                   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -934,28 +1385,36 @@ Marketplace: "Salvator - agent finansowy. 4.8/5, 200+ pobranie.
 
 ## 20. Kamienie milowe
 
-### v0.x - Fundament [JESTESMY TUTAJ]
+### v0.x - Fundament [PRAWIE GOTOWE]
 - [x] Fork Smart Connections v4.1.7
 - [x] Chat z AI dziala w Obsidianie
-- [x] System agentow (Jaskier + Dexter + Ezra wbudowani)
-- [x] MCP tools (12 narzedzi: vault + memory + skille + minion_task)
+- [x] System agentow (Jaskier built-in, Dexter/Ezra jako archetypy)
+- [x] MCP tools (17 narzedzi: vault + memory + skille + minion + master + komunikator + artefakty)
 - [x] System uprawnien
 - [x] Pamiec hierarchiczna (fazy 0-7 DONE)
 - [x] Minion model (konfigurowalny per agent)
 - [x] Skill Engine (centralna biblioteka, MCP tools, guziki UI)
 - [x] Minion per agent (auto-prep + minion_task, 3 starter miniony)
 - [x] Rebranding UI (Smart Connections -> PKM Assistant)
-- [ ] Stabilizacja - codzienne uzytkowanie bez bledow
+- [x] **Wyrzucenie Smart Connections** (sesje 30-32: PKMPlugin, PKMEnv, rebranding, embedding fix)
+- [x] Stabilizacja — 6 bug fixow (sesja 32) + Logger + status bar + polskie notice'y
 
 ### v1.0 - Publiczne wydanie
-- [ ] Architektura 4 modeli (Main, Minion, Embedding, Master)
-- [ ] Playbook + Vault Map per agent (minion jako bibliotekarz)
-- [ ] Agent Creator/Manager panel (pelna kontrola nad agentami)
-- [ ] Komunikator (wiadomosci miedzy agentami)
-- [ ] Delegacja agentow (przelaczanie z kontekstem)
-- [ ] Rozszerzony chat: todo listy, extended thinking, animacje
-- [ ] Inline komentarze (prawy przycisk -> asystent)
-- [ ] Creation plans (artefakty w chacie)
+- [x] Architektura 4 modeli (Main, Minion, Embedding, Master)
+- [x] Playbook + Vault Map per agent (minion jako bibliotekarz)
+- [x] Agent Creator/Manager panel (pelna kontrola nad agentami)
+- [x] Komunikator (wiadomosci miedzy agentami)
+- [x] Delegacja agentow (przelaczanie z kontekstem)
+- [x] Rozszerzony chat: todo listy, extended thinking, animacje
+- [x] Inline komentarze (prawy przycisk -> asystent)
+- [x] Creation plans (artefakty w chacie)
+- [x] System artefaktow (ArtifactManager, globalny, persistence, panel)
+- [x] Sidebar Navigation (SidebarNav, Zaplecze, zero modali)
+- [x] **Embedding dziala** (Ollama/snowflake-arctic-embed2, vault_search + memory_search semantyczne)
+- [ ] **VaultIndex** (wlasny block splitting, optymalizacja — backlog)
+- [ ] **Przejrzystosc promptu**: user widzi i edytuje CALY prompt ktory idzie do API
+- [ ] **Oczko**: agent widzi aktywna notatke usera
+- [ ] **MasterRunner**: pelny ekosystem Mastera (master.md, auto-prep, tool loop)
 - [ ] Onboarding wizard (konfiguracja API/Ollama + Jaskier wdrazanie)
 - [ ] Solidna obsluga bledow + dokumentacja
 
@@ -975,28 +1434,58 @@ Marketplace: "Salvator - agent finansowy. 4.8/5, 200+ pobranie.
 
 ---
 
-## 21. Pomysly na przyszlosc (backlog - sesja 25)
+## 20b. Dokumentacja = Edukacja *(nowe - sesja 29)*
 
-### Agora (tablica aktywnosci agentow)
+Dokumentacja to NIE afterthought - to feature produktu.
+
+**Dymki tutoriali przy ustawieniach:**
+Kazde ustawienie ma malego (i) z wyjasnieniem po polsku i angielsku.
+Np. przy "Model Minion": "Tanszy model do pracy w tle. Szuka w vaultcie
+i pamieci ZANIM agent odpowie. Rekomendacja: DeepSeek Chat lub Phi-3."
+
+**Baza wiedzy dostepna agentom:**
+Agenci maja dostep do dokumentacji pluginu jako skill/kontekst.
+User pyta Jaskiera "jak dodac nowego agenta?" - Jaskier WIE
+bo ma dokumentacje w swoim playbooku.
+
+**Gra uczaca z milestones:**
+System wyzwan z Jaskierem jako mentorem:
+- "Stworz pierwszego agenta" → odblokuj archetypy
+- "Napisz pierwszy skill" → odblokuj kreator skilli
+- "Deleguj zadanie minionowi" → odblokuj MasterRunner
+Milestones widoczne w Agent Manager + nagrody (custom CSS theme?).
+
+---
+
+## 21. Pomysly na przyszlosc (backlog)
+
+### Agora (tablica aktywnosci agentow) *(backlog - sesja 25)*
 Wspolne miejsce w vaultcie (np. `.pkm-assistant/agora.md`) gdzie kazdy agent wpisuje co zrobil
 z userem. Cos jak publiczny devlog, ale w wersji ludzkiej. Dzieki temu kazdy agent wie co sie
 dzialo - nawet jesli nie uczestniczyl w rozmowie. Roznica vs komunikator: komunikator to 1-do-1,
 agora to broadcast dla wszystkich.
 
-### Panel artefaktow
-Zakladka lub rozwijane mini-menu w chacie, ktore pokazuje wszystkie artefakty z sesji:
-todo listy, plany kreacji, stworzone pliki. User nie gubi sie w dlugim chacie
-i ma szybki dostep do wszystkiego co agent stworzyl.
+### ~~Panel artefaktow~~ [DONE - sesja 27]
+~~Zakladka lub rozwijane mini-menu w chacie, ktore pokazuje wszystkie artefakty z sesji.~~
+Zaimplementowany jako prawy toolbar + overlay z lista artefaktow. Opis w sekcji 11.
 
-### Manualna edycja planow i todo
-User moze recznie edytowac kroki planu i elementy todo listy bez posrednictwa AI.
-Dodawanie, usuwanie, zmiana kolejnosci, edycja tekstu - bezposrednio w widgecie.
-Powiazane z panelem artefaktow.
+### ~~Manualna edycja planow i todo~~ [DONE - sesja 27]
+~~User moze recznie edytowac kroki planu i elementy todo listy.~~
+Zaimplementowane: inline edit, dodawanie, usuwanie, modalne pelnej edycji. Opis w sekcji 11.
 
-### Alert o tworzeniu/usuwaniu plikow
+### Alert o tworzeniu/usuwaniu plikow *(backlog - sesja 25)*
 Wyrazniejsze powiadomienia gdy agent tworzy lub usuwa notatki w vaultcie.
 Approval system juz istnieje, ale potrzebuje lepszego UI - moze modal z podgladem
 zmian zanim zostaną zastosowane.
+
+### ~~Przejrzystosc promptu~~ [PROMOTED - sesja 29]
+~~Przeniesione do sekcji 8b jako pelna sekcja wizji (nie backlog).~~
+Patrz: **sekcja 8b. Przejrzystosc promptu**
+
+### Inline skille *(nowe - sesja 29)*
+Konfigurowalne context menu per agent - kazdy agent ma swoje akcje w prawym przycisku.
+Np. Lexie: "Popraw styl" | "Skroc o polowe" | "Przetlumacz na EN"
+Agent sam definiuje jakie opcje sa dostepne na zaznaczonym tekscie.
 
 ### Bezpieczenstwo: Prompt Injection + Path Traversal (audyt sesja 25)
 Audyt wykazal ze plugin nie sanityzuje tresci wstrzykiwanych do promptow AI. Notatki,
@@ -1016,20 +1505,81 @@ Priorytet: przed publicznym release (FAZA 7). Przy early access (znajomi) ryzyko
 
 ---
 
-## 22. Co JUZ jest zrobione (status 2026-02-22, sesja 18)
+## 22. Co JUZ jest zrobione (status 2026-02-23, sesja 29)
 
-Pelna lista w STATUS.md. Najwazniejsze:
-- Plugin dziala, chat dziala, Jaskier dziala
-- 12 MCP tools (vault + memory + skille + minion_task)
-- Pamiec hierarchiczna (brain, sesje, L1/L2, RAG)
-- Skill Engine: centralna biblioteka, ladowanie, MCP tools, guziki UI
-- Minion per agent: auto-prep + minion_task, 3 starter miniony
-- Settings persistence, platform auto-detection
-- Rebranding UI (Smart Connections -> PKM Assistant)
-- **Nastepny krok:** playbook.md + vault_map.md per agent (minion jako bibliotekarz)
+Pelna lista w STATUS.md. Podsumowanie:
+
+### Fundament (FAZA 0)
+- Plugin dziala w Obsidianie, chat dziala, build 6.8MB
+- Rebranding: Smart Connections → PKM Assistant
+- Wersja 1.0.7, wlasne wersjonowanie (reset z SC 4.1.7)
+
+### 17 MCP tools
+- Vault: read, list, write, delete, search
+- Pamiec: memory_search, memory_update, memory_status
+- Skille: skill_list, skill_execute
+- Delegacja: minion_task, master_task
+- Komunikator: agent_message, agent_delegate
+- Artefakty: chat_todo, plan_action
+
+### System agentow (FAZY 1-3 DONE)
+- Skill Engine: centralna biblioteka, 4 starter skille, guziki UI, hot-reload
+- Minion per agent: auto-prep + minion_task, 3 starter miniony, streamToCompleteWithTools
+- Architektura 4 modeli: Main/Minion/Master/Embedding, modelResolver, 8 platform
+- Playbook + Vault Map per agent, minion jako bibliotekarz
+- Agent Manager: sidebar z nawigacja, 5 zakladek, creator, usuwanie, archetypy
+- Tylko Jaskier built-in (Dexter/Ezra = szablony)
+
+### Pamiec (FAZY 0-7 DONE)
+- Brain.md, sesje, L1/L2 konsolidacja, RAG, MemoryExtractor
+- Voice commands: "zapamietaj", "zapomnij", "co o mnie wiesz"
+- Minion model do operacji pamieciowych
+
+### Komunikator + Delegacja (FAZA 4 DONE)
+- Inbox per agent, wiadomosci, delegacja z kontekstem
+- CommunicatorView inline w sidebarze
+- Context menu "Wyslij do asystenta"
+
+### Rozszerzony chat (FAZA 5 ~90% DONE)
+- Extended thinking (DeepSeek Reasoner + Anthropic)
+- Todo listy v2 + Plany kreacji v2 z subtaskami
+- System artefaktow: ArtifactManager, globalny, persistence, panel, discovery
+- Inline komentarze z context menu
+- Animacje CSS, tool call display z polskimi nazwami
+
+### Sidebar Navigation (sesja 26)
+- SidebarNav: stack-based push/pop/replace/goHome
+- Zaplecze: listy skilli, narzedzi MCP, minionow
+- Cross-referencing miedzy agentami, skillami, minionami
+- Zero modali - wszystko inline
+
+### Nastepny krok: OPISY MCP TOOLS + SYSTEM PROMPT *(priorytet — sesja 33)*
+
+> **Kluczowy wniosek z sesji 28:** Kod jest GOTOWY w ~90%. Problem jest w PROMPTACH.
+> To jest faza PROMPTOW i POLISH, nie faza kodu.
+
+**DONE:**
+- ~~Sprint S1: Wyrzucenie SC~~ ✅ (sesje 30-32, PKMPlugin/PKMEnv/rebranding/embedding)
+- ~~Sprint S2: Embeddingi~~ ✅ (Ollama + snowflake-arctic-embed2, 23k blokow)
+- ~~Stabilizacja~~ ✅ (6 bug fixow, Logger, status bar, polskie notice'y)
+
+**Do zrobienia do v1.0 (sekwencja z PLAN_v2.md):**
+1. Opisy MCP Tools — agent przestaje sie gubic (1-2 sesje, czysta praca tekstowa)
+2. System Prompt — agent wie kim jest (1-2 sesje)
+3. Oczko + obsidian_command — szybkie wygrane (1-2 sesje)
+4. Przejrzystosc promptu — USP produktu (2-3 sesje)
+5. Personalizacja Agenta — NAJWAZNIEJSZY GAP (3-4 sesje)
+6. MasterRunner + Skills v2 (2-3 sesje)
+7. Pamiec, UX, warstwa wizualna (3-5 sesji)
+8. Dokumentacja + Onboarding (3-4 sesje)
+9. Testowanie + Release v1.0 (2-3 sesje)
 
 ---
 
 *Wizja skonsolidowana z: stara WIZJA.md, wizja usera z sesji 11,
 badania PLLM, analiza Pinokio, analiza vaulta usera.*
+*Zaktualizowana sesja 28: nowa filozofia produktu, status implementacji, system artefaktow.*
+*Zaktualizowana sesja 29: SC removal jako priorytet #1, Sprint Roadmap, Prompt Transparency,
+Oczko, MasterRunner, VaultIndex/semantyczny search, niezaleznosc od SC.*
+*Zaktualizowana sesja 33: SC removal DONE, embeddingi DONE, stabilizacja DONE, roadmap wyrownany z PLAN_v2.md.*
 *Ten plik opisuje DOKAD zmierzamy, nie CO juz zrobiono (to jest w STATUS.md)*

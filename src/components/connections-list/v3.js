@@ -22,7 +22,7 @@ export async function post_process(connections_list, container, opts = {}) {
   container.dataset.key = connections_list.item.key;
   const results = await connections_list.get_results(opts);
   if(!results || !Array.isArray(results) || results.length === 0) {
-    const no_results = this.create_doc_fragment(`<p class="sc-no-results">No results found.<br><em>Try using the refresh button. If that doesn't work, try running "Clear sources data" and then "Reload sources" in the Smart Environment settings.</em></p>`);
+    const no_results = this.create_doc_fragment(`<p class="sc-no-results">Brak wyników.<br><em>Spróbuj odświeżyć. Jeśli to nie pomoże, użyj "Wyczyść dane źródeł" a potem "Przeładuj źródła" w ustawieniach PKM Assistant.</em></p>`);
     container.appendChild(no_results);
     return container;
   }

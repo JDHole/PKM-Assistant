@@ -620,7 +620,7 @@ export class AgentProfileModal extends Modal {
  * Modal editor for files in hidden folders (.pkm-assistant).
  * Shows a textarea with the file content and saves directly back via adapter.
  */
-class HiddenFileEditorModal extends Modal {
+export class HiddenFileEditorModal extends Modal {
     constructor(app, filePath, title, content) {
         super(app);
         this.filePath = filePath;

@@ -46,12 +46,12 @@ export class ScEarlySettingsTab extends SmartPluginSettingsTab {
               {
                 label: 'Learn about Connections Lists',
                 btn_text: 'Learn more',
-                callback: () => window.open('https://smartconnections.app/smart-connections/list-feature/?utm_source=connections-settings-tab', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/list-feature/?utm_source=connections-settings-tab', '_external'),
               },
               {
                 label: 'Settings documentation for Connections Lists',
                 btn_icon: 'help-circle',
-                callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#connections-lists', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#connections-lists', '_external'),
               },
             ]
           },
@@ -59,28 +59,28 @@ export class ScEarlySettingsTab extends SmartPluginSettingsTab {
             heading_btn: {
               label: 'Settings documentation for Display',
               btn_icon: 'help-circle',
-              callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#display', '_external'),
+              callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#display', '_external'),
             }
           },
           'Score algorithm': {
             heading_btn: {
               label: 'Settings documentation for Score Algorithms',
               btn_icon: 'help-circle',
-              callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#score-algorithm', '_external'),
+              callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#score-algorithm', '_external'),
             }
           },
           'Ranking algorithm': {
             heading_btn: {
               label: 'Settings documentation for Ranking Algorithms',
               btn_icon: 'help-circle',
-              callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#ranking-algorithm', '_external'),
+              callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#ranking-algorithm', '_external'),
             }
           },
           'Filters': {
             heading_btn: {
               label: 'Settings documentation for Filters',
               btn_icon: 'help-circle',
-              callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#filters', '_external'),
+              callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#filters', '_external'),
             }
           },
           'Inline connections': {
@@ -88,12 +88,12 @@ export class ScEarlySettingsTab extends SmartPluginSettingsTab {
               {
                 label: 'Learn about the inline connections feature',
                 btn_text: 'Learn more',
-                callback: () => window.open('https://smartconnections.app/smart-connections/inline/?utm_source=connections-settings-tab', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/inline/?utm_source=connections-settings-tab', '_external'),
               },
               {
                 label: 'Settings documentation for inline connections',
                 btn_icon: 'help-circle',
-                callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#inline-connections', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#inline-connections', '_external'),
               },
             ]
           },
@@ -101,7 +101,7 @@ export class ScEarlySettingsTab extends SmartPluginSettingsTab {
             heading_btn: {
               label: 'Settings documentation for Footer Connections',
               btn_icon: 'help-circle',
-              callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#footer-connections', '_external'),
+              callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#footer-connections', '_external'),
             }
           },
         }
@@ -129,12 +129,12 @@ export class ScEarlySettingsTab extends SmartPluginSettingsTab {
               {
                 label: 'Learn about Lookup Lists',
                 btn_text: 'Learn more',
-                callback: () => window.open('https://smartconnections.app/smart-connections/lookup/?utm_source=connections-settings-tab', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/lookup/?utm_source=connections-settings-tab', '_external'),
               },
               {
                 label: 'Settings documentation for Lookup Lists',
                 btn_icon: 'help-circle',
-                callback: () => window.open('https://smartconnections.app/smart-connections/settings/?utm_source=connections-settings-tab#lookup-lists', '_external'),
+                callback: () => window.open('https://github.com/JDHole/PKM-Assistant/smart-connections/settings/?utm_source=connections-settings-tab#lookup-lists', '_external'),
               }
             ]
           },

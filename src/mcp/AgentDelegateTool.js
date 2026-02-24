@@ -7,21 +7,21 @@
 export function createAgentDelegateTool(app) {
     return {
         name: 'agent_delegate',
-        description: 'Zaproponuj przekazanie rozmowy innemu agentowi. NIE przełącza automatycznie - user musi kliknąć przycisk. Używaj gdy temat wykracza poza Twoje kompetencje lub user prosi o innego agenta.',
+        description: 'Zaproponuj PRZEKAZANIE rozmowy innemu agentowi. W chacie pojawi się przycisk — user decyduje czy przełączyć. NIE przełącza automatycznie!\n\nKIEDY UŻYWAĆ:\n- Temat rozmowy wykracza poza Twoje kompetencje (np. user prosi o analizę techniczną a Ty jesteś orchestratorem)\n- User wprost prosi o innego agenta ("chcę rozmawiać z Dexterem")\n- Zadanie lepiej pasuje do specjalizacji innego agenta\n\nKIEDY NIE UŻYWAĆ:\n- Chcesz tylko POINFORMOWAĆ innego agenta → użyj agent_message\n- Nie ma innego agenta w systemie\n- User nie chce zmieniać agenta\n\nJAK DZIAŁA:\n1. Tworzysz propozycję delegacji z powodem i podsumowaniem\n2. W chacie pojawia się przycisk "Przejdź do [Agent]"\n3. User klika → sesja zapisana → nowy agent dostaje kontekst\n4. Nowy agent zaczyna z podsumowaniem Twojej rozmowy\n\nWAŻNE:\n- ZAWSZE podaj context_summary — bez niego nowy agent nie wie o czym rozmawialiście\n- Aktywne artefakty (todo, plany) są automatycznie przekazywane',
         inputSchema: {
             type: 'object',
             properties: {
                 to_agent: {
                     type: 'string',
-                    description: 'Nazwa agenta, któremu chcesz przekazać rozmowę'
+                    description: 'Nazwa agenta docelowego. Musi być dokładna (case-sensitive). Przykłady: "Jaskier", "Dexter", "Lexie"'
                 },
                 reason: {
                     type: 'string',
-                    description: 'Dlaczego przekazujesz (user zobaczy to przy przycisku)'
+                    description: 'Powód delegacji — user ZOBACZY to przy przycisku. Pisz krótko i zrozumiale. Np. "Dexter lepiej zna się na organizacji vaulta"'
                 },
                 context_summary: {
                     type: 'string',
-                    description: 'Podsumowanie dotychczasowej rozmowy dla nowego agenta'
+                    description: 'WAŻNE: Podsumowanie dotychczasowej rozmowy dla nowego agenta. Bez tego nowy agent nie będzie miał kontekstu. Pisz zwięźle: co user chciał, co ustaliliście, co pozostało do zrobienia.'
                 }
             },
             required: ['to_agent']

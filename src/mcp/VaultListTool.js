@@ -4,17 +4,17 @@ import { isProtectedPath } from '../utils/keySanitizer.js';
 export function createVaultListTool(app) {
     return {
         name: 'vault_list',
-        description: 'List files and folders in a vault directory',
+        description: 'Wylistuj pliki i foldery w katalogu vaulta. Zwraca nazwy, ścieżki i typy (plik/folder).\n\nKIEDY UŻYWAĆ:\n- User pyta "co mam w folderze X" lub "pokaż strukturę"\n- Potrzebujesz poznać strukturę vaulta zanim użyjesz vault_read\n- Szukasz konkretnego pliku po nazwie w znanym folderze\n\nKIEDY NIE UŻYWAĆ:\n- Szukasz treści wewnątrz plików → użyj vault_search\n- Szukasz w wielu folderach naraz → użyj vault_search lub deleguj minionowi\n\nUWAGI:\n- Domyślnie lista płaska (bez podfolderów). Ustaw recursive=true dla pełnego drzewa\n- Max 100 wyników (jeśli więcej, użyj konkretniejszego folderu)\n- Obsługuje ukryte foldery (.pkm-assistant/)\n- Pliki systemowe (.smart-env/) są zablokowane',
         inputSchema: {
             type: 'object',
             properties: {
                 folder: {
                     type: 'string',
-                    description: 'Folder path (relative to vault root). Use empty string or "/" for root.'
+                    description: 'Ścieżka folderu relatywna do roota vaulta. Pusty string lub "/" = root vaulta. Przykłady: "Projekty", "Dziennik/2026", ".pkm-assistant/skills"'
                 },
                 recursive: {
                     type: 'boolean',
-                    description: 'If true, list files recursively. Default: false'
+                    description: 'true = listuj rekursywnie (wszystkie podkatalogi). false (domyślnie) = tylko bezpośrednia zawartość folderu'
                 }
             },
             required: []

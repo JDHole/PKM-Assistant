@@ -39,6 +39,10 @@
 | 1.0.3 | 2026-02-22 | 19 | FAZA 2.4 Architektura 4 modeli - modelResolver, keySanitizer, MasterTaskTool, reorganizacja ustawien |
 | 1.0.4 | 2026-02-22 | 21 | FAZA 2.5 Playbook + Vault Map - PlaybookManager, starter playbooki/vault mapy, auto-prep z kontekstem |
 | 1.0.5 | 2026-02-22 | 22 | FAZA 3 Agent Manager + Creator - AgentProfileModal, AgentDeleteModal, AgentSidebar rewrite, skill create-agent, tylko Jaskier built-in |
+| 1.0.6 | 2026-02-22 | 23-25 | FAZA 4 Komunikator + Delegacja, FAZA 5 Rozszerzony Chat (thinking, todo, plan, inline comments) |
+| 1.0.7 | 2026-02-23 | 26-27 | Sidebar Navigation, Zaplecze, Artifact Panel + Todo/Plan v2, Subtaski, Global Artifacts, Discovery |
+| 1.0.8 | 2026-02-23 | 28-29 | Checkpoint review, Sprint Roadmap, WIZJA/PLAN update, SC removal plan |
+| 1.0.9 | 2026-02-23 | 30 | **Sprint S1+S2 DONE:** PKMEnv/PKMPlugin (singleton fix), embeddingi, semantyczny search, rebranding, 5 dead modules removed |
 
 ### Zaleznosci miedzy fazami
 
@@ -66,6 +70,195 @@ FAZA 0 (stabilizacja)
               │
          ═══ v2.0 ═══
 ```
+
+---
+
+## SPRINT ROADMAP *(sesja 29)*
+
+> **Spiralna roadmapa**: krotkie sprinty (2-4 sesje), kazdy dostarcza wartosc.
+> Sprinty to OVERLAY na istniejace FAZy - nie zmieniaja ich struktury.
+> ~~SC removal = priorytet #1~~ **DONE (sesja 30).** Nastepny: Sprint S3 (stabilizacja).
+
+```
+~~S1 (SC removal)~~ DONE ✓ → ~~S2 (semantyczny search)~~ DONE ✓ → S3 (stabilizacja) → S4 (prompt+oczko)
+     sesja 30                     sesja 30                           2-3 sesje           2-3 sesje
+
+→ S5 (personalizacja) → S6 (master+skille) → S7 (UX) → S8 (docs) → S9 (release)
+      3-4 sesje             3-4 sesje         3-4 sesje    3-4 sesje    2-3 sesje
+```
+
+### Sprint S1: WYRZUCENIE SMART CONNECTIONS ~~(2-3 sesje)~~ DONE w 1 sesji!
+
+> ~~**Priorytet: KRYTYCZNY.** Blokuje dalszy rozwoj.~~ **ZROBIONE (sesja 30)**
+> Plugin stoi na wlasnych nogach. PKM Assistant + SC moga koegzystowac.
+> **Podejscie zmienione**: zamiast kopiowac 11 adapterow, wyeliminowalismy singleton
+> i zostawilismy adaptery w external-deps/ (dzialaja). Full extraction opcjonalna.
+
+**Zamienniki SC (DONE - sesja 30):**
+- [x] PKMPlugin (~95 LOC) - zastepuje SmartPlugin, rozszerza Obsidian.Plugin
+- [x] PKMEnv (~160 LOC) - zastepuje SmartEnv (module-scoped PKM_SCOPE, bez singletona window.smart_env)
+- [x] main.js: SmartPlugin → PKMPlugin, SmartEnv → PKMEnv
+
+**Rebranding - 15 SC ghost strings (DONE - sesja 30):**
+- [x] release_notes_view.js: view_type → 'pkm-release-notes-view', tytul po polsku
+- [x] connections_item_view.js: view_type → 'pkm-connections-view'
+- [x] lookup_item_view.js: view_type → 'pkm-lookup-view'
+- [x] connections_codeblock.js + build_connections_codeblock.js: 'pkm-connections'
+- [x] connections-list-item/v3.js: env.main, connections-view/v3.js: PKM Connections
+- [x] settings_tab.js: GitHub links, connections_view_refresh_handler.js: PKM log
+
+**Sprzatanie (DONE - sesja 30):**
+- [x] Usuniecie 5 martwych modulow SC (smart-actions/clusters/cluster-groups/completions/directories)
+- [x] releases/latest_release.md zastapiony trescia PKM Assistant
+- [x] Build dziala: 6.8MB, zero bledow
+
+
+**Testowanie S1:**
+- [x] Build przechodzi bez bledow
+- [ ] Streaming na min. 3 platformach (DeepSeek, Ollama, OpenRouter)
+- [ ] Tool calling dziala
+- [ ] Minion/Master wywolania dzialaja
+- [ ] Nowa sesja + ladowanie starej sesji
+- [ ] Komunikator miedzy agentami
+- [ ] Artefakty (todo, plan) przezywaja restart
+
+---
+
+### Sprint S2: SEMANTYCZNY SEARCH ~~(2-3 sesje)~~ CORE DONE w sesji 30!
+
+> ~~**Cel:** Semantyczny search w vault i pamieci. Koniec z glupim indexOf!~~
+> **CORE ZROBIONY (sesja 30):** vault_search i memory_search sa semantyczne.
+> Uzylismy istniejacego pipeline SmartSources/SmartEmbedModel (juz dziala!).
+> VaultIndex jako wlasna implementacja - opcjonalnie w przyszlosci.
+
+**Semantyczny search (DONE - sesja 30):**
+- [x] vault_search semantyczny: SmartSources.lookup() z hypotheticals
+- [x] Fallback na indexOf jesli model embeddingowy niedostepny
+- [x] Wyniki posortowane po trafnosci (similarity score)
+- [x] memory_search semantyczny: EmbeddingHelper + cosine similarity
+- [x] Embeddingi WLACZONE: process_embed_queue: true
+
+
+---
+
+### Sprint S3: STABILIZACJA + DAILY USE (2-3 sesje)
+
+> **Cel:** Plugin nadaje sie do CODZIENNEGO uzytku.
+> **Wymaga:** S1 ukonczone.
+
+- [ ] Fix: todo widget duplikacja przy aktualizacji agenta
+- [ ] Fix: crash przy ladowaniu starej sesji
+- [ ] Fix: petla retry uprawnien
+- [ ] Rozbudowa opisow 17 MCP tools (z ~25 do ~500-1000 tokenow kazdy)
+- [ ] Rozbudowa system promptu agenta (z ~500 do ~2000+ tokenow)
+- [ ] Wywalenie SC "What's New" ghost (jesli zostal po S1)
+- [ ] Min. 3 dni codziennego uzytkowania bez krytycznych bledow
+
+---
+
+### Sprint S4: PRZEJRZYSTOSC PROMPTU + OCZKO (2-3 sesje)
+
+> **Cel:** USP - to czego NIKT inny nie ma.
+> **Wymaga:** S1 ukonczone (wlasny ObsekEnv z czysta struktura promptu).
+
+**Prompt Inspector:**
+- [ ] Podglad pelnego promptu przed wyslaniem do API
+- [ ] Podglad opisow narzedzi (tool descriptions) z liczba tokenow
+- [ ] Podglad kontekstu auto-prep miniona
+- [ ] Podglad aktywnych artefaktow i skilli w prompcie
+- [ ] Edycja dowolnego elementu promptu z UI
+- [ ] Metryki: tokeny per element, calkowity koszt wywolania
+
+**Oczko (Active Note Awareness):**
+- [ ] Agent widzi aktywna notatke: app.workspace.getActiveFile()
+- [ ] Kontekst aktywnej notatki (tytul + ~500 tok + frontmatter) w prompcie
+- [ ] Toggle w UI (wlacz/wylacz swiadomosc notatki)
+- [ ] Agent odnosi sie do otwartej notatki bez pytania
+
+**obsidian_command MCP tool:**
+- [ ] Nowy MCP tool: obsidian_command (~50 LOC)
+- [ ] Dostep do app.commands (setki polecen z pluginow)
+- [ ] Agent moze "kliknac" dowolne polecenie Obsidiana
+
+---
+
+### Sprint S5: PERSONALIZACJA AGENTA (3-4 sesje)
+
+> **Cel:** Agent ktory NAPRAWDE jest spersonalizowany (nie dekoracja).
+> **Wymaga:** S3 ukonczone (stabilny plugin).
+
+- [ ] Rola agenta wplywa na system prompt + filtr narzedzi
+- [ ] Archetypy buduja CALEGO agenta (prompt + skille + minion + playbook + vault_map)
+- [ ] Uprawnienia widoczne w system prompcie agenta (wie czego NIE moze)
+- [ ] Per-tool permissions (nie all-or-nothing MCP toggle)
+- [ ] Focus folders jako twarde blokowanie vault_read/list/search
+- [ ] Playbook/vault_map jako czesc procesu tworzenia agenta
+- [ ] Rozbudowa Agent Creator o nowe pola
+
+---
+
+### Sprint S6: MASTERRUNNER + SKILLE V2 (3-4 sesje)
+
+> **Cel:** Pelna hierarchia Main/Minion/Master + rozbudowa skilli.
+> **Wymaga:** S1 ukonczone.
+
+**MasterRunner:**
+- [ ] master.md per agent (jak minion.md - instrukcje, kiedy wywolywac, format)
+- [ ] MasterLoader (wzor: MinionLoader) - ladowanie, cache, walidacja, hot-reload
+- [ ] MasterRunner z auto-prep i tool-calling loop (streamToCompleteWithTools)
+- [ ] Przerobienie master_task na pelny runner (nie jednorazowe wywolanie)
+- [ ] Master dostaje narzedzia (plan_action, chat_todo, vault_write)
+- [ ] Typing indicator: "Master analizuje..."
+
+**Skille v2:**
+- [ ] Per-agent wersje skilli (globalna biblioteka + kopia per agent)
+- [ ] Auto-inject listy skilli do system promptu agenta
+- [ ] Kreator skilli w UI (formularz lub przez rozmowe z Jaskierem)
+- [ ] Pytania uzupelniajace (skill definiuje "zapytaj usera o X, Y, Z")
+
+---
+
+### Sprint S7: UX + WYGLAD (3-4 sesje)
+
+> **Cel:** Plugin wyglada PROFESJONALNIE.
+> **Wymaga:** S3-S6 ukonczone (stabilne funkcje do ostylowania).
+
+- [ ] Design system: paleta kolorow, typografia, ikony, spacing
+- [ ] Redesign chatu: odejscie od dymkow → styl Claude Code
+- [ ] Per-agent theming (CSS variables: --agent-primary, --agent-bg, --agent-accent)
+- [ ] Transparentnosc minion/master w chacie (osobne bloki)
+- [ ] Token counter z API usage field (input/output/cached/koszt)
+- [ ] Typing effect z kursorem
+- [ ] Responsywny design dla wszystkich elementow
+
+---
+
+### Sprint S8: DOKUMENTACJA + ONBOARDING (3-4 sesje)
+
+> **Cel:** Nowy user NIE jest zgubiony.
+> **Wymaga:** S7 ukonczone (gotowy UI).
+
+- [ ] FAZA 6: Onboarding wizard (konfiguracja API/Ollama) (patrz checkboxy FAZY 6)
+- [ ] FAZA 6: Jaskier jako mentor wdrazajacy
+- [ ] Dymki tutoriali przy ustawieniach
+- [ ] Baza wiedzy dostepna agentom (Jaskier zna dokumentacje)
+- [ ] Gra uczaca: milestones + wyzwania z Jaskierem
+- [ ] README.md, Changelog, demo (video/GIF)
+
+---
+
+### Sprint S9: RELEASE v1.0 (2-3 sesje)
+
+> **Cel:** Plugin gotowy do publicznego wydania.
+> **Wymaga:** S1-S8 ukonczone.
+
+- [ ] FAZA 7: Error handling (patrz checkboxy FAZY 7)
+- [ ] Test na min. 5 platformach (DeepSeek, Ollama, OpenRouter, Anthropic, OpenAI)
+- [ ] Test onboardingu od zera (nowy vault)
+- [ ] Prywatnosc: wykrywacz wrazliwych danych, LOCAL/CLOUD wskaznik, blacklist
+- [ ] Bezpieczenstwo: prompt injection defense, path traversal fix
+- [ ] Min. tydzien codziennego uzytkowania bez krytycznych bledow
+- [ ] v1.0 w manifest.json, GitHub release, "Buy me a coffee"
 
 ---
 
@@ -140,6 +333,10 @@ FAZA 0 (stabilizacja)
 - [x] skill_execute - aktywuj skill po nazwie (zwraca pelny prompt)
 - [ ] obsidian_settings - czytaj/zmieniaj ustawienia Obsidiana *(odlozone - osobny task)*
 
+### 1.8 Skille v2 *(nowe - sesja 29, Sprint S6)*
+- [ ] Auto-inject listy skilli do system promptu agenta (nie tylko guziki UI)
+- [ ] Per-agent wersje skilli (globalna biblioteka + kopia per agent z modyfikacjami)
+
 ### 1.7 UI skilli w chacie *(nowe - sesja 15)*
 - [x] Guziki skilli nad polem do pisania (pill/chip style)
 - [x] Klikniecie guzika -> wysyla "Uzyj skilla: {nazwa}" do agenta
@@ -199,6 +396,11 @@ FAZA 0 (stabilizacja)
   - [x] Graceful fallback: brak Mastera → Main odpowiada sam
 - [x] UI: sekcja "Modele" w ustawieniach z 4 polami + opisami po polsku
 
+### 2.6 MasterRunner *(nowe - sesja 29, Sprint S6)*
+- [ ] MasterRunner z tool-calling loop (per-agent master.md, narzedzia, auto-prep)
+- [ ] Per-agent master.md (instrukcje specyficzne dla domeny Mastera)
+- [ ] Master dostaje narzedzia (plan_action, chat_todo, vault_write, vault_read)
+
 ### 2.5 Playbook + Vault Map *(nowe - sesja 17)*
 - [x] playbook.md per agent: .pkm-assistant/agents/{name}/playbook.md
   - [x] Format: lista narzedzi + skilli + procedur (markdown, czytelny dla miniona)
@@ -252,6 +454,13 @@ FAZA 0 (stabilizacja)
 - [x] Fallback: usuniecie ostatniego agenta -> auto-odtworzenie Jaskiera
 - [ ] Tryb bez agenta (agentless mode) - chat bez systemu agentow *(notatka na przyszlosc)*
 
+### 3.5 Personalizacja agenta *(nowe - sesja 29, Sprint S5)*
+- [ ] Rola agenta wplywa na system prompt + filtr narzedzi (nie tylko dekoracja)
+- [ ] Archetypy buduja CALEGO agenta (prompt + skille + minion + playbook + vault_map)
+- [ ] Uprawnienia widoczne w system prompcie (agent WIE czego nie moze)
+- [ ] Per-tool permissions (nie all-or-nothing MCP toggle)
+- [ ] Focus folders jako twarde blokowanie vault_read/list/search
+
 ---
 
 ## FAZA 4: KOMUNIKATOR + DELEGACJA [v1.0]
@@ -288,13 +497,13 @@ FAZA 0 (stabilizacja)
 ### 5.2 Creation Plans (artefakty) *(sesja 25)*
 - [x] Agent tworzy plan krok-po-kroku przed wiekszym zadaniem
 - [x] Plan widoczny jako artefakt w chacie (lub jako notatka)
-- [ ] User komentuje/poprawia poszczegolne kroki planu *(backlog: 5.7 manual edit)*
+- [x] User komentuje/poprawia poszczegolne kroki planu *(sesja 27: subtaski + inline edit + modal)*
 - [x] Po akceptacji planu - agent realizuje go z uzyciem skilli
 
 ### 5.3 Todo listy w chacie *(sesja 25)*
 - [x] Agent tworzy tymczasowa liste zadan w chacie (interaktywny artefakt)
 - [x] Checkboxy odznaczane w trakcie pracy (agent odznacza automatycznie)
-- [ ] User moze dodawac/usuwac/edytowac punkty na liscie *(backlog: 5.7 manual edit)*
+- [x] User moze dodawac/usuwac/edytowac punkty na liscie *(sesja 27: inline edit + modal)*
 - [x] Dwa tryby: tymczasowy (w chacie, znika po sesji) vs trwaly (zapisany jako notatka w vaultcie)
 - [x] Animacja postępu: pasek / procent ukonczenia
 
@@ -316,10 +525,18 @@ FAZA 0 (stabilizacja)
 - [x] Animacja tool call (rozwijanie/zwijanie, ikony narzedzi)
 - [ ] Responsywny design dla wszystkich nowych elementow chatu
 
-### 5.7 Panel artefaktow *(backlog - sesja 25)*
-- [ ] Zakladka/mini-menu w chacie pokazujace wszystkie artefakty z sesji (todo, plany, pliki)
-- [ ] Szybki dostep do kazdego artefaktu bez scrollowania po chacie
-- [ ] Manualna edycja planow i todo (dodawanie/usuwanie/zmiana bez posrednictwa AI)
+### 5.9 Nowe funkcje chatu *(nowe - sesja 29, Sprinty S4/S7)*
+- [ ] Prompt transparency - podglad pelnego promptu w UI (Sprint S4)
+- [ ] "Oczko" - active note awareness toggle (Sprint S4)
+- [ ] obsidian_command MCP tool (Sprint S4)
+- [ ] Transparentnosc minion/master (osobne bloki w chacie) (Sprint S7)
+- [ ] Redesign chatu - odejscie od dymkow → styl Claude Code (Sprint S7)
+- [ ] Token counter z API usage field (Sprint S7)
+
+### 5.7 Panel artefaktow *(sesja 27)*
+- [x] Zakladka/mini-menu w chacie pokazujace wszystkie artefakty (todo, plany) - globalny panel z pogrupowaniem
+- [x] Szybki dostep do kazdego artefaktu bez scrollowania po chacie - klik otwiera modal edycji
+- [x] Manualna edycja planow i todo (dodawanie/usuwanie/zmiana bez posrednictwa AI) - inline + modal
 
 ### 5.8 Agora - tablica aktywnosci agentow *(backlog - sesja 25)*
 - [ ] Wspolna tablica `.pkm-assistant/agora.md` z wpisami agentow
@@ -413,6 +630,11 @@ FAZA 0 (stabilizacja)
 - [ ] Modal z podgladem TRESCI (nie tylko "Content length: 123")
 - [ ] Rozroznienie append vs replace w vault_write (replace = destrukcyjne)
 - [ ] Audit log: co dokladnie agent zmienil w kazdym pliku
+
+### 7.3c Prywatnosc rozszerzona *(nowe - sesja 29, Sprint S9)*
+- [ ] Wykrywacz wrazliwych danych (regex na hasla, klucze API, numery kart)
+- [ ] LOCAL vs CLOUD wskaznik przy modelu (zielona/pomaranczowa ikona)
+- [ ] Blacklist plikow/folderow (user mowi "ten plik NIGDY do AI")
 
 ### 7.4 Dokumentacja
 - [ ] README.md (instalacja, konfiguracja, podstawy)
@@ -659,17 +881,26 @@ FAZA 0 (stabilizacja)
 
 ## Podsumowanie
 
-| Wersja | Fazy | Checkboxy | Status |
-|--------|------|-----------|--------|
-| v0.x | 0 | 13/15 | W TRAKCIE |
-| v1.0 | 1-7 | 87/172 | W TRAKCIE (FAZA 1-3 gotowa, 4+ do zrobienia) |
-| v1.5 | 8-11 | 0/40 | - |
-| v2.0 | 12-14 | 0/40 | - |
-| **TOTAL** | **0-14** | **100/267** | **37%** |
+| Wersja | Fazy | Checkboxy (FAZy) | Checkboxy (Sprinty) | Status |
+|--------|------|-----------|------------|--------|
+| v0.x | 0 | 13/15 | ~~S1~~: **DONE** | ~~SC removal~~ ZROBIONE (sesja 30) |
+| v1.0 | 1-7 + S2-S9 | ~130/185 | S2 core: **DONE**, S3-S9: 0/~60 | FAZA 1-5 prawie gotowa, S3+ do zrobienia |
+| v1.5 | 8-11 | 0/40 | - | - |
+| v2.0 | 12-14 | 0/40 | - | - |
+| **TOTAL** | **0-14 + S1-S9** | **~143/280** | **~18/96** | **~43% (161/376)** |
+
+### Kolejnosc pracy (sesja 30+)
+
+```
+~~S1 (SC removal)~~ DONE ✓  ~~S2 (semantyczny search)~~ DONE ✓
+TERAZ → S3 (stabilizacja) → S4 (prompt+oczko) → S5 (personalizacja)
+     → S6 (master+skille) → S7 (UX) → S8 (docs+onboarding) → S9 (release v1.0)
+```
 
 ---
 
 *Stworzony: 2026-02-21 (sesja 11)*
 *Oparty na: WIZJA.md (sesja 11)*
+*Zaktualizowany sesja 30: Sprint S1+S2 DONE (PKMEnv, semantyczny search, rebranding). SC WYKRESLONY.*
 *Kazdy punkt odpowiada konkretnemu elementowi wizji.*
 *Gdy caly plan jest odznaczony [x] - wizja jest zrealizowana.*

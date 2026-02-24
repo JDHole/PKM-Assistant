@@ -9,6 +9,7 @@
  *
  * API keys always come from the global pool: smart_chat_model.{platform}_api_key
  */
+import { log } from './Logger.js';
 
 /** Cache for model instances */
 const _cache = new Map();
@@ -85,17 +86,26 @@ export function createModelForRole(plugin, role, agent = null, minionConfig = nu
         platform = scSettings.platform || _detectPlatform(scSettings);
     }
 
-    if (!platform || !modelId || !modelId.trim()) return null;
+    if (!platform || !modelId || !modelId.trim()) {
+        log.debug('ModelResolver', `${role}: brak platformy lub modelu (platform=${platform}, model=${modelId})`);
+        return null;
+    }
 
     // API key always from global pool
     const api_key = scSettings[`${platform}_api_key`];
-    if (!api_key && platform !== 'ollama' && platform !== 'lm_studio') return null;
+    if (!api_key && platform !== 'ollama' && platform !== 'lm_studio') {
+        log.debug('ModelResolver', `${role}: brak API key dla ${platform}`);
+        return null;
+    }
 
     // Cache check
     const agentName = agent?.name || '_global';
     const cacheKey = `${agentName}:${role}:${platform}:${modelId.trim()}`;
     const cached = _cache.get(cacheKey);
-    if (cached?.stream) return cached;
+    if (cached?.stream) {
+        log.debug('ModelResolver', `${role}: z CACHE → ${platform}/${modelId.trim()}`);
+        return cached;
+    }
 
     // Create model
     const module_config = env.config?.modules?.smart_chat_model;
@@ -112,9 +122,10 @@ export function createModelForRole(plugin, role, agent = null, minionConfig = nu
             model_key: modelId.trim(),
         });
         _cache.set(cacheKey, model);
+        log.model(role, platform, modelId.trim());
         return model;
     } catch (e) {
-        console.warn(`[modelResolver] Failed to create ${role} model:`, e);
+        log.warn('ModelResolver', `Nie udało się stworzyć modelu ${role}:`, e);
         return null;
     }
 }

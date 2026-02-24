@@ -289,15 +289,12 @@ export class AgentMemory {
             // active_context.md not yet created - that's fine
         }
 
-        // Add most recent L1 summary
+        // L1 summaries — pointer only (full text available via memory_search / minion_task)
         try {
             const l1Files = await this.vault.adapter.list(this.paths.l1);
-            if (l1Files?.files?.length > 0) {
-                const sorted = l1Files.files.sort().reverse();
-                if (sorted.length > 0) {
-                    const latestL1 = await this.vault.adapter.read(sorted[0]);
-                    parts.push('## Podsumowanie ostatnich sesji\n' + latestL1);
-                }
+            const l1Count = l1Files?.files?.filter(f => f.endsWith('.md')).length || 0;
+            if (l1Count > 0) {
+                parts.push(`## Historia sesji\nMasz ${l1Count} podsumowań historycznych (L1). Użyj memory_search lub minion_task żeby sprawdzić szczegóły.`);
             }
         } catch (e) {
             // No L1 summaries yet
@@ -460,7 +457,8 @@ ${sessionTexts.join('\n\n---\n\n')}`;
 
         let summaryText;
         try {
-            summaryText = await streamToComplete(chatModel, apiMessages);
+            const response = await streamToComplete(chatModel, apiMessages);
+            summaryText = response.text;
         } catch (e) {
             console.error(`[AgentMemory:${this.agentName}] AI call for L1 failed:`, e);
             return null;
@@ -533,7 +531,8 @@ ${l1Texts.join('\n\n---\n\n')}`;
 
         let summaryText;
         try {
-            summaryText = await streamToComplete(chatModel, apiMessages);
+            const response = await streamToComplete(chatModel, apiMessages);
+            summaryText = response.text;
         } catch (e) {
             console.error(`[AgentMemory:${this.agentName}] AI call for L2 failed:`, e);
             return null;

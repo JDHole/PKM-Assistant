@@ -4,13 +4,13 @@ import { isProtectedPath } from '../utils/keySanitizer.js';
 export function createVaultReadTool(app) {
     return {
         name: 'vault_read',
-        description: 'Read the content of a note from the vault by its path',
+        description: 'Odczytaj zawartość notatki z vaulta użytkownika po ścieżce. Zwraca pełny tekst pliku markdown.\n\nKIEDY UŻYWAĆ:\n- Gdy potrzebujesz przeczytać konkretną notatkę (znasz ścieżkę)\n- Gdy user prosi "pokaż mi notatkę X" lub "co jest w pliku Y"\n- Do odczytu plików konfiguracyjnych z .pkm-assistant/\n\nKIEDY NIE UŻYWAĆ:\n- Nie znasz ścieżki → najpierw vault_list lub vault_search\n- Szukasz treści w wielu plikach → użyj vault_search\n- Szukasz we własnej pamięci → użyj memory_search\n\nUWAGI:\n- Ścieżki relatywne do roota vaulta (np. "Projekty/mój-projekt.md")\n- Obsługuje ukryte foldery (.pkm-assistant/) przez adapter\n- Pliki systemowe (.smart-env/) są zablokowane\n- Zwraca {success, content, path} lub {success: false, error}',
         inputSchema: {
             type: 'object',
             properties: {
                 path: {
                     type: 'string',
-                    description: 'Path to the note (relative to vault root), e.g. "folder/note.md"'
+                    description: 'Ścieżka do pliku relatywna do roota vaulta. Przykłady: "Notatki/dziennik.md", "Projekty/pomysły.md", ".pkm-assistant/agents/jaskier/memory/brain.md"'
                 }
             },
             required: ['path']

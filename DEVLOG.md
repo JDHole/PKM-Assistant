@@ -23,6 +23,991 @@
 
 ---
 
+## 2026-02-24 (sesja 40 kontynuacja) — Bug fixy Prompt Transparency
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Bug fixy
+
+### Zrobione
+- **Token counting z tekstu**: Import `countTokens` (tiktoken) — liczymy tokeny sami z treści wiadomości, nie polegamy na `response.usage` z API (DeepSeek nie zwraca). Input = countTokens(wszystkie messages), Output = countTokens(response). Fallback: API usage jeśli dostępne.
+- **Auto-prep SubAgentBlock wewnątrz bańki**: Zamiast osobnego elementu w messages_container (który był wypychany przez typing indicator i scrollToBottom) → dane zapisywane w `_autoPrepData`, wstawiane do `current_message_bubble` w `handle_chunk`. Blok jest częścią wiadomości asystenta, nie znika.
+- **Token popup stabilizacja**: try-catch w `_updateTokenPanel()`, defensive `?.` na `byRole`, "nie użyty" zamiast "brak użycia" dla nieaktywnych ról.
+- **Token counter tekst**: Jeśli TokenTracker > 0 → `↑X ↓Y`, jeśli 0 → fallback `~X / Y` (rollingWindow estymata).
+
+### Pliki zmienione
+- `src/views/chat_view.js` — import countTokens, _lastInputTokens, handle_done token fallback, _autoPrepData pattern, continueWithToolResults token counting
+- `src/utils/tokenCounter.js` — istniejący, użyty countTokens()
+
+### Build
+- 7.0MB, zero błędów
+
+---
+
+## 2026-02-24 (sesja 40) - 2.5 Prompt Transparency — Pełna Transparentność
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Nowa funkcjonalność (5 ficzerów w jednej sesji)
+
+**Co zrobiono:**
+
+1. **ThinkingBlock compact** — mniejszy dymek "Myślenie" (~29px → ~22px): mniejszy padding, font-size, margin
+
+2. **TokenTracker** — nowa klasa `src/utils/TokenTracker.js` do śledzenia tokenów:
+   - Per-wiadomość: input + output tokens
+   - Per-sesja z podziałem: main / minion / master
+   - `record()`, `getSessionTotal()`, `getBreakdown()`, `clear()`
+
+3. **streamHelper.js zmiana returna** — propagacja usage:
+   - `streamToComplete()`: string → `{ text, usage }`
+   - `streamToCompleteWithTools()`: dodane `usage` do zwracanego obiektu
+   - Zaktualizowane 7 callerów: MasterTaskTool, AgentMemory (L1+L2), MemoryExtractor, Summarizer, MinionRunner (x2)
+
+4. **Token panel UI** — klikalny licznik tokenów w chacie:
+   - Klik na counter → rozwija panel z podsumowaniem sesji
+   - "Sesja: X wejść / Y wyjść (Z łącznie)"
+   - "Main: A · Minion: B · Master: C"
+
+5. **SubAgentBlock** — nowy komponent `src/components/SubAgentBlock.js`:
+   - Zwijalne bloki w chacie (jak ThinkingBlock) dla minion/master
+   - 3 typy: auto-prep (🤖), minion_task (🔧), master_task (👑)
+   - Wyświetla: czas, narzędzia (z TOOL_INFO), tokeny, skrót kontekstu
+   - Kolorowe krawędzie: teal (minion), fiolet (master)
+   - Integracja w chat_view: auto-prep, minion_task, master_task
+
+6. **Prompt Inspector toggles** — klikalne włączanie/wyłączanie sekcji promptu:
+   - Sekcje required → 🔒 (nie można wyłączyć)
+   - Sekcje opcjonalne → ✅/⬜ toggle (klik zmienia stan)
+   - Zapis do `obsek.disabledPromptSections[]`
+   - `PromptBuilder.applyDisabledSections()` stosuje wyłączenia
+   - Propagacja przez `_buildBaseContext()` w AgentManager
+
+7. **Backstage MCP redesign** — nowy layout narzędzi w Zapleczu:
+   - `TOOL_DESCRIPTIONS` — 20 opisów po polsku, ludzkim językiem (1-2 zdania)
+   - Karta: ikona + polska nazwa + ID (przygaszony) + opis + agenci
+   - Cross-referencja: klik na agenta → profil agenta
+   - Dodana brakująca kategoria: 🏛️ Agora (3 narzędzia)
+
+**Pliki stworzone (2):**
+- `src/utils/TokenTracker.js` — klasa śledzenia tokenów
+- `src/components/SubAgentBlock.js` — blok aktywności sub-agenta
+
+**Pliki zmienione (14):**
+- `src/views/chat_view.css` — ThinkingBlock compact, token panel, SubAgentBlock styles
+- `src/views/chat_view.js` — TokenTracker, SubAgentBlock, token panel
+- `src/memory/streamHelper.js` — return `{ text, usage }` + akumulacja usage
+- `src/memory/AgentMemory.js` — `.text` na 2 callsites
+- `src/memory/MemoryExtractor.js` — `.text`
+- `src/memory/Summarizer.js` — `.text`
+- `src/core/MinionRunner.js` — propagacja usage
+- `src/mcp/MinionTaskTool.js` — usage w return
+- `src/mcp/MasterTaskTool.js` — usage w return
+- `src/views/obsek_settings_tab.js` — toggle controls w Prompt Inspector
+- `src/core/PromptBuilder.js` — `applyDisabledSections()`
+- `src/agents/Agent.js` — apply disabled sections w getSystemPrompt + getPromptSections
+- `src/core/AgentManager.js` — `disabledPromptSections` w `_buildBaseContext()`
+- `src/components/ToolCallDisplay.js` — `TOOL_DESCRIPTIONS` eksport
+- `src/views/sidebar/BackstageViews.js` — redesign kart + Agora kategoria
+- `src/views/sidebar/SidebarViews.css` — nowe style kart
+
+**Decyzje podjęte:**
+- Zmiana typu zwrotnego `streamToComplete()` z string na obiekt — wymaga update callerów, ale daje pełny usage
+- TokenTracker per-sesja (nie persistowany) — reset przy nowej sesji
+- SubAgentBlock zawsze collapsed domyślnie — nie zaśmieca czatu
+- Toggle state zapisany globalnie (nie per-agent) w `obsek.disabledPromptSections`
+- TOOL_DESCRIPTIONS oddzielone od TOOL_INFO — osobne przeznaczenie (UI vs prompt)
+
+**Build:** 7.0MB, wersja 1.0.9
+
+**Następne kroki:**
+- 2.6 Personalizacja Agenta — najważniejszy gap do v1.0
+- Testowanie tokenów z różnymi providerami (Ollama może nie zwracać usage)
+
+---
+
+## 2026-02-24 (sesja 39) - 2.4 Oczko — Świadomość Aktywnej Notatki
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Nowa funkcjonalność (szybka wygrana)
+
+**Co zrobiono:**
+
+1. **_buildActiveNoteContext()** — nowa metoda w chat_view.js (~35 LOC)
+   - `app.workspace.getActiveFile()` → TFile (filtr: tylko .md)
+   - Frontmatter z `app.metadataCache.getFileCache()` (szybki cache Obsidiana)
+   - Treść z `app.vault.cachedRead()` — obcięta do 2000 znaków (~500 tokenów)
+   - Format: tytuł + ścieżka + frontmatter + początek treści
+
+2. **Wstrzyknięcie w send_message()** — po system prompcie, przed artefaktami
+   - Kontrolowane przez `obsek.enableOczko !== false` (domyślnie WŁĄCZONE)
+   - try-catch: jeśli coś padnie → normalna odpowiedź bez kontekstu notatki
+
+3. **Guzik 👁️ w toolbarze** — między ⚡ Skille a ⚙️ Tryby
+   - Klik toggleuje `enableOczko` + klasa `.active` + zapis na dysk
+   - Kolejność: 📦 → ⚡ → 👁️ → ⚙️
+
+4. **Toggle w Settings** — sekcja Pamięć, po "Pamięć w prompcie"
+   - "Oczko (kontekst otwartej notatki)" — identyczny pattern jak inne toggle
+
+**Pliki zmienione (2):**
+- `src/views/chat_view.js` — _buildActiveNoteContext(), injection w send_message(), guzik w _renderToolbar()
+- `src/views/obsek_settings_tab.js` — toggle enableOczko
+
+**Decyzje podjęte:**
+- Brak workspace listenera — kontekst czytany świeżo przy każdym send_message()
+- Brak zmian w PromptBuilder/Agent.js — wstrzyknięcie bezpośrednio w chat_view (pattern artefaktów/RAG)
+- Notatki widgetowe (dataviewjs): agent widzi tytuł + frontmatter, nie wyrenderowany widget (ograniczenie Obsidian API)
+- Koszt: ~575-625 tokenów na wiadomość (porównywalny z pamięcią)
+
+**Następne kroki:**
+- 2.5 obsidian_command — kolejna szybka wygrana (~50 LOC)
+
+---
+
+## 2026-02-24 (sesja 38) - PromptBuilder fixes + 7 usprawnień promptu
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Bug fixes + prompt engineering
+
+**Co zrobiono:**
+
+**Bugi naprawione (na początku sesji):**
+1. Fix "Pokaż prompt" modal crash — dynamic `await import('obsidian')` → static import Modal
+2. Fix agent bez MCP "obiecuje" narzędzia — dodany explicit "⛔ NIE MASZ NARZĘDZI" w _buildPermissions()
+3. Fix agora_update po delegacji — dodana reguła "PO DELEGACJI: NIE wywołuj dodatkowych narzędzi"
+4. Fix permissions override — `_mergeBuiltInOverrides()` resetowała mcp:false, naprawiona na merge
+
+**7 usprawnień PromptBuilder:**
+1. **PKM System + Środowisko edytowalne** — 2x textarea w Settings, puste = default z kodu
+2. **L1 pointer zamiast pełnego tekstu** — ~1500 tok → ~50 tok w pamięci systemowej
+3. **Inbox akcjowalny** — vault_read ścieżka + instrukcja "poinformuj usera"
+4. **Zasady adaptacyjne** — reguły warunkowe wg permissions (bez MCP → tylko "po polsku")
+5. **Komunikator z unread info** — vault_read path do inbox na początku sekcji
+6. **Focus Folders przeniesione** — z Uprawnienia → Środowisko (logicznie: kontekst pracy)
+7. **PLAN_v2.md** — dodany checkbox "Per-agent master_task toggle" w 2.7.4
+
+**Pliki zmienione (6):**
+- `src/core/PromptBuilder.js` — _buildPkmSystem(), _buildEnvironment(), _buildRules(), _buildCommsOverview(), _buildPermissions() (zmiany 1,4,5,6)
+- `src/memory/AgentMemory.js` — getMemoryContext() L1 pointer (zmiana 2)
+- `src/agents/Agent.js` — inbox z vault_read ścieżką (zmiana 3)
+- `src/views/obsek_settings_tab.js` — 2x textarea + static Modal import (zmiana 1 + fix)
+- `src/core/AgentManager.js` — pkmSystemPrompt/environmentPrompt w _buildBaseContext() (zmiana 1)
+- `PLAN_v2.md` — master_task per-agent checkbox (zmiana 7)
+
+**Decyzje podjęte:**
+- L1 podsumowania NIE wstrzykiwane do promptu (za drogie ~1500 tok). Pointer + memory_search/minion_task
+- Brain.md + active_context.md zostają W CAŁOŚCI (wartościowe, ~300 tok)
+- Zasady dynamiczne — agent bez MCP dostaje TYLKO "odpowiadaj po polsku", zero anty-loopingu
+- Focus folders = kontekst, nie ograniczenie — przeniesione do Środowiska
+
+**Następne kroki:**
+- Weryfikacja w Obsidianie: Prompt Inspector, Settings textarea, zasady agenta bez MCP
+- 2.3 System Prompt kontynuacja — kolejne usprawnienia
+
+---
+
+## 2026-02-24 (sesja 37) - 2.3 PromptBuilder + Prompt Inspector + Tool Filtering
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Architektura + implementacja
+
+**Co zrobiono:**
+1. **PromptBuilder.js** — modularny system budowania system promptu z sekcjami, tokenami, lean/fat mode
+2. **Prompt Inspector** — panel w Settings pokazujący sekcje promptu z tokenami, pogrupowane wg kategorii
+3. **TOOL_GROUPS** — 7 grup narzędzi MCP do filtrowania per-agent
+4. **Per-agent tool filtering** — enabledTools[] w Agent.js + UI w AgentProfileView
+5. **Agent.js refaktor** — stary monolityczny getSystemPrompt() zastąpiony PromptBuilder.build()
+6. **AgentManager enriched context** — _buildBaseContext() + getActiveSystemPromptWithMemory()
+
+**Pliki zmienione (6):**
+- `src/core/PromptBuilder.js` — NOWY, ~700 linii
+- `src/agents/Agent.js` — refaktor na PromptBuilder
+- `src/core/AgentManager.js` — _buildBaseContext(), getPromptInspectorData()
+- `src/views/obsek_settings_tab.js` — Prompt Inspector UI
+- `src/views/sidebar/AgentProfileView.js` — MCP tools per-agent UI
+- `src/views/chat_view.js` — tool filtering w send_message
+
+---
+
+## 2026-02-24 (sesja 36) - 2.2 Opisy MCP Tools — przepisanie 20 narzedzi
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Prompt engineering (zero nowej logiki, czysta praca tekstowa)
+
+**Co zrobiono:**
+
+1. **Przepisanie opisów 20 MCP tools** (z ~25 tokenów na ~200-400 tokenów/tool)
+   - Każdy opis zawiera: CO robi, KIEDY UŻYWAĆ, KIEDY NIE UŻYWAĆ, UWAGI, PRZYKŁADY, guardrails
+   - 100% po polsku (wcześniej 5 narzędzi po angielsku)
+   - Parametry z pełnymi opisami, przykładami i formatami
+   - Drzewa decyzyjne: vault_search vs memory_search vs minion_task
+
+2. **System prompt Agent.js przepisany** (linie 119-249)
+   - Cloud model: structured sekcje — Vault → Pamięć → Skille → Minion → Master → Komunikator → Artefakty → Agora → Komentarz Inline
+   - Local model: zwięzła wersja z kluczowymi zasadami i wszystkimi 20 narzędziami
+   - Guardrails: "nie nadpisuj bez pytania", "nie usuwaj bez prośby", "sprawdź duplikaty w brain"
+   - Komendy pamięciowe: mapowanie fraz usera na konkretne tool calli
+
+3. **ToolCallDisplay.js** — 3 nowe pozycje Agory
+   - agora_read → "Odczyt z Agory", agora_update → "Aktualizacja Agory", agora_project → "Projekt w Agorze"
+
+**Pliki zmienione (22):**
+- `src/mcp/VaultReadTool.js` — opis + parametry
+- `src/mcp/VaultListTool.js` — opis + parametry
+- `src/mcp/VaultWriteTool.js` — opis + parametry
+- `src/mcp/VaultDeleteTool.js` — opis + parametry
+- `src/mcp/VaultSearchTool.js` — opis + parametry
+- `src/mcp/MemorySearchTool.js` — opis + parametry
+- `src/mcp/MemoryUpdateTool.js` — opis + parametry
+- `src/mcp/MemoryStatusTool.js` — opis + parametry
+- `src/mcp/SkillListTool.js` — opis + parametry
+- `src/mcp/SkillExecuteTool.js` — opis + parametry
+- `src/mcp/MinionTaskTool.js` — opis + parametry
+- `src/mcp/MasterTaskTool.js` — opis + parametry
+- `src/mcp/AgentMessageTool.js` — opis + parametry
+- `src/mcp/AgentDelegateTool.js` — opis + parametry
+- `src/mcp/ChatTodoTool.js` — opis + parametry
+- `src/mcp/PlanTool.js` — opis + parametry
+- `src/mcp/AgoraReadTool.js` — opis + parametry
+- `src/mcp/AgoraUpdateTool.js` — opis + parametry
+- `src/mcp/AgoraProjectTool.js` — opis + parametry
+- `src/agents/Agent.js` — system prompt tool instructions (local + cloud)
+- `src/components/ToolCallDisplay.js` — 3 nowe pozycje TOOL_INFO
+- `PLAN_v2.md` — odznaczone 19/20 checkboxów w sekcji 2.2.1
+
+**Decyzje podjęte:**
+- Opisy narzędzi w dwóch miejscach: 1) description w pliku Tool (idzie do API jako JSON Schema), 2) system prompt w Agent.js (idzie jako tekst). Oba zaktualizowane i spójne.
+- System prompt NIE duplikuje opisów — skupia się na zasadach, drzewach decyzyjnych i przykładach użycia
+- Guardrails wbudowane: zapobieganie nadpisywaniu notatek, usuwaniu bez prośby, duplikatom w brain
+
+**Następne kroki:**
+- Weryfikacja w daily use: czy agent poprawnie używa narzędzi po aktualizacji (ostatni checkbox 2.2.1)
+- 2.3 System Prompt — rozbudowa osobowości i roli agenta
+
+---
+
+## 2026-02-24 (sesja 35) - AGORA: Wspólna Baza Wiedzy Agentów
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Nowa funkcjonalność (pełna implementacja)
+
+**Co zrobiono:**
+
+1. **AgoraManager.js** (~500 LOC) — nowy core moduł
+   - Zarządzanie wspólną bazą wiedzy agentów w `.pkm-assistant/agora/`
+   - Profile CRUD: readProfile(), updateProfile(section, op, content, old)
+   - Activity Board: readActivity(), postActivity(), archiveOldActivity() (max 30, starsze → archive)
+   - Vault Map: readVaultMap(), updateVaultMap()
+   - Projects: createProject(), getProject(), listProjects(), updateProjectStatus()
+   - Tasks: addTask(), completeTask(), uncompleteTask(), deleteTask()
+   - Comments: addComment(), pingAgents() (pisze do komunikator inbox)
+   - Access Control: getAccess(), canWrite(), setAccess() (admin/contributor/reader)
+   - Dodatkowe: deleteProject(), removeAgentFromProject(), addAgentToProject(), updateProjectDescription()
+   - Prompt Context: buildPromptContext() (~700 tok), buildMinionContext() (pełniejszy)
+
+2. **3 nowe MCP tools** (agora_read, agora_update, agora_project)
+   - `AgoraReadTool.js` — czytanie: profile, vault_map, activity, project, projects_list
+   - `AgoraUpdateTool.js` — aktualizacja: profilu (add/update/delete), vault_map, activity (post)
+   - `AgoraProjectTool.js` — projekty: create, update_status, add_task, complete_task, add_comment, ping
+   - MCP tools: **20 total** (17 dotychczasowych + agora_read + agora_update + agora_project)
+
+3. **AgoraView.js** (~750 LOC) — pełny sidebar UI z 5 zakładkami
+   - Profil: sekcje z inline edit/delete per item + formularz dodawania
+   - Aktywność: karty z edit/delete + ActivityModal (add/edit)
+   - Projekty: lista z klikalnymi statusami, ProjectCreateModal, szczegóły projektu
+   - Projekt szczegółowy: status dropdown, agent badges z ✕ (usuwanie), edytowalny opis, zadania z checkboxami + delete + add z pingiem, usuwanie projektu z potwierdzeniem
+   - Mapa: edytowalne sekcje + focus folders agentów z dodawaniem
+   - Dostęp: legenda poziomów + inline select dropdown per agent
+   - Zero raw file editorów — wszystko przez formularze inline
+
+4. **CSS** (~300 linii) — kompletne style dla Agory
+   - Inline items z hover actions, edit rows, add forms
+   - Activity cards, project cards, modals
+   - Agent badges z przyciskiem usuwania (hover reveal)
+   - Danger zone (usuwanie projektu z potwierdzeniem)
+
+5. **Integracje**
+   - Agent.js: sekcja AGORA + tool instructions w system prompcie
+   - AgentManager.js: agoraManager ref + agoraContext w getActiveSystemPromptWithMemory()
+   - MinionRunner.js: sekcja AGORA w _buildAutoPrepPrompt()
+   - MCPClient.js: 3 nowe wpisy w ACTION_TYPE_MAP
+   - main.js: import + init AgoraManager + register 3 tools
+   - AgentSidebar.js: rejestracja widoków 'agora' i 'agora-project-detail'
+   - HomeView.js: sekcja Agora z 5 klikalnymi wierszami
+
+**Pliki nowe:**
+- `src/core/AgoraManager.js` — core moduł Agory
+- `src/mcp/AgoraReadTool.js` — MCP tool agora_read
+- `src/mcp/AgoraUpdateTool.js` — MCP tool agora_update
+- `src/mcp/AgoraProjectTool.js` — MCP tool agora_project
+
+**Pliki zmienione:**
+- `src/views/sidebar/AgoraView.js` — NOWY plik, pełny sidebar UI
+- `src/views/sidebar/SidebarViews.css` — +300 linii CSS dla Agory
+- `src/views/sidebar/HomeView.js` — sekcja Agora na ekranie głównym
+- `src/views/AgentSidebar.js` — rejestracja widoków Agory
+- `src/agents/Agent.js` — sekcja AGORA w system prompcie
+- `src/core/AgentManager.js` — agoraManager ref + agoraContext
+- `src/core/MinionRunner.js` — AGORA w auto-prep
+- `src/mcp/MCPClient.js` — 3 nowe wpisy ACTION_TYPE_MAP
+- `src/main.js` — init AgoraManager + register 3 tools
+
+**Decyzje podjęte:**
+- Agora jako wspólna baza wiedzy (nie komunikator — ten jest 1-do-1, Agora to broadcast + profil + projekty)
+- 3 poziomy dostępu: admin (pełny zapis), contributor (aktywność + projekty), reader (read-only)
+- Profile max ~4000 chars z archiwizacją overflow
+- Activity max 30 wpisów, starsze → activity_archive.md
+- Projekty jako osobne pliki .md z YAML frontmatter w agora/projects/
+- Inline CRUD w UI zamiast raw file edytorów
+- Usuwanie agenta z projektu automatycznie wysyła komunikat
+- Usuwanie projektu z potwierdzeniem (dwustopniowe)
+
+**Build:** 6.9MB, wersja 1.0.9
+
+**Następne kroki:**
+- 2.1 Stabilizacja — bugi zostały zrobione
+- 2.2 Opisy MCP Tools — teraz 20 narzędzi do opisania
+- Testowanie Agory w praktyce (agenci piszą profil, postują aktywność, tworzą projekty)
+
+---
+
+## 2026-02-24 (sesja 34) - Embedding fix: Invalid vectors + Audyt SC
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Bug fix + architektoniczny audyt
+
+**Co zrobiono:**
+
+1. **Fix: "Invalid vectors for cosineSimilarity" spam w konsoli**
+   - Problem: ~3 warningi na KAZDY memory_search call
+   - Root cause: `_api.js:embed_batch()` filtruje puste inputy, zwraca mniej wynikow niz dostala EmbeddingHelper → indeksy sie rozjezdzaly
+   - EmbeddingHelper.embedBatch() przepisany: trackuje indeksy, mapuje wyniki na oryginalne pozycje
+   - EmbeddingHelper.cosineSimilarity() cichy return 0 zamiast console.warn (null vec to oczekiwana sytuacja)
+   - MemorySearchTool: pre-filter pustych docs PRZED batch embedem
+   - RAGRetriever: pre-filter pustych sesji PRZED batch embedem
+   - Wynik: ZERO warningow w konsoli po restarcie
+
+2. **Audyt architektury SC — co naprawde uzywamy**
+   - Niezbedne (10 modulow): smart-sources, smart-blocks, smart-entities, smart-embed-model, smart-environment, smart-collections, smart-settings, smart-notices, smart-fs, smart-view
+   - Martwy kod (5 modulow, ~7000 LOC): smart-chat-model, smart-components, smart-contexts, smart-groups, smart-rank-model
+   - Martwy kod NIE trafia do bundla (esbuild tree-shaking) — user dostaje tylko uzywany kod
+   - Embedding uzywany w 4 miejscach: vault_search, memory_search, RAG, connections panel — WSZYSTKIE dzialaja
+
+**Pliki zmienione:**
+- `src/memory/EmbeddingHelper.js` — embedBatch() z trackingiem indeksow + cichy cosineSimilarity
+- `src/mcp/MemorySearchTool.js` — pre-filter pustych docs
+- `src/memory/RAGRetriever.js` — pre-filter pustych sesji
+
+**Decyzje podjete:**
+- Martwe moduly SC zostawiamy (nie trafia do bundla, nie przeszkadzaja)
+- Embedding system uznany za KOMPLETNY i dzialajacy
+- Frustracja z sesji 28-29 byla uzasadniona — embedding de facto nie dzialal poprawnie przed sesjami 32-34
+
+**Build:** 6.8MB, wersja 1.0.9 ✅
+
+**Nastepne kroki:**
+- 2.1 Stabilizacja (3 bugi: todo widget duplication, old session crash, permission retry)
+- 2.2 MCP Tool Descriptions
+- 2.3 System Prompt
+
+---
+
+## 2026-02-24 (sesja 33) - Embedding loop fix + EmbeddingHelper rewrite + Batch optimization
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Krytyczne bug fixy (embedding system)
+
+**Co zrobiono:**
+
+### 1. ROOT CAUSE: Re-embedding loop (2257 items every restart) — NAPRAWIONY
+- **Problem**: Kazdy restart Obsidiana powodowal re-embedding ~2257 zrodel (10-15 min mielenia Ollama)
+- **Debug**: Dodano logi do AJSON save — wszystkie 2275 saves mialy `exists=true`, 0 nowych plikow, 0 bledow
+- **Analiza AJSON**: 48976 null vecs vs 25725 valid vecs — male bloki mialy `vec:null` permanentnie
+- **Root cause**: 3 problemy w lancuchu:
+  1. `SmartBlock.init()` — wołało `super.init()` nawet dla bloków z `should_embed=false`, co triggerowało vec setter → `_queue_save=true` dla ~24535 bloków
+  2. `SmartBlock.queue_embed()` — BEZWARUNKOWO propagowało `source.queue_embed()` nawet gdy blok sam nie bedzie embeddowany
+  3. `SmartEntity.init()` vec setter side-effect — `this.vec = null` triggerował `_queue_save=true` i `_queue_embed=false`
+- **Fix**:
+  - `SmartBlock.init()` — conditional: `should_embed` → `super.init()`, else → `super.init_without_embed()`
+  - `SmartBlock.queue_embed()` — propagacja do source TYLKO gdy `this._queue_embed` jest true
+  - `SmartEntity.init_without_embed()` — nowa lekka metoda (prune old models, bez vec setter)
+  - `SmartEntity._prune_inactive_embeddings()` — wyekstrahowana z init()
+- **Wynik**: `[Embed Queue] sources: 0, blocks: 0, total: 0` — ZERO re-embeddingu po restarcie!
+
+### 2. EmbeddingHelper rewrite — NAPRAWIONY
+- **Problem**: `memory_search` dostawał `undefined` z `embed()` — "Empty batch" error
+- **Przyczyna**: EmbeddingHelper uzywał `embedding_models.default` (EmbeddingModel item) zamiast adaptera bezposrednio
+- **Fix**: Przepisano na ta sama sciezke co dzialajacy `vault_search`:
+  - `_findEmbedAdapter()` zamiast `_findEmbedModel()` — zwraca adapter (`.instance`)
+  - `embed()` wola `adapter.embed_batch([{embed_input: text}])` bezposrednio
+  - `embedBatch()` naprawiony (byl bug: `{input: texts}` zamiast `[{embed_input: t}]`)
+
+### 3. Batch embedding optimization — 121 requestow → 1-2
+- **Problem**: memory_search + RAG embedowaly kazdy plik OSOBNO (121 HTTP calls do Ollama!)
+- **Fix RAGRetriever.indexAllSessions()**: batch embed zamiast petli, limit 20 sesji, 1500 chars/sesja
+- **Fix MemorySearchTool**: batch embed query+snippety, limit 30 docs
+- **Wynik**: Z ~121 HTTP calls → 1-2 HTTP calls per operacja
+
+### 4. Timing logs w send_message pipeline
+- Dodano `log.timing()` na kazdym kroku: ensureRAGInitialized, System prompt build, RAG retrieval, Minion auto-prep, TOTAL send→stream
+- Cel: identyfikacja bottleneckow w pipeline miedzy wyslaniem wiadomosci a streaming START
+
+### 5. Cleanup
+- Usunieto debug logging z AJSON save (`AjsonMultiFileItemDataAdapter.save()`)
+- Usunieto diagnostyczny log z embed_queue getter (`smart_sources.js`)
+- Usunieto debug logi z EmbeddingHelper
+
+**Pliki zmienione:**
+- `external-deps/jsbrains/smart-blocks/smart_block.js` — conditional init() + queue_embed()
+- `external-deps/jsbrains/smart-entities/smart_entity.js` — init_without_embed() + _prune_inactive_embeddings()
+- `external-deps/jsbrains/smart-collections/adapters/ajson_multi_file.js` — cleanup debug logs, kept exists check
+- `external-deps/jsbrains/smart-sources/smart_sources.js` — cleanup diagnostic log
+- `src/memory/EmbeddingHelper.js` — full rewrite: adapter-first, batch support
+- `src/memory/RAGRetriever.js` — batch indexAllSessions()
+- `src/mcp/MemorySearchTool.js` — batch semantic search
+- `src/views/chat_view.js` — timing logs w send_message pipeline
+
+**Decyzje podjete:**
+- EmbeddingHelper MUSI uzywac adaptera bezposrednio (`.instance`), nie EmbeddingModel item — to ta sama sciezka co vault_search
+- SmartBlock z `should_embed=false` NIGDY nie powinien triggerowac init() na parent source
+- Batch embedding jest OBOWIAZKOWY — nigdy petla `embed()` per doc
+- RAG limitowany do 20 najnowszych sesji (wystarczy, oszczedza zasoby)
+
+**Nastepne kroki:**
+- Zweryfikowac timing logs (ktory krok jest najwolniejszy)
+- Przetestowac memory_search po batch fix
+- Kontynuowac 2.1 Stabilization (remaining bugs: todo widget duplication, old session crash, permission retry)
+- Potem: 2.2 MCP Tool Descriptions → 2.3 System Prompt
+
+---
+
+## 2026-02-24 (sesja 32) - Stabilizacja + Embedding fix + Pelny rebranding
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Bug fixy + infrastruktura + rebranding
+
+**Co zrobiono:**
+
+### Logger.js — centralny system logowania
+- Nowy `src/utils/Logger.js` z 4 poziomami (debug/info/warn/error)
+- Ustawienie debugMode w settings wlacza verbose logi
+- Uzywany przez Plugin, ChatView, MCP i inne moduly
+
+### Bug fixy (6 napraw)
+- **ChatView crash** w get_chat_model() — null-safe gdy env nie zaladowany
+- **minion_task permission** — ACTION_TYPE_MAP brakowal minion_task
+- **_overrides agent loading** — skip gdy plik nie istnieje (zamiast crash)
+- **Concatenated tool calls** — splitter rozdziela sklejone tool_calls z modelu
+- **GitHub 404** — check_for_update() nie loguje bledu gdy brak releases
+- **Skills/minions count** — poprawny log ilosci przy starcie
+
+### Embedding model fix (KRYTYCZNY)
+- **Problem**: Plugin ladowal TaylorAI/bge-micro-v2 (transformers) zamiast Ollama/snowflake-arctic-embed2
+- **Przyczyna**: embedding_models collection mial tylko provider 'transformers', hardcoded
+- **Fix 1**: Zarejestrowanie 4 dostawcow (Ollama, OpenAI, Gemini, LM Studio) w smart_env_config
+- **Fix 2**: ObsekEmbeddingModels — subclass z default_provider_key czytajacym z ustawien usera
+- **Fix 3**: AJSON wyczyszczony — 23 smieciowe modele TaylorAI zamienione na 1 Ollama
+- **Fix 4**: api_key: "na" dla Ollama (SC wymaga non-empty, Ollama nie potrzebuje klucza)
+- Pierwsze indeksowanie 23427 blokow przez Ollama — wolne ale poprawne
+
+### Status bar wlasny
+- Wlasny status bar "PKM Assistant" zamiast SC "SmartEnv 2.2.7"
+- Spinner CSS + "Indeksowanie X/Y (Z%)" podczas embeddingu
+- register_status_bar() PRZED super.load() (nie po, bo super.load() blokuje)
+
+### Pelny rebranding — PKM Assistant zamiast Smart Environment
+- **PKMNotices** — subclass SmartNotices: naglowek "[PKM Assistant v1.0.9]"
+- **30+ tekstow po polsku**: Ladowanie, Zapisywanie, Indeksowanie, Skanowanie...
+- **Settings tab**: "Ladowanie PKM Assistant..." zamiast "Smart Environment is loading..."
+- **SC status_bar component**: wylaczony (no-op w konfiguracji)
+- **Connections codeblock**: polskie teksty
+- **new_version_available**: wskazuje na github.com/JDHole/PKM-Assistant
+
+**Nowe pliki (1):**
+- `src/utils/Logger.js` — centralny logger
+
+**Modyfikowane pliki (5):**
+- `src/main.js` — embedding providers, status_bar no-op, bug fixy
+- `src/core/PKMEnv.js` — PKMNotices, status bar, polskie notice'y
+- `src/views/obsek_settings_tab.js` — render() override z polskim loading
+- `src/views/connections_codeblock.js` — polskie teksty
+- `src/components/connections-list/v3.js` — polskie teksty
+
+**Decyzje podjete:**
+- Ollama embedding: wolne ale darmowe i lokalne — user akceptuje
+- Chmurowe embedding (OpenAI ~$0.23) jako opcja na przyszlosc
+- Edycja external-deps/ unikana — wszystko overridowane z src/
+
+**Status:** ⚠️ NIETESTOWANE — build OK, deplojnięte, czeka na restart i weryfikacje
+
+**Nastepne kroki:**
+- Potwierdzic rebranding po restarcie Obsidiana
+- Potwierdzic ze indeksowanie Ollama sie zakonczylo
+- Kontynuowac PLAN_v2.md: 2.1 Stabilizacja (3 bugi), 2.2 Opisy MCP Tools
+
+---
+
+## 2026-02-23 (sesja 31) - PLAN v2.0: Czysty restart planu po polowie drogi
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Dokumentacja - analiza pelnego kontekstu, stworzenie nowego planu
+
+**Co zrobiono:**
+
+### PLAN_v2.md — nowy Master Plan
+- Stary PLAN.md zostal zbyt pomieszany sesjami/sprintami — nieczytelny dla AI i usera
+- Zebranie PELNEGO kontekstu: CHECKPOINT_sesja28.md + PLAN.md + STATUS.md + DEVLOG.md + WIZJA.md + eksploracja kodu
+- Weryfikacja stanu kodu: 125 plikow JS, 17 MCP tools, 11 core modules, 24 views
+- CZESC 1: Co zrobione (~155 checkboxow [x]) — 13 sekcji pokrywajacych sesje 1-30
+- CZESC 2: Co do v1.0 (~95 checkboxow [ ]) — 16 obszarow pogrupowanych FUNKCJONALNIE
+- CZESC 3: Post v1.0 (~45 checkboxow [ ]) — mobile, multi-modal, marketplace, SaaS
+- Mapa zaleznosci: jasna kolejnosc realizacji
+- Szacunek: ~25-35 sesji do release v1.0
+
+### Aktualizacja pliku projektowych
+- STATUS.md: nowa sekcja "Nastepne kroki" z odniesieniem do PLAN_v2.md
+- DEVLOG.md: wpis sesji 31
+- MEMORY.md: zaktualizowany o nowy plan
+
+**Nowe pliki (1):**
+- `PLAN_v2.md` — nowy Master Plan v2.0 (~600 linii)
+
+**Modyfikowane pliki (3):**
+- `STATUS.md` — sekcja nastepnych krokow zaktualizowana
+- `DEVLOG.md` — wpis sesji 31
+- `MEMORY.md` — nowy plan w kontekscie
+
+**Decyzje podjete:**
+- Stary PLAN.md ZOSTAWIONY nietkniety (backup) — nowy plik PLAN_v2.md go zastepuje
+- Pogrupowanie tematyczne zamiast sesji/sprintow — czytelniejsze dla kazdego AI
+- Kazdy punkt czesci 2 ma odniesienie do CHECKPOINT_sesja28.md
+- Priorytety: stabilizacja → opisy tools → prompt → oczko → personalizacja → UX → docs → release
+
+**Nastepne kroki:**
+- Sesja 32: 2.1 Stabilizacja — fix 3 bugow + daily use
+- Sesja 33: 2.2 Opisy MCP Tools — przepisanie 17 opisow narzedzi
+
+---
+
+## 2026-02-23 (sesja 30) - Sprint S1+S2: WYRZUCENIE Smart Connections + Semantyczny Search
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Implementacja - 7 zadan z handoffu, zero planowania, czysty kod
+
+**Co zrobiono:**
+
+### ZADANIE 1: PKMEnv + PKMPlugin (eliminacja singletona)
+- **PKMEnv.js** (~160 LOC): zamiennik SmartEnv BEZ singletona `window.smart_env`
+- Elegancki trick: `const PKM_SCOPE = {}` (module-scoped) zamiast `window` jako `static global_ref`
+- Caly odziedziczony kod dziala bez zmian, ale pisze do PKM_SCOPE zamiast window
+- **PKMPlugin.js** (~95 LOC): zamiennik SmartPlugin, rozszerza Obsidian Plugin bezposrednio
+- register_commands, register_ribbon_icons, register_item_views, version tracking
+- **main.js**: SmartPlugin → PKMPlugin, SmartEnv → PKMEnv, `this.PKMEnv.create()`
+- Dodano import add_smart_connections_icon/add_smart_lookup_icon (potrzebne dla view icons)
+- **Efekt:** PKM Assistant i Smart Connections moga dzialac jednoczesnie bez konfliktu
+
+### ZADANIE 2: Wlaczenie embeddingów
+- `default.config.js`: `process_embed_queue: false` → `true`
+- Notatki z vaulta sa teraz automatycznie embedowane przy starcie pluginu
+- Istniejacy pipeline SmartSources/SmartEmbedModel zaczal dzialac
+
+### ZADANIE 3: Semantyczny vault_search
+- **VaultSearchTool.js** przepisany: uzywa `smartSources.lookup({hypotheticals, filter, k})`
+- Fallback na keyword indexOf gdy embeddingi niedostepne
+- Szukasz "wakacje" → znajdzie notatke o "urlop nad morzem"
+- Zwraca `searchType: 'semantic'` lub `'keyword'`
+
+### ZADANIE 4: Semantyczny memory_search
+- **MemorySearchTool.js** przepisany: import EmbeddingHelper, cosine similarity
+- Embeds first 2000 chars per doc, threshold > 0.3
+- Fallback na keyword gdy embed model niedostepny
+
+### ZADANIE 5: Rebranding - 15 pozycji SC ghost strings
+- `release_notes_view.js`: view_type → 'pkm-release-notes-view', tytul po polsku
+- `connections_item_view.js`: view_type → 'pkm-connections-view'
+- `lookup_item_view.js`: view_type → 'pkm-lookup-view'
+- `connections_codeblock.js` + `build_connections_codeblock.js`: 'smart-connections' → 'pkm-connections'
+- `connections-list-item/v3.js`: env.smart_connections_plugin → env.main
+- `connections-view/v3.js`: "Smart Connections Pro" → "PKM Connections"
+- `connections_view_refresh_handler.js`: log message updated
+- `settings_tab.js`: wszystkie smartconnections.app URLs → GitHub PKM-Assistant
+- `releases/latest_release.md`: zastapiony tresc PKM Assistant v1.0.9
+
+### ZADANIE 6: Usuniecie martwych modulow SC
+- Usuniete 5 folderow z external-deps/jsbrains/: smart-actions, smart-clusters, smart-cluster-groups, smart-completions, smart-directories
+
+### ZADANIE 7: Build
+- Build: 6.8MB, 96ms, zero bledow
+- Wersja: 1.0.9 (manifest.json + package.json)
+
+**Nowe pliki (2):**
+- `src/core/PKMEnv.js` - zamiennik SmartEnv (~160 LOC)
+- `src/core/PKMPlugin.js` - zamiennik SmartPlugin (~95 LOC)
+
+**Modyfikowane pliki (15):**
+- `src/main.js` - PKMPlugin/PKMEnv zamiast SmartPlugin/SmartEnv
+- `src/mcp/VaultSearchTool.js` - semantyczny search via SmartSources.lookup()
+- `src/mcp/MemorySearchTool.js` - semantyczny search via EmbeddingHelper
+- `external-deps/obsidian-smart-env/default.config.js` - process_embed_queue: true
+- `src/views/release_notes_view.js` - pkm-release-notes-view
+- `src/views/connections_item_view.js` - pkm-connections-view
+- `src/views/lookup_item_view.js` - pkm-lookup-view
+- `src/views/connections_codeblock.js` - pkm-connections
+- `src/utils/build_connections_codeblock.js` - pkm-connections
+- `src/components/connections-list-item/v3.js` - env.main
+- `src/components/connections-view/v3.js` - PKM Connections
+- `src/utils/connections_view_refresh_handler.js` - PKM log
+- `src/views/settings_tab.js` - GitHub links
+- `releases/latest_release.md` - nowe release notes
+- `manifest.json` + `package.json` - wersja 1.0.9
+
+**Usuniete foldery (5):**
+- `external-deps/jsbrains/smart-actions/`
+- `external-deps/jsbrains/smart-clusters/`
+- `external-deps/jsbrains/smart-cluster-groups/`
+- `external-deps/jsbrains/smart-completions/`
+- `external-deps/jsbrains/smart-directories/`
+
+**Decyzje podjete:**
+- Singleton fix via module-scoped PKM_SCOPE (zamiast rewritu SmartEnv od zera) - eleganckie i bezpieczne
+- PKMEnv/PKMPlugin zamiast ObsekEnv/ObsekPlugin (nazwy z planu) - to samo, inna nazwa
+- external-deps/ ZOSTAJE na razie (adaptery streaming dzialaja) - full extraction odlozona na pozniej
+- SmartItemView NIE wymaga zamiennika (uzywa this.plugin.env, nie window.smart_env)
+- Semantyczny search od razu w S1 (zamiast czekac na S2) - po co czekac skoro embeds dzialaja?
+
+**Nastepne kroki:**
+- Sprint S3: Stabilizacja + daily use (3 znane bugi do naprawy)
+- Sprint S4: Prompt Transparency + Oczko
+- Opcjonalnie: full extraction external-deps/ (zmniejszenie buildu z 6.8MB → ~1-2MB)
+
+---
+
+## 2026-02-23 (sesja 29) - SC removal decyzja + aktualizacja WIZJA/PLAN
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Planowanie + Dokumentacja - analiza SC, decyzje strategiczne, aktualizacja Holy Grails
+
+**Co zrobiono:**
+
+### Analiza Smart Connections (pełna)
+- Zbadano 19 plików w src/ importujących z SC (pełna lista z numerami linii)
+- Zmapowano SmartPlugin (~110 LOC): register_commands, ribbon_icons, item_views, is_new_user
+- Zmapowano streaming flow: chat_view → SmartChatModel → Adapter → SmartStreamer → API
+- Zmapowano SC problemy: run_migrations() (kasuje inne pluginy!), window.smart_env singleton, OAuth, 3s delay
+- Zmapowano embeddingi: EmbeddingHelper istnieje, ale vault_search używa indexOf (!) nie embeddingów
+- Odkrycie: vault_search i memory_search to GŁUPI tekst (indexOf), nie semantyczny search
+
+### Decyzja: SC removal = priorytet #1
+- Level 2 removal: wyrwać co potrzebne, wyrzucić resztę (59 MB, 675 plików)
+- 11 adapterów (Anthropic, OpenAI, DeepSeek, Gemini, Groq, Ollama, LM Studio, OpenRouter, Azure, xAI, Custom)
+- SmartStreamer (SSE klient), HTTP adapter (Obsidian.requestUrl CORS bypass)
+- Zamienniki: ObsekPlugin, ObsekItemView, ObsekEnv, ObsekEmbedder
+- Własny VaultIndex: semantyczne vault_search i memory_search (zamiast indexOf)
+- Szacunek: 7-11 sesji (S1: SC out + S2: embeddingi)
+
+### Sprint Roadmap (spiralna)
+- S1: SC Removal (2-3 sesje)
+- S2: Własny system embeddingowy (2-3 sesje)
+- S3-S9: Stabilizacja → Prompt Transparency → Personalizacja → MasterRunner → UX → Docs → Release
+
+### Aktualizacja WIZJA.md
+- Nowa sekcja 8b: Przejrzystość promptu (promowane z backlogu)
+- Nowa sekcja 8c: Oczko - Active Note Awareness
+- Rozbudowa sekcji 5: MasterRunner ecosystem, VaultIndex, semantic search
+- Sekcja 19: nowa architektura bez SC (diagram)
+- Sekcja 20: milestones zaktualizowane (SC removal + embedding + prompt transparency)
+- Sekcja 22: status z następnymi krokami (sprint roadmap)
+- 6 podpunktów luki agentów, skill v2, Obsidian API goldmine, chat redesign, prywatność, theming, dokumentacja
+
+### Aktualizacja PLAN.md
+- Sprint Roadmap (S1-S9): SC removal first, potem sprints 3-9 z oryginalnego planu
+- ~58 nowych checkboxów w sprintach
+- Nowe checkboxy w istniejących FAZach (1, 2.4, 3, 5, 7)
+- Tabela podsumowująca zaktualizowana
+
+### Handoffy SC removal
+- Przygotowane handoffy do sesji SC removal (podział na 2-3 sesje)
+- Każdy handoff z pełnym kontekstem technicznym
+
+**Pliki modyfikowane:**
+- `WIZJA.md` - ~300 linii dodanych (nowe sekcje i rozbudowa istniejących)
+- `PLAN.md` - ~200 linii dodanych (Sprint Roadmap + checkboxy)
+- `STATUS.md` - wpis sesji 29
+- `DEVLOG.md` - wpis sesji 29
+
+**Decyzje podjęte:**
+- SC removal PRZED bugfixami i promptami (priorytet #1)
+- Pełny Level 2: wyrwać adaptery + embeddingi, wyrzucić external-deps/
+- Spiralna roadmapa: krótkie sprinty, każdy daje wartość
+- vault_search i memory_search MUSZĄ używać embeddingów (to był sens forka SC!)
+- Prompt Transparency promowane z backlogu do core feature
+
+**Następne kroki (sesja 30+):**
+- Sprint S1: Wyrzucenie Smart Connections (handoff przygotowany)
+- Sesja 30: Kopiowanie adapterów + ObsekPlugin + ObsekItemView
+- Sesja 31: ObsekEnv + przepięcie 19 plików + usunięcie external-deps/
+- Sesja 32: Testy na 3+ platformach
+
+---
+
+## 2026-02-23 (sesja 28) - Strategiczny checkpoint połowy drogi
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Review + Dokumentacja - pełny przegląd 19 elementów pluginu, zero zmian w kodzie
+
+**Co zrobiono:**
+
+### Checkpoint sesji 28 (CHECKPOINT_sesja28.md)
+- Pełna analiza 19 obszarów pluginu z perspektywy "co mamy, co brakuje, co dalej"
+- Punkt po punkcie przegląd: Agenci, Pamięć, MCP, Skille, Miniony, Playbooki, Model Arch, Komunikator, ToolLoader, Sidebar, Chat UI, Mobile, Privacy, Multi-modal, Visual, Marketplace, Monetyzacja, Onboarding, Dokumentacja
+- Główne odkrycie: **kod jest w 90% gotowy, prawdziwym wyzwaniem są PROMPTY**
+- Filozofia: "tu nie ma magii" - cała inteligencja pluginu to quality promptów
+- Fakty z analizy AI: prompty decydują o jakości, DeepSeek V3 to 80% Claude za 5% ceny
+
+### Nowe koncepcje z sesji 28
+- **Monetyzacja 3 ścieżki**: Wdzięczność (donate), Wygoda (SaaS credits via OpenRouter model), Quick start (marketplace)
+- **Onboarding Wizard**: Config wizard + Jaskier jako interaktywny mentor z 3 ścieżkami (Obsidian/PKM/Plugin)
+- **Dokumentacja = Edukacja**: Tutorial bubbles w settings, baza wiedzy dostępna agentom, gra ucząca z milestone'ami
+- **Roadmap 5 faz**: A (Stabilizacja) → B (Personalizacja+Skille) → C (UX+Visual) → D (Docs+Onboarding) → E (Release v1.0)
+
+### Aktualizacja plików projektowych
+- CHECKPOINT_sesja28.md: pełny dokument ~800 linii z 19 punktami + roadmap
+- STATUS.md: wpis sesji 28
+- DEVLOG.md: wpis sesji 28
+- MEMORY.md: zaktualizowany o nowe koncepcje
+
+**Nowe pliki (1):**
+- `CHECKPOINT_sesja28.md` - strategiczny checkpoint (~800 LOC)
+
+**Modyfikowane pliki (3):**
+- `STATUS.md` - wpis sesji 28
+- `DEVLOG.md` - wpis sesji 28
+- `MEMORY.md` - nowe koncepcje z sesji 28
+
+**Decyzje podjęte:**
+- Kod jest gotowy w ~90%, priorytetem jest prompt engineering i stabilizacja
+- SC (Smart Connections) trzeba w końcu usunąć - własna implementacja embeddingów
+- Monetyzacja: OpenRouter model (margin na API), gotowe vault-pakiety w marketplace
+- Onboarding: Jaskier z przygotowanymi skillami, nie zmuszanie do budowania własnych
+- Dokumentacja to feature, nie afterthought - baza wiedzy dostępna agentom
+
+**Następne kroki (sesja 29+):**
+- FAZA A: Stabilizacja - naprawa 3 znanych bugów, prompt engineering, testy
+- FAZA B: Personalizacja + rewrite skilli pod nowy engine
+- FAZA C: UX + Visual identity
+- FAZA D: Dokumentacja + Onboarding wizard
+- FAZA E: Release v1.0
+
+---
+
+## 2026-02-23 (sesja 27) - Panel artefaktów + Todo v2 + Plan kreacji v2
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Feature - persistence artefaktów, layout chatu, interaktywne widgety todo i plan
+
+**Co zrobiono:**
+
+### ArtifactManager + Persistence
+- ArtifactManager.js - centralny manager do zapisu/odczytu artefaktów na dysku
+- Ścieżka (v1): `.pkm-assistant/agents/{agent}/artifacts/{id}.json`
+- Metody: save(), load(), delete(), listForAgent(), restoreToStores(), saveAllFromStores()
+- main.js: inicjalizacja ArtifactManager + restore artefaktów przy starcie pluginu
+- ChatTodoTool.js + PlanTool.js: auto-save hook po każdej mutacji (create/update/add/remove)
+- chat_view.js: _autoSaveArtifact() fire-and-forget dla UI callbacks
+
+### Layout chatu - toolbar + bottom panel
+- DOM restructure: pkm-chat-body (flex row) → pkm-chat-main + pkm-chat-toolbar
+- pkm-chat-main → pkm-chat-messages + pkm-chat-bottom-panel (skills + input unified)
+- Right toolbar (36px): 3 ikonki - 📦 artefakty, ⚡ skille toggle, ⚙️ tryby (placeholder)
+- Artifact panel: overlay 240px, lista artefaktów z postępem, klik scrolluje do widgetu
+
+### Todo v2 - inline edit + modal
+- ChatTodoList.js: pełny rewrite z dblclick edit, + dodawanie, × usuwanie, modal button
+- TodoEditModal.js: Obsidian Modal z pełną edycją (tytuł, elementy, checkboxy, dodaj/usuń)
+- Callbacks: onToggle, onEditItem, onAddItem, onDeleteItem, onOpenModal - każdy z auto-save
+- Session end: consolidateSession() zapisuje artefakty + Notice, handleNewSession() czyści store'y
+
+### Plan kreacji v2 - inline edit + comment + modal
+- PlanArtifact.js: pełny rewrite z klikalna ikoną statusu (cycle), dblclick edit label
+- Dodawanie/usuwanie kroków z widgetu, komentarz do kroku → wpisuje do input chatu
+- PlanEditModal.js: modal z dropdown statusu, edycja label/description, dodaj/usuń kroki
+- _buildPlanCallbacks(): wyodrębniony do metody (reuse przy re-render po modal save)
+
+**Nowe pliki (3):**
+- `src/core/ArtifactManager.js` - persistence CRUD (~120 LOC)
+- `src/views/TodoEditModal.js` - modal edycji todo (~135 LOC)
+- `src/views/PlanEditModal.js` - modal edycji planu (~150 LOC)
+
+**Modyfikowane pliki (6):**
+- `src/main.js` - import + inicjalizacja ArtifactManager, restore przy starcie
+- `src/mcp/ChatTodoTool.js` - auto-save hook _persist()
+- `src/mcp/PlanTool.js` - auto-save hook _persist()
+- `src/components/ChatTodoList.js` - pełny rewrite z inline edit
+- `src/components/PlanArtifact.js` - pełny rewrite z inline edit + comment
+- `src/views/chat_view.js` - layout restructure, toolbar, artifact panel, callbacks wiring, session flow
+- `src/views/chat_view.css` - ~400 linii nowego CSS (toolbar, artifact panel, todo edit, plan edit, modals)
+
+**Build:** 6.8MB, wersja 1.0.7
+
+---
+
+## 2026-02-23 (sesja 27 kontynuacja) - Subtaski w planie + Artefakty globalne
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Feature + Refactor - subtaski per krok planu, przebudowa artefaktów na globalne
+
+**Co zrobiono:**
+
+### CZ1: Subtaski w planie kreacji
+- Każdy krok planu dostał pole `subtasks: [{text, done}]` - checklista podzadań
+- PlanTool.js: nowe akcje `add_subtask` i `toggle_subtask`, create generuje pustą listę subtasków
+- PlanArtifact.js: rendering checkboxów subtasków pod każdym krokiem, "+ podzadanie" inline
+- PlanEditModal.js: edycja subtasków w modalu + deep copy fix (subtasks kopiowane osobno)
+- chat_view.js: 3 nowe callbacki w _buildPlanCallbacks() (subtask toggle/add/delete)
+
+### CZ2: Artefakty globalne (przebudowa ArtifactManager)
+- **Zmiana folderu:** z `.pkm-assistant/agents/{agent}/artifacts/` na `.pkm-assistant/artifacts/`
+- **Slugify:** czytelne nazwy plików z tytułu (np. `Lista-zadan.json`, polskie znaki → ASCII)
+- **_slugIndex:** Map id→slug dla szybkiego lookup
+- **Migracja:** `migrateFromAgentFolders()` przenosi stare pliki (idempotentne)
+- **Lifecycle:** artefakty NIE są czyszczone przy nowej sesji, żyją globalnie
+- **Metadata:** createdBy, createdAt, updatedAt w każdym JSON
+- Zaktualizowane callery: ChatTodoTool, PlanTool, TodoEditModal, PlanEditModal, chat_view.js
+
+### CZ3: Artifact discovery
+- Nowa akcja `list` w chat_todo i plan_action - agent może sprawdzić jakie artefakty istnieją
+- `_buildArtifactContext()` w chat_view.js - wstrzykiwanie podsumowania artefaktów do system promptu
+- Agent automatycznie widzi istniejące artefakty z ich ID i postępem
+
+### Artifact panel - rozbudowa
+- Pokazuje WSZYSTKIE artefakty (nie tylko z sesji), pogrupowane: TODO + Plany
+- Badge agenta (np. "Jaskier"), postęp (3/5)
+- Klik otwiera modal edycji
+- Przyciski: 📄 kopiuj do vaulta jako markdown, 🗑️ usuń z dysku i store'a
+- _buildTodoCallbacks() wyodrębniony do osobnej metody
+
+### Weryfikacja (3 sesje testowe)
+- Sesja testowa 1: Jaskier tworzy todo + plan, subtaski, checkboxy → OK
+- Sesja testowa 2: Jaskier w nowej sesji nie znalazł artefaktów → ujawnił problem discovery
+- Sesja testowa 3 (po discovery fix): Jaskier znalazł stare artefakty via `list`, wykonał ~20 operacji (toggle, add, remove, status change, subtask), przeszedł pełny plan 6/6 → OK
+
+**Modyfikowane pliki (8):**
+- `src/core/ArtifactManager.js` - przebudowa: global folder, slugify, _slugIndex, migration
+- `src/main.js` - restore global (bez filtra agenta), wywołanie migracji
+- `src/mcp/PlanTool.js` - add_subtask, toggle_subtask, list, subtasks w create, global _persist
+- `src/mcp/ChatTodoTool.js` - list action, global _persist, createdBy
+- `src/components/PlanArtifact.js` - rendering subtasków + callbacki
+- `src/views/PlanEditModal.js` - edycja subtasków + deep copy, global save
+- `src/views/TodoEditModal.js` - global save (bez agentName)
+- `src/views/chat_view.js` - subtask callbacki, _buildTodoCallbacks(), _buildArtifactContext(), lifecycle fix, artifact panel rewrite
+- `src/views/chat_view.css` - subtask styles + artifact panel rozbudowa
+
+**Kluczowe decyzje:**
+- Artefakty globalne (nie per-agent) - prostsze, nie giną przy zmianie agenta
+- Slugify z polskimi znakami (ą→a, ś→s) zamiast timestamp-based nazw
+- System prompt injection zamiast osobnego MCP toola do discovery
+- Store'y NIE czyszczone przy nowej sesji (artefakty żyją dalej w pamięci)
+
+**Znane bugi (do naprawienia):**
+- Agent update todo renderuje nowy widget zamiast aktualizować istniejący w chacie
+- Wczytanie starej sesji + pisanie → crash chatu
+- Agenci ponawiają tool call po odmowie uprawnień (zamiast dać sobie spokój)
+
+**Build:** 6.8MB, wersja 1.0.7
+
+**Następne kroki:**
+- Fix bugów: widget re-use, old session crash, permission retry
+- FAZA 5.5: Animacja wpisywania, responsywny design
+- FAZA 5.8: Agora - tablica aktywności agentów (backlog)
+- FAZA 6: Onboarding wizard
+- FAZA 7: Solidność + Release v1.0
+
+---
+
+## 2026-02-23 (sesja 26) - Sidebar Navigation System + Zaplecze
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Duzy refactor UI - przebudowa sidebara z modali na inline nawigacje + nowa sekcja Zaplecze
+
+**Co zrobiono:**
+
+### Sidebar Navigation System (stack-based)
+- SidebarNav.js - kontroler nawigacji: push/pop/replace/goHome/refresh
+- Stack z zachowaniem scroll position, cleanup hook dla subskrypcji eventow
+- Flaga `_rendering` zapobiega korupcji stosu przy szybkich kliknieciach
+- Back button automatycznie gdy nie jestesmy na home
+
+### Zero modali - wszystko inline w sidebarze
+- AgentProfileView.js - profil agenta z 5 zakladkami (Profil, Uprawnienia, Umiejetnosci, Pamiec, Statystyki)
+- CommunicatorView.js - komunikator z chipami agentow, inbox, compose
+- Inline delete confirmation (zamiast AgentDeleteModal)
+- AgentSidebar.js przepisany na thin shell (~90 LOC zamiast 273)
+
+### Zaplecze (Backstage)
+- Nowa sekcja na Home z licznikami: Skills (N), Narzedzia MCP (N), Miniony (N)
+- BackstageViews.js - renderSkillsView, renderToolsView, renderMinionsView
+- Narzedzia MCP pogrupowane w 6 kategorii: Vault, Pamiec, Skille, Minion/Master, Agent, Chat
+- DetailViews.js - renderSkillDetailView + renderMinionDetailView
+
+### Cross-referencing
+- Z profilu agenta: klikalne nazwy skilli -> SkillDetail, minion -> MinionDetail
+- Z detalu skilla/miniona: lista agentow uzywajacych -> klik -> AgentProfile
+- Nawigacja w obie strony z poprawnym back button
+
+### Bug fixy + refaktoring
+- CSS bug fix: AgentSidebar.css importowany ale nigdy nie aplikowany (adoptedStyleSheets)
+- TOOL_INFO wyeksportowane z ToolCallDisplay.js na poziom modulu
+- HiddenFileEditorModal wyeksportowane z AgentProfileModal.js
+
+**Nowe pliki (7):**
+- `src/views/sidebar/SidebarNav.js` - kontroler nawigacji (~130 LOC)
+- `src/views/sidebar/HomeView.js` - ekran glowny sidebara (~220 LOC)
+- `src/views/sidebar/AgentProfileView.js` - profil agenta inline (~400 LOC)
+- `src/views/sidebar/CommunicatorView.js` - komunikator inline (~230 LOC)
+- `src/views/sidebar/BackstageViews.js` - listy Skills/Tools/Minions (~200 LOC)
+- `src/views/sidebar/DetailViews.js` - podglad skilla/miniona (~230 LOC)
+- `src/views/sidebar/SidebarViews.css` - style dla nowych widokow (~300 LOC)
+
+**Modyfikowane pliki (3):**
+- `src/views/AgentSidebar.js` - przepisany na thin shell (import SidebarNav, rejestracja widokow, eventy)
+- `src/views/AgentProfileModal.js` - `export class HiddenFileEditorModal` (potrzebny w DetailViews)
+- `src/components/ToolCallDisplay.js` - `export const TOOL_INFO` na poziomie modulu
+
+**Kluczowe decyzje:**
+- Stack-based nawigacja zamiast router/hash - prostsze, bez zewnetrznych zaleznosci
+- Render function pattern: `(container, plugin, nav, params) => void` - kazdy widok standalone
+- Cleanup hook `nav._currentCleanup` - sprzatanie eventow przy zmianie widoku
+- Zachowane pliki modali z `@deprecated` na wypadek
+- CSS: uzyte wylacznie zmienne Obsidiana (var(--*)) - dziala w ciemnym i jasnym motywie
+- Nazwa sekcji: "Zaplecze" (PL) / "Backstage" (EN)
+
+**Build:** 6.7MB, wersja 1.0.7
+
+**Nastepne kroki:**
+- Test w Obsidianie: pelna sciezka nawigacji (Home -> Profil -> Skill -> Wstecz)
+- Test CRUD agenta (tworzenie, edycja, usuwanie) w inline profilu
+- Test komunikatora inline (wysylanie, rozwijanie, oznaczanie)
+- Dark mode + light mode
+- Ewentualne poprawki CSS po testach
+
+---
+
 ## 2026-02-22 (sesja 25) - FAZA 5: Rozszerzony Chat + Inline Comments
 
 **Sesja z:** Claude Code (Opus 4.6)

@@ -35,8 +35,8 @@ export class MemoryExtractor {
             { role: 'user', content: prompt }
         ];
 
-        const responseText = await streamToComplete(chatModel, apiMessages);
-        return this._parseExtractionResponse(responseText);
+        const response = await streamToComplete(chatModel, apiMessages);
+        return this._parseExtractionResponse(response.text);
     }
 
     /**

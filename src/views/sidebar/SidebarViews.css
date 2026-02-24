@@ -1,0 +1,1425 @@
+/* SidebarViews.css - Styles for sidebar navigation and all subviews */
+
+/* ========== NAVIGATION ========== */
+
+.sidebar-nav-back {
+    padding: 4px 0 8px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 8px;
+}
+
+.sidebar-back-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+
+.sidebar-back-btn:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.sidebar-view-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 12px;
+}
+
+/* ========== COMMON ========== */
+
+.sidebar-section-title {
+    margin: 0 0 12px 0;
+    font-size: 1em;
+    font-weight: 600;
+}
+
+.sidebar-empty-text {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+/* ========== ZAPLECZE SECTION ========== */
+
+.zaplecze-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.zaplecze-header h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.95em;
+}
+
+.zaplecze-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.zaplecze-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: background 0.15s;
+}
+
+.zaplecze-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+.zaplecze-count {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+/* ========== INLINE COMMUNICATOR ========== */
+
+.communicator-inline-agents {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0 8px 0;
+    scrollbar-width: thin;
+}
+
+.communicator-agent-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 16px;
+    background: var(--background-secondary);
+    cursor: pointer;
+    font-size: 0.8em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+}
+
+.communicator-agent-chip:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
+}
+
+.communicator-agent-chip.selected {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.communicator-chip-badge {
+    background: var(--text-error);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75em;
+    min-width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+.communicator-inline-inbox {
+    flex: 1;
+}
+
+.communicator-inline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.communicator-inline-header h4 {
+    margin: 0;
+    font-size: 0.9em;
+}
+
+.communicator-inline-mark-read {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.75em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+
+.communicator-inline-mark-read:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.communicator-inline-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.communicator-inline-empty {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-style: italic;
+    padding: 12px 0;
+    text-align: center;
+}
+
+/* Message card */
+.communicator-inline-msg {
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    overflow: hidden;
+}
+
+.communicator-inline-msg.unread {
+    border-left: 3px solid var(--interactive-accent);
+}
+
+.communicator-inline-msg-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background 0.15s;
+}
+
+.communicator-inline-msg-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+.communicator-inline-msg-status {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.communicator-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.communicator-status-dot.unread {
+    background: var(--interactive-accent);
+}
+
+.communicator-status-dot.read {
+    background: var(--text-muted);
+    opacity: 0.4;
+}
+
+.communicator-status-dot.ai-unread {
+    background: var(--text-error);
+}
+
+.communicator-status-dot.ai-read {
+    background: var(--text-muted);
+    opacity: 0.4;
+}
+
+.communicator-inline-msg-from {
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.communicator-inline-msg-subject {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.communicator-inline-msg-body {
+    display: none;
+    padding: 8px;
+    font-size: 0.85em;
+    border-top: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+}
+
+.communicator-inline-msg-body.expanded {
+    display: block;
+}
+
+.communicator-inline-msg-context {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+.communicator-inline-msg-labels {
+    margin-top: 6px;
+    display: flex;
+    gap: 12px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+/* Compose form */
+.communicator-inline-compose {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.communicator-inline-compose h5 {
+    margin: 0 0 8px 0;
+    font-size: 0.85em;
+}
+
+.communicator-inline-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+    margin-bottom: 6px;
+}
+
+.communicator-inline-textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+    resize: vertical;
+    min-height: 60px;
+    margin-bottom: 6px;
+}
+
+.communicator-inline-send {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+/* ========== AGENT PROFILE (SIDEBAR) ========== */
+
+.sidebar-profile-title {
+    margin: 0 0 12px 0;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+.sidebar-profile-tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 12px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.sidebar-profile-tab {
+    padding: 6px 10px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.78em;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.sidebar-profile-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.sidebar-profile-tab.active {
+    color: var(--interactive-accent);
+    border-bottom-color: var(--interactive-accent);
+    font-weight: 500;
+}
+
+.sidebar-profile-tab-content {
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.sidebar-profile-tab-content .setting-item {
+    border-top: none;
+    padding: 8px 0;
+}
+
+.sidebar-profile-tab-content textarea {
+    min-height: 60px;
+}
+
+.sidebar-profile-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.sidebar-profile-buttons button {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+.sidebar-delete-btn {
+    margin-top: 16px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+.sidebar-delete-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.sidebar-delete-actions button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+.sidebar-cross-link {
+    color: var(--interactive-accent);
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 0.85em;
+}
+
+.sidebar-cross-link:hover {
+    text-decoration: underline;
+}
+
+.sidebar-detail-link {
+    color: var(--interactive-accent);
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-left: 4px;
+}
+
+.sidebar-detail-link:hover {
+    text-decoration: underline;
+}
+
+/* ========== ITEM LISTS (Skills, Minions) ========== */
+
+.sidebar-item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sidebar-item-card {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.sidebar-item-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.sidebar-item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.sidebar-item-name {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.sidebar-category-badge {
+    background: var(--background-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sidebar-item-desc {
+    color: var(--text-muted);
+    font-size: 0.8em;
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.sidebar-item-agents {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 0.8em;
+}
+
+.sidebar-item-agents-label {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.sidebar-agent-link {
+    color: var(--interactive-accent);
+    cursor: pointer;
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: background 0.15s;
+}
+
+.sidebar-agent-link:hover {
+    background: var(--background-modifier-hover);
+    text-decoration: underline;
+}
+
+/* ========== TOOL BROWSER ========== */
+
+.sidebar-tool-group {
+    margin-bottom: 12px;
+}
+
+.sidebar-tool-group-title {
+    margin: 0 0 6px 0;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.sidebar-tool-card {
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    border: 1px solid var(--background-modifier-border);
+    transition: background 0.15s;
+}
+
+.sidebar-tool-card:hover {
+    background: var(--background-modifier-hover);
+}
+
+.sidebar-tool-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sidebar-tool-icon {
+    font-size: 0.9em;
+    flex-shrink: 0;
+}
+
+.sidebar-tool-label {
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.sidebar-tool-name {
+    font-size: 0.7em;
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+    margin-left: auto;
+}
+
+.sidebar-tool-name-dim {
+    font-size: 0.7em;
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    margin-left: auto;
+}
+
+.sidebar-tool-desc {
+    color: var(--text-muted);
+    font-size: 0.75em;
+    margin-top: 2px;
+    padding-left: 22px;
+}
+
+.sidebar-tool-desc-human {
+    font-size: 0.82em;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.sidebar-tool-agents {
+    margin-top: 4px;
+    font-size: 0.8em;
+}
+
+.sidebar-tool-agents-label {
+    color: var(--text-muted);
+}
+
+.sidebar-tool-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--background-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    color: var(--text-muted);
+    margin: 2px 2px;
+}
+
+.sidebar-tools-footer {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.sidebar-tools-footer-text {
+    font-size: 0.82em;
+    color: var(--text-faint);
+    font-style: italic;
+    text-align: center;
+}
+
+.sidebar-minion-tools {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+/* ========== DETAIL VIEWS ========== */
+
+.sidebar-detail-meta {
+    background: var(--background-secondary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+}
+
+.sidebar-detail-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 0.85em;
+}
+
+.sidebar-detail-label {
+    color: var(--text-muted);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.sidebar-detail-value {
+    color: var(--text-normal);
+}
+
+.status-active {
+    color: var(--text-success, #4caf50);
+}
+
+.status-inactive {
+    color: var(--text-error);
+}
+
+.sidebar-detail-section {
+    margin-top: 12px;
+}
+
+.sidebar-detail-subtitle {
+    margin: 0 0 6px 0;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.sidebar-detail-agents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sidebar-detail-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sidebar-tool-mini-card {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    font-size: 0.85em;
+}
+
+.sidebar-detail-prompt {
+    background: var(--background-secondary);
+    border-radius: 6px;
+    padding: 10px 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+.sidebar-detail-prompt h1,
+.sidebar-detail-prompt h2,
+.sidebar-detail-prompt h3 {
+    font-size: 1em;
+    margin: 8px 0 4px 0;
+}
+
+.sidebar-detail-prompt ul,
+.sidebar-detail-prompt ol {
+    margin: 4px 0;
+    padding-left: 18px;
+}
+
+.sidebar-detail-prompt code {
+    font-size: 0.9em;
+}
+
+.sidebar-detail-pre {
+    background: var(--background-secondary);
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-family: var(--font-monospace);
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.sidebar-detail-actions {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.sidebar-detail-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    background: var(--background-modifier-border);
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.sidebar-detail-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* ========== AGORA ========== */
+
+.agora-home-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agora-home-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.agora-home-header h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.95em;
+}
+
+.agora-subtitle {
+    color: var(--text-muted);
+    font-size: 0.8em;
+    margin: 0 0 12px 0;
+    font-style: italic;
+}
+
+.agora-loading {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+/* Profile */
+.agora-profile-section {
+    margin-bottom: 12px;
+}
+
+.agora-profile-header {
+    margin: 0 0 4px 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.agora-profile-content {
+    padding-left: 4px;
+}
+
+.agora-profile-line {
+    font-size: 0.85em;
+    padding: 2px 0;
+    color: var(--text-normal);
+}
+
+/* Activity */
+.agora-activity-card {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+}
+
+.agora-activity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.agora-activity-agent {
+    font-weight: 600;
+    font-size: 0.85em;
+}
+
+.agora-activity-date {
+    color: var(--text-muted);
+    font-size: 0.75em;
+}
+
+.agora-activity-summary {
+    font-size: 0.85em;
+    margin-bottom: 4px;
+}
+
+.agora-activity-detail {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.agora-activity-label {
+    font-weight: 600;
+}
+
+/* Projects */
+.agora-project-card {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.agora-project-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.agora-project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.agora-project-title {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.agora-project-status {
+    font-size: 0.75em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--background-secondary);
+}
+
+.agora-project-status.status-active {
+    color: var(--text-success, #4caf50);
+}
+
+.agora-project-status.status-done {
+    color: var(--interactive-accent);
+}
+
+.agora-project-status.status-paused {
+    color: var(--text-muted);
+}
+
+.agora-project-agents {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* Project detail */
+.agora-project-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.agora-project-tasks {
+    margin-top: 12px;
+}
+
+.agora-task-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    font-size: 0.85em;
+}
+
+.agora-task-check {
+    flex-shrink: 0;
+}
+
+.agora-task-text.done {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+/* Progress bar */
+.agora-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.agora-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.agora-progress-fill {
+    height: 100%;
+    background: var(--interactive-accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.agora-progress-text {
+    font-size: 0.75em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Map */
+.agora-map-section {
+    margin-bottom: 12px;
+}
+
+.agora-map-content {
+    padding: 4px 0;
+}
+
+/* Access control */
+.agora-access-legend {
+    background: var(--background-secondary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+}
+
+.agora-access-legend-item {
+    font-size: 0.8em;
+    padding: 2px 0;
+}
+
+.agora-access-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.agora-access-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    background: var(--background-secondary);
+}
+
+.agora-access-agent {
+    font-weight: 600;
+    flex: 1;
+}
+
+.agora-access-level {
+    font-size: 0.8em;
+}
+
+.agora-access-projects {
+    font-size: 0.75em;
+    color: var(--text-muted);
+}
+
+/* Actions */
+.agora-actions {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+    display: flex;
+    gap: 8px;
+}
+
+/* ── Inline Editable Items ── */
+
+.agora-item-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 0;
+    font-size: 0.85em;
+    min-height: 28px;
+}
+
+.agora-item-text {
+    flex: 1;
+    color: var(--text-normal);
+    word-break: break-word;
+}
+
+.agora-item-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.agora-item-row:hover .agora-item-actions,
+.agora-activity-header:hover .agora-item-actions {
+    opacity: 1;
+}
+
+.agora-item-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    line-height: 1;
+    transition: background 0.15s;
+}
+
+.agora-item-btn:hover {
+    background: var(--background-modifier-hover);
+}
+
+.agora-item-delete:hover {
+    background: var(--background-modifier-error, rgba(255,0,0,0.1));
+}
+
+.agora-empty-hint {
+    font-size: 0.8em;
+    margin: 2px 0;
+}
+
+/* ── Inline Edit Row ── */
+
+.agora-edit-row {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    align-items: center;
+}
+
+.agora-inline-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+}
+
+.agora-inline-input:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+.agora-edit-save,
+.agora-edit-cancel {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    background: var(--background-modifier-border);
+    transition: background 0.15s;
+}
+
+.agora-edit-save:hover {
+    background: var(--interactive-accent);
+    color: white;
+}
+
+.agora-edit-cancel:hover {
+    background: var(--background-modifier-hover);
+}
+
+/* ── Add Form ── */
+
+.agora-add-form {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    align-items: center;
+}
+
+.agora-add-form-inline {
+    margin-top: 2px;
+}
+
+.agora-add-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.8em;
+}
+
+.agora-add-input:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+.agora-add-btn {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    background: var(--interactive-accent);
+    color: white;
+    transition: opacity 0.15s;
+}
+
+.agora-add-btn:hover {
+    opacity: 0.85;
+}
+
+/* ── Agora Modal ── */
+
+.agora-modal {
+    max-width: 480px;
+}
+
+.agora-modal-title {
+    margin: 0 0 12px 0;
+}
+
+.agora-modal-field {
+    margin-bottom: 12px;
+}
+
+.agora-modal-field label {
+    display: block;
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-normal);
+}
+
+.agora-modal-field input,
+.agora-modal-field textarea,
+.agora-modal-field select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+.agora-modal-field textarea {
+    resize: vertical;
+    font-family: inherit;
+}
+
+.agora-modal-field input:focus,
+.agora-modal-field textarea:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+.agora-modal-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.agora-modal-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+.agora-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agora-modal-footer button {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+/* ── Project Detail extras ── */
+
+.agora-project-section {
+    margin-top: 12px;
+}
+
+.agora-section-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.agora-agent-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.agora-agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    background: var(--background-secondary);
+}
+
+.agora-badge-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-faint);
+    font-size: 0.8em;
+    padding: 0 2px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.agora-agent-badge:hover .agora-badge-remove {
+    opacity: 1;
+}
+
+.agora-badge-remove:hover {
+    color: var(--text-error);
+}
+
+/* Delete project (danger zone) */
+.agora-project-danger {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.agora-danger-btn {
+    background: var(--background-modifier-error);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: opacity 0.15s;
+}
+
+.agora-danger-btn:hover {
+    opacity: 0.85;
+}
+
+.agora-danger-confirm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.agora-danger-text {
+    color: var(--text-error);
+    font-size: 0.85em;
+}
+
+.agora-status-select {
+    padding: 3px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.8em;
+    cursor: pointer;
+}
+
+.agora-project-status.clickable {
+    cursor: pointer;
+}
+
+.agora-project-status.clickable:hover {
+    opacity: 0.7;
+}
+
+.agora-project-desc-text {
+    font-size: 0.85em;
+    padding: 4px 0;
+    color: var(--text-normal);
+    white-space: pre-wrap;
+}
+
+.agora-desc-edit {
+    margin-top: 4px;
+}
+
+.agora-desc-textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.agora-desc-textarea:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+.agora-edit-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.agora-notify-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.agora-add-task-form {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.agora-task-assignee {
+    padding: 4px 6px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.8em;
+    max-width: 120px;
+}
+
+.agora-task-row .agora-item-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.agora-task-row:hover .agora-item-btn {
+    opacity: 1;
+}
+
+/* ── Agent Zones (Map) ── */
+
+.agora-agent-zone {
+    padding: 4px 0;
+    font-size: 0.85em;
+}
+
+.agora-agent-zone-name {
+    font-weight: 600;
+}
+
+.agora-agent-zone-folders {
+    color: var(--text-muted);
+}
+
+/* ── Access Select ── */
+
+.agora-access-select {
+    padding: 3px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.8em;
+    cursor: pointer;
+}
+
+.agora-access-row {
+    transition: opacity 0.3s;
+}

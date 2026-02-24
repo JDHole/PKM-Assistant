@@ -6,5 +6,5 @@
  */
 export function build_connections_codeblock(settings = null) {
   const json = settings ? JSON.stringify(settings, null, 2) : '';
-  return `\u0060\u0060\u0060smart-connections\n${json}\n\u0060\u0060\u0060\n`;
+  return `\u0060\u0060\u0060pkm-connections\n${json}\n\u0060\u0060\u0060\n`;
 }

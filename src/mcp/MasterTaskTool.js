@@ -13,25 +13,25 @@ let _minionRunner = null;
 export function createMasterTaskTool(app) {
     return {
         name: 'master_task',
-        description: 'Deleguj trudne zadanie W GÓRĘ do Mastera (najmocniejszy model AI). Domyślnie minion zbiera kontekst, ale możesz to kontrolować: skip_minion=true żeby sam dostarczyć kontekst, albo minion_instructions żeby powiedzieć minionowi JAK szukać.',
+        description: 'Deleguj trudne zadanie W GÓRĘ do Mastera — najmocniejszego modelu AI (np. Claude Opus, GPT-4). Dla zadań wymagających głębokiej analizy, kreatywności lub eksperckiej wiedzy.\n\nFLOW (domyślny):\n1. Minion zbiera kontekst z vaulta/pamięci (tańszy model)\n2. Kontekst + zadanie trafiają do Mastera\n3. Master analizuje i odpowiada\n\n3 TRYBY:\n- Domyślny: minion zbiera kontekst → Master analizuje\n- skip_minion=true: SAM dostarczasz kontekst w polu "context" (oszczędność gdy już masz dane)\n- minion_instructions: mówisz minionowi JAK i GDZIE szukać kontekstu\n\nKIEDY UŻYWAĆ:\n- Złożona analiza wymagająca głębokiego myślenia\n- Zadanie przekraczające Twoje możliwości (np. tani model nie ogarnia)\n- User prosi o ekspercką opinię, strategię, plan\n- Porównanie wielu dokumentów, synteza wiedzy\n\nKIEDY NIE UŻYWAĆ:\n- Proste pytania — odpowiedz sam\n- Zbieranie danych bez analizy → minion_task\n- Master nie jest skonfigurowany → sprawdź ustawienia\n\nROZNICA vs minion_task:\n- minion_task = delegacja W DÓŁ (tańszy model, zbieranie danych)\n- master_task = delegacja W GÓRĘ (droższy model, głęboka analiza)',
         inputSchema: {
             type: 'object',
             properties: {
                 task: {
                     type: 'string',
-                    description: 'Opis zadania dla Mastera. Bądź precyzyjny - co dokładnie ma przeanalizować/odpowiedzieć.'
+                    description: 'Precyzyjny opis zadania dla Mastera. Co ma przeanalizować? Jaką odpowiedź oczekujesz? Np. "Przeanalizuj 5 notatek o strategii i zaproponuj plan działania na Q2"'
                 },
                 context: {
                     type: 'string',
-                    description: 'Dodatkowy kontekst (np. fragment notatki, wynik poprzedniego narzędzia). Przy skip_minion=true to JEDYNY kontekst dla Mastera.'
+                    description: 'Dodatkowy kontekst (fragment notatki, wynik narzędzia, dane). Przy skip_minion=true to JEDYNY kontekst — zadbaj żeby był kompletny.'
                 },
                 skip_minion: {
                     type: 'boolean',
-                    description: 'Pomiń miniona - sam dostarczasz kontekst w polu "context". Przydatne gdy już masz zebrane dane.'
+                    description: 'true = pomiń miniona, sam dostarczasz kontekst. Przydatne gdy masz już zebrane dane i chcesz oszczędzić czas/tokeny.'
                 },
                 minion_instructions: {
                     type: 'string',
-                    description: 'Instrukcje dla miniona JAK zbierać kontekst. Np. "Przeszukaj minimum 10 notatek z folderu Projects/", "Szukaj w pamięci i w brain.md", "Zbierz WSZYSTKIE notatki o X - nie pomijaj żadnych".'
+                    description: 'Instrukcje dla miniona JAK zbierać kontekst. Przykłady: "Przeszukaj min. 10 notatek z Projekty/", "Zbierz WSZYSTKIE notatki o budżecie", "Szukaj w brain.md i ostatnich 5 sesjach"'
                 }
             },
             required: ['task']
@@ -130,7 +130,8 @@ export function createMasterTaskTool(app) {
 
                 return {
                     success: true,
-                    result: masterResponse,
+                    result: masterResponse.text,
+                    usage: masterResponse.usage,
                     context_gathered: !!minionContext,
                     minion_skipped: minionSkipped,
                     minion_context: minionSkipped

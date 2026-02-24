@@ -1,3 +1,29 @@
+/* ── Obsek Status Bar ── */
+.obsek-status-bar-item {
+  display: flex;
+  align-items: center;
+}
+.obsek-status-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: var(--font-smallest);
+  cursor: default;
+}
+.obsek-status-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--text-faint);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: obsek-spin 0.8s linear infinite;
+}
+@keyframes obsek-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* deprecated positioning, use bottom bar instead */
 .view-content > .sc-brand {
   position: fixed;

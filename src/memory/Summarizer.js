@@ -39,8 +39,8 @@ export class Summarizer {
                 { role: 'user', content: summaryPrompt }
             ];
 
-            const result = await streamToComplete(this.chatModel, apiMessages);
-            return result || null;
+            const response = await streamToComplete(this.chatModel, apiMessages);
+            return response.text || null;
         } catch (error) {
             console.error("Summarizer: Error generating summary", error);
             return null;

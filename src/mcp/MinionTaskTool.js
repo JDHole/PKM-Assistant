@@ -12,18 +12,18 @@ let _minionRunner = null;
 export function createMinionTaskTool(app) {
     return {
         name: 'minion_task',
-        description: 'Deleguj zadanie do swojego miniona (tańszy model AI). Minion przeszukuje vault, pamięć, zbiera dane i zwraca wyniki. Używaj gdy potrzebujesz przeszukać wiele plików, zrobić analizę zbiorczą lub zebrać dane z wielu źródeł. Proste operacje (odczyt jednego pliku) rób sam.',
+        description: 'Deleguj zadanie W DÓŁ do swojego miniona — tańszego/szybszego modelu AI. Minion ma dostęp do narzędzi (vault_read, vault_search, memory_search itp.) i pracuje samodzielnie.\n\nKIEDY DELEGOWAĆ MINIONOWI:\n- Przeszukanie wielu plików (np. "znajdź wszystkie notatki o projekcie X")\n- Analiza zbiorcza (np. "policz ile mam notatek z tagiem #idea")\n- Zbieranie danych z wielu źródeł (vault + pamięć + brain)\n- Czasochłonne operacje które nie wymagają geniuszu\n\nKIEDY ROBIĆ SAMEMU (nie deleguj):\n- Odczyt jednego pliku → vault_read\n- Proste wyszukiwanie → vault_search\n- Odpowiedź na pytanie usera (nie wymaga researchu)\n- Operacje na pamięci → memory_update\n\nJAK FORMUŁOWAĆ ZADANIE:\n- Bądź KONKRETNY: "Przeszukaj folder Projekty/ i znajdź wszystkie pliki zawierające słowo budżet. Dla każdego podaj ścieżkę i krótki fragment."\n- NIE: "Poszukaj czegoś o budżecie" (za ogólne)\n\nUWAGI:\n- Minion pracuje na tańszym modelu (np. Haiku) — nie dawaj mu zadań wymagających głębokiej analizy\n- Max kilka iteracji tool-calling (konfigurowane w minion.md)\n- Graceful failure: jeśli minion padnie, dostaniesz błąd (nie crash)',
         inputSchema: {
             type: 'object',
             properties: {
                 task: {
                     type: 'string',
-                    description: 'Opis zadania dla miniona. Bądź konkretny - napisz dokładnie co ma znaleźć/zrobić.'
+                    description: 'Konkretny opis zadania. Napisz CO ma znaleźć/zrobić, GDZIE szukać, w JAKIM formacie zwrócić wynik. Im precyzyjniej, tym lepszy wynik.'
                 },
                 extra_tools: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Opcjonalnie: dodatkowe narzędzia poza domyślnymi miniona (np. ["vault_list", "vault_write"])'
+                    description: 'Dodatkowe narzędzia poza domyślnymi miniona. Przykład: ["vault_write", "memory_update"]. Domyślne narzędzia miniona: vault_read, vault_list, vault_search, memory_search.'
                 }
             },
             required: ['task']
@@ -98,7 +98,9 @@ export function createMinionTaskTool(app) {
                     success: true,
                     result: taskResult.result,
                     tools_used: taskResult.toolsUsed,
-                    duration_ms: taskResult.duration
+                    tool_call_details: taskResult.toolCallDetails || [],
+                    duration_ms: taskResult.duration,
+                    usage: taskResult.usage || null,
                 };
             } catch (e) {
                 console.error('[MinionTaskTool] Error:', e);

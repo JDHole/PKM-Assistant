@@ -3,7 +3,7 @@ import { SmartItemView } from 'obsidian-smart-env/views/smart_item_view.js';
 import release_notes_md from '../../releases/latest_release.md' with { type: 'markdown' };
 
 export class ReleaseNotesView extends SmartItemView {
-  static get view_type()    { return 'smart-release-notes-view'; }
+  static get view_type()    { return 'pkm-release-notes-view'; }
   static get display_text() { return 'Release Notes';           }
   static get icon_name()    { return 'file-text';               }
 
@@ -22,7 +22,7 @@ export class ReleaseNotesView extends SmartItemView {
    * output styles match native note preview exactly.
    */
   onOpen() {
-    this.titleEl.setText(`What’s new in v${this.version}`);
+    this.titleEl.setText(`PKM Assistant - co nowego w v${this.version}`);
     this.render();
   }
   get container () {
@@ -56,7 +56,7 @@ export class ReleaseNotesView extends SmartItemView {
   }
   get version() {
     const version = this.leaf.viewState?.state?.version ??
-      this.app.plugins.getPlugin('smart-connections')?.manifest.version ?? '';
+      this.app.plugins.getPlugin('obsek')?.manifest.version ?? '';
     return version;
   }
 

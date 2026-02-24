@@ -6,25 +6,25 @@
 export function createAgentMessageTool(app) {
     return {
         name: 'agent_message',
-        description: 'Wyślij wiadomość do innego agenta. Używaj gdy chcesz przekazać informacje, poprosić o pomoc, lub poinformować o czymś innego agenta.',
+        description: 'Wyślij wiadomość do innego agenta — trafia do jego skrzynki odbiorczej (inbox). Agent przeczyta ją na początku swojej następnej sesji.\n\nKIEDY UŻYWAĆ:\n- Chcesz poinformować innego agenta o czymś ważnym\n- User prosi "powiedz Dexterowi żeby...", "przekaż Lexie że..."\n- Chcesz poprosić innego agenta o pomoc w przyszłej sesji\n- Przekazujesz wyniki swojej pracy innemu agentowi\n\nKIEDY NIE UŻYWAĆ:\n- Chcesz PRZEKAZAĆ rozmowę (zmienić agenta) → użyj agent_delegate\n- Wiadomość jest pilna i potrzebna TERAZ → agent_delegate (natychmiast przełącza)\n\nJAK DZIAŁA:\n- Wiadomość zapisywana do pliku inbox agenta (.pkm-assistant/komunikator/)\n- Odbiorca przeczyta ją przy następnym auto-prep (start sesji)\n- Wiadomość ma status: NOWA → AI_READ → ALL_READ\n\nROZNICA vs agent_delegate:\n- agent_message = asynchroniczna wiadomość (jak email)\n- agent_delegate = natychmiastowe przekazanie rozmowy (jak przekierowanie telefonu)',
         inputSchema: {
             type: 'object',
             properties: {
                 to_agent: {
                     type: 'string',
-                    description: 'Nazwa agenta-odbiorcy (np. "Dexter", "Lexie")'
+                    description: 'Nazwa agenta-odbiorcy. Musi być dokładna (case-sensitive). Przykłady: "Jaskier", "Dexter", "Lexie"'
                 },
                 subject: {
                     type: 'string',
-                    description: 'Temat wiadomości (krótko)'
+                    description: 'Krótki temat wiadomości (1-2 zdania). Przykład: "Wyniki analizy vaulta", "Prośba o pomoc z projektem"'
                 },
                 content: {
                     type: 'string',
-                    description: 'Treść wiadomości'
+                    description: 'Pełna treść wiadomości. Pisz konkretnie — odbiorca nie ma kontekstu Twojej rozmowy.'
                 },
                 context: {
                     type: 'string',
-                    description: 'Opcjonalny kontekst - ścieżka pliku, fragment notatki, dane'
+                    description: 'Opcjonalny kontekst: ścieżka pliku, fragment notatki, dane pomocnicze. Np. "Dotyczy pliku: Projekty/plan-Q2.md"'
                 }
             },
             required: ['to_agent', 'subject', 'content']

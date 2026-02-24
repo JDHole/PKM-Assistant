@@ -8,6 +8,7 @@ import { SkillLoader } from '../skills/SkillLoader.js';
 import { MinionLoader } from './MinionLoader.js';
 import { PlaybookManager } from './PlaybookManager.js';
 import { KomunikatorManager } from './KomunikatorManager.js';
+import { log } from '../utils/Logger.js';
 
 /**
  * AgentManager class - manages all agents and their state
@@ -47,8 +48,11 @@ export class AgentManager {
      * @returns {Promise<void>}
      */
     async initialize() {
+        const initStart = Date.now();
+        log.group('AgentManager', 'initialize()');
         try {
             const allAgents = await this.loader.loadAllAgents();
+            log.debug('AgentManager', `Załadowano ${allAgents.length} agentów: ${allAgents.map(a => a.name).join(', ')}`);
 
             for (const agent of allAgents) {
                 this.agents.set(agent.name, agent);
@@ -58,19 +62,23 @@ export class AgentManager {
                 const memory = new AgentMemory(this.vault, agent.name, this.settings);
                 await memory.initialize();
                 this.agentMemories.set(agent.name, memory);
+                log.debug('AgentManager', `Pamięć ${agent.name}: OK`);
             }
 
             // Set default active agent (Jaskier or first available)
             const defaultAgentName = this.settings?.defaultAgent || 'Jaskier';
             this.activeAgent = this.agents.get(defaultAgentName) || allAgents[0] || null;
+            log.info('AgentManager', `Aktywny agent: ${this.activeAgent?.name || 'BRAK'}`);
 
             // Load skills
             await this.skillLoader.ensureStarterSkills();
             await this.skillLoader.loadAllSkills();
+            log.debug('AgentManager', `Skills: ${this.skillLoader.cache?.size || 0} załadowanych`);
 
             // Load minions
             await this.minionLoader.ensureStarterMinions();
             await this.minionLoader.loadAllMinions();
+            log.debug('AgentManager', `Minions: ${this.minionLoader.cache?.size || 0} załadowanych`);
 
             // Ensure playbook.md + vault_map.md for all agents
             await this.playbookManager.ensureStarterFiles(allAgents);
@@ -80,8 +88,11 @@ export class AgentManager {
 
             this._emit('agents:loaded', { count: this.agents.size });
 
+            log.timing('AgentManager', 'initialize()', initStart);
+            log.groupEnd();
         } catch (error) {
-            console.error('[AgentManager] Initialization error:', error);
+            log.error('AgentManager', 'Initialization FAIL:', error);
+            log.groupEnd();
         }
     }
 
@@ -253,6 +264,52 @@ export class AgentManager {
     }
 
     /**
+     * Build enriched context for PromptBuilder.
+     * Shared logic for both sync and async prompt methods.
+     * @private
+     * @returns {Object} Base enriched context (without async data like memory/agora)
+     */
+    _buildBaseContext() {
+        const agent = this.activeAgent;
+        if (!agent) return {};
+
+        // Skills metadata (name + description + category only — no full prompt text)
+        const skills = this.skillLoader.getSkillsForAgent(agent.skills)
+            .filter(s => s.enabled !== false)
+            .map(s => ({ name: s.name, description: s.description, category: s.category }));
+
+        // Agent list for communicator
+        const agentList = this.getAllAgents().map(a => a.name);
+
+        // Minion availability
+        const minionConfig = agent.minion ? this.minionLoader.getMinion(agent.minion) : null;
+        const hasMinion = agent.minionEnabled !== false && !!minionConfig;
+
+        // Master availability (global setting)
+        const obsek = this.settings?.obsek || {};
+        const hasMaster = !!(obsek.masterModel && obsek.masterPlatform);
+
+        // Custom PKM/Environment prompts from settings (empty = use defaults)
+        const pkmSystemPrompt = obsek.pkmSystemPrompt || '';
+        const environmentPrompt = obsek.environmentPrompt || '';
+
+        // Disabled prompt sections from settings
+        const disabledPromptSections = obsek.disabledPromptSections || [];
+
+        return {
+            vaultName: this.vault?.getName?.() || 'Unknown Vault',
+            currentDate: new Date().toLocaleDateString('pl-PL'),
+            skills,
+            agentList,
+            hasMinion,
+            hasMaster,
+            ...(pkmSystemPrompt && { pkmSystemPrompt }),
+            ...(environmentPrompt && { environmentPrompt }),
+            ...(disabledPromptSections.length > 0 && { disabledPromptSections }),
+        };
+    }
+
+    /**
      * Get system prompt for active agent with memory context
      * @param {Object} [context] - Additional context
      * @returns {Promise<string>}
@@ -262,31 +319,43 @@ export class AgentManager {
             return 'You are a helpful AI assistant.';
         }
 
-        // Get memory context (unless disabled in settings)
+        const enrichedContext = this._buildBaseContext();
+
+        // Memory context (unless disabled in settings)
         const memory = this.getActiveMemory();
-        let memoryContext = '';
         const injectMemory = this.settings?.obsek?.injectMemoryToPrompt !== false;
         if (memory && injectMemory) {
             try {
-                memoryContext = await memory.getMemoryContext();
+                enrichedContext.memoryContext = await memory.getMemoryContext();
             } catch (e) {
                 console.warn('[AgentManager] Could not load memory context:', e);
             }
         }
 
-        // Add vault name, date, and memory to context
-        const enrichedContext = {
-            vaultName: this.vault?.getName?.() || 'Unknown Vault',
-            currentDate: new Date().toLocaleDateString('pl-PL'),
-            memoryContext,
-            ...context
-        };
+        // Agora context (shared knowledge base)
+        if (this.agoraManager) {
+            try {
+                enrichedContext.agoraContext = await this.agoraManager.buildPromptContext(this.activeAgent);
+            } catch (e) {
+                console.warn('[AgentManager] Agora context failed:', e);
+            }
+        }
+
+        // Unread inbox count
+        try {
+            enrichedContext.unreadInbox = await this.komunikatorManager.getUnreadCount(this.activeAgent.name);
+        } catch (e) {
+            log.debug('AgentManager', 'Could not get unread count:', e);
+        }
+
+        // Merge caller-provided context (overrides allowed)
+        Object.assign(enrichedContext, context);
 
         return this.activeAgent.getSystemPrompt(enrichedContext);
     }
 
     /**
-     * Get system prompt for active agent
+     * Get system prompt for active agent (sync — no memory/agora/inbox)
      * @param {Object} [context] - Additional context
      * @returns {string}
      */
@@ -295,14 +364,42 @@ export class AgentManager {
             return 'You are a helpful AI assistant.';
         }
 
-        // Add vault name and current date to context
-        const enrichedContext = {
-            vaultName: this.vault?.getName?.() || 'Unknown Vault',
-            currentDate: new Date().toLocaleDateString('pl-PL'),
-            ...context
-        };
-
+        const enrichedContext = { ...this._buildBaseContext(), ...context };
         return this.activeAgent.getSystemPrompt(enrichedContext);
+    }
+
+    /**
+     * Get prompt inspector data for Settings UI.
+     * Returns sections with token counts and breakdown.
+     * @param {Object} [context] - Additional context overrides
+     * @returns {Promise<{sections: Array, breakdown: Object}>}
+     */
+    async getPromptInspectorData(context = {}) {
+        if (!this.activeAgent) {
+            return { sections: [], breakdown: { total: 0, sections: [] } };
+        }
+
+        const enrichedContext = this._buildBaseContext();
+
+        // Include memory + agora for realistic token count
+        const memory = this.getActiveMemory();
+        if (memory) {
+            try {
+                enrichedContext.memoryContext = await memory.getMemoryContext();
+            } catch (e) { /* ok */ }
+        }
+        if (this.agoraManager) {
+            try {
+                enrichedContext.agoraContext = await this.agoraManager.buildPromptContext(this.activeAgent);
+            } catch (e) { /* ok */ }
+        }
+        try {
+            enrichedContext.unreadInbox = await this.komunikatorManager.getUnreadCount(this.activeAgent.name);
+        } catch (e) { /* ok */ }
+
+        Object.assign(enrichedContext, context);
+
+        return this.activeAgent.getPromptSections(enrichedContext);
     }
 
     /**
