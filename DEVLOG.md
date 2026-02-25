@@ -23,6 +23,76 @@
 
 ---
 
+## 2026-02-25 (sesja 41) — 2.6 Personalizacja Agenta Part 1: Archetyp → Rola + Memory tab
+
+**Sesja z:** Claude Code (Opus 4.6)
+
+**Typ sesji:** Nowa funkcjonalność (duża refaktoryzacja systemu agentów)
+
+### Zrobione
+
+**Nowy system Archetyp → Rola:**
+- **Archetypes.js** (NEW) — 4 archetypy (orchestrator, specialist, assistant, meta_agent) z behavior_rules
+- **BuiltInRoles.js** (NEW) — 4 startowe role (jaskier-mentor, vault-builder, creative-writer, daily-assistant)
+- **RoleLoader.js** (NEW) — ładuje role built-in + custom z `.pkm-assistant/roles/*.yaml`, save/delete/slugify
+- **roles/index.js** (NEW) — eksporty
+
+**Migracja:**
+- **Agent.js** — `archetype` = broad class, `role` = specific specialization (było odwrotnie)
+- **AgentLoader.js** — `_migrateArchetypeRole()` auto-konwertuje stary format YAML
+- **HumanVibe/ObsidianExpert/AIExpert** — zaktualizowane wartości (np. Jaskier: meta_agent + jaskier-mentor)
+
+**Prompt injection:**
+- **PromptBuilder.js** — 2 nowe sekcje: `archetype_behavior` (pod tożsamością) + `role_behavior` (nad osobowością)
+- **AgentManager.js** — RoleLoader init + roleData w context
+
+**UI:**
+- **AgentProfileView.js** — nowy Creator flow (Archetyp dropdown → Rola dropdown z sugestiami)
+- **AgentProfileView.js** — Rola ZAWSZE nadpisuje dane, "Brak" = kasacja do domyślnych
+- **AgentProfileView.js** — Memory tab: 6 plików collapsible (brain, playbook, vault_map, active_context, audit, sessions)
+- **AgentProfileView.js** — Mini-formularze: "Dodaj instrukcje" (playbook) + "Dodaj lokacje" (vault_map)
+- **obsek_settings_tab.js** — nowa sekcja "🎭 Role Agentów" z listą ról + Role Creator
+- **RoleEditorModal** — pełny formularz do tworzenia/edycji ról (nazwa, emoji, archetyp, opis, zasady, personality, skills, foldery, temp, permissions)
+- **AgentProfileModal.css** — ~200 linii nowego CSS (memory sections, role editor modal)
+
+**Bug fixy (podczas testów):**
+- Fix: PromptBuilder kolejność — archetyp pod tożsamością, rola nad osobowością
+- Fix: Archetyp NIE zmienia temperature/permissions — tylko Rola to robi
+- Fix: Rola ZAWSZE nadpisuje personality (nie sprawdza `!formData.personality`)
+- Fix: "Brak" roli = kasacja (czyści do domyślnych)
+- Fix: Sessions w memory tab — bezpośrednia ścieżka zamiast `memory.paths.sessions`
+
+### Pliki zmienione (15)
+- `src/agents/archetypes/Archetypes.js` — NEW
+- `src/agents/roles/BuiltInRoles.js` — NEW
+- `src/agents/roles/RoleLoader.js` — NEW
+- `src/agents/roles/index.js` — NEW
+- `src/agents/Agent.js` — archetype/role semantics
+- `src/agents/AgentLoader.js` — migration logic
+- `src/agents/archetypes/AIExpert.js` — nowe wartości
+- `src/agents/archetypes/HumanVibe.js` — nowe wartości
+- `src/agents/archetypes/ObsidianExpert.js` — nowe wartości
+- `src/agents/archetypes/index.js` — nowe eksporty + migration maps
+- `src/core/AgentManager.js` — RoleLoader init + roleData
+- `src/core/PromptBuilder.js` — archetype_behavior + role_behavior sekcje
+- `src/views/AgentProfileModal.css` — memory + role editor styles
+- `src/views/obsek_settings_tab.js` — Role Creator sekcja + RoleEditorModal
+- `src/views/sidebar/AgentProfileView.js` — Creator flow + Memory tab redesign
+
+### Decyzje podjęte
+- Archetyp = filozofia pracy (4 wbudowane, nie tworzysz nowych). Rola = specjalizacja (tworzysz własne).
+- Archetyp sugeruje role ale NIE limituje — user może wybrać dowolną rolę z dowolnym archetypem.
+- Rola zmienia WSZYSTKO (personality, temp, skills, permissions). Archetyp nie zmienia nic poza behavior_rules w prompcie.
+- Access Control (focus folders enforcement, permission denial loop) ODŁOŻONE na sesję 42.
+
+### Build
+- 7.0MB, zero błędów, 97ms
+
+### Następne kroki (sesja 42)
+- 2.6 Part 2: Access Control — focus folders twarde blokowanie, permission denial loop fix, vault visibility
+
+---
+
 ## 2026-02-24 (sesja 40 kontynuacja) — Bug fixy Prompt Transparency
 
 **Sesja z:** Claude Code (Opus 4.6)

@@ -8,6 +8,7 @@ import { SkillLoader } from '../skills/SkillLoader.js';
 import { MinionLoader } from './MinionLoader.js';
 import { PlaybookManager } from './PlaybookManager.js';
 import { KomunikatorManager } from './KomunikatorManager.js';
+import { RoleLoader } from '../agents/roles/RoleLoader.js';
 import { log } from '../utils/Logger.js';
 
 /**
@@ -26,6 +27,7 @@ export class AgentManager {
         this.minionLoader = new MinionLoader(vault);
         this.playbookManager = new PlaybookManager(vault);
         this.komunikatorManager = new KomunikatorManager(vault);
+        this.roleLoader = new RoleLoader(vault);
 
         /** @type {Map<string, Agent>} */
         this.agents = new Map();
@@ -82,6 +84,10 @@ export class AgentManager {
 
             // Ensure playbook.md + vault_map.md for all agents
             await this.playbookManager.ensureStarterFiles(allAgents);
+
+            // Load roles (built-in + custom YAML)
+            await this.roleLoader.loadAll();
+            log.debug('AgentManager', `Roles: ${this.roleLoader.getAllRoles().length} załadowanych`);
 
             // Ensure komunikator folder exists
             await this.komunikatorManager.ensureFolder();
@@ -296,6 +302,9 @@ export class AgentManager {
         // Disabled prompt sections from settings
         const disabledPromptSections = obsek.disabledPromptSections || [];
 
+        // Role data for PromptBuilder (sesja 41)
+        const roleData = agent.role ? this.roleLoader.getRole(agent.role) : null;
+
         return {
             vaultName: this.vault?.getName?.() || 'Unknown Vault',
             currentDate: new Date().toLocaleDateString('pl-PL'),
@@ -303,6 +312,7 @@ export class AgentManager {
             agentList,
             hasMinion,
             hasMaster,
+            ...(roleData && { roleData }),
             ...(pkmSystemPrompt && { pkmSystemPrompt }),
             ...(environmentPrompt && { environmentPrompt }),
             ...(disabledPromptSections.length > 0 && { disabledPromptSections }),

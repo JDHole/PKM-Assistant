@@ -8,6 +8,7 @@
  */
 
 import { getTokenCount } from '../utils/tokenCounter.js';
+import { getArchetype } from '../agents/archetypes/Archetypes.js';
 
 // ═══════════════════════════════════════════
 // TOOL GROUPS — do filtrowania per-agent
@@ -57,10 +58,19 @@ export class PromptBuilder {
         const enabledGroups = this._getEnabledGroups(agent);
 
         // ── CORE (always present, stable prefix for cache) ──
+        // Kolejność: tożsamość → archetyp → pkm/env → rola → osobowość
 
         this._add('identity', 'Tożsamość', this._buildIdentity(agent, context), {
             required: true, category: 'core'
         });
+
+        // Archetyp: pod tożsamością — filozofia pracy
+        const archetypeBehavior = this._buildArchetypeBehavior(agent, context);
+        if (archetypeBehavior) {
+            this._add('archetype_behavior', 'Archetyp', archetypeBehavior, {
+                category: 'core'
+            });
+        }
 
         this._add('pkm_system', 'PKM Assistant', this._buildPkmSystem(agent, context), {
             required: true, category: 'core'
@@ -69,6 +79,14 @@ export class PromptBuilder {
         this._add('environment', 'Środowisko', this._buildEnvironment(agent, context), {
             required: true, category: 'core'
         });
+
+        // Rola: nad osobowością — konkrety specjalizacji
+        const roleBehavior = this._buildRoleBehavior(agent, context);
+        if (roleBehavior) {
+            this._add('role_behavior', 'Rola', roleBehavior, {
+                category: 'core'
+            });
+        }
 
         if (agent.personality) {
             this._add('personality', 'Osobowość', agent.personality, {
@@ -671,6 +689,41 @@ PROJEKTY: Wspólne zadanie wielu agentów → agora_project(action:"create").`;
 Masz playbook z procedurami i wiedzą domenową: .pkm-assistant/agents/${safeName}/playbook.md
 Masz vault map ze strukturą vaulta: .pkm-assistant/agents/${safeName}/vault_map.md
 Minion zna te pliki — deleguj mu szukanie w playbooku: minion_task(task:"Sprawdź w playbooku jak...")`;
+    }
+
+    // ─── archetype_behavior (sesja 41) ───
+
+    _buildArchetypeBehavior(agent, ctx) {
+        const archetype = getArchetype(agent.archetype);
+        if (!archetype || !archetype.behavior_rules?.length) return null;
+
+        const lines = [`## Typ: ${archetype.name} ${archetype.emoji}`];
+        lines.push(archetype.description);
+        lines.push('');
+        lines.push('Zasady tego typu:');
+        for (const rule of archetype.behavior_rules) {
+            lines.push(`- ${rule}`);
+        }
+        return lines.join('\n');
+    }
+
+    // ─── role_behavior (sesja 41) ───
+
+    _buildRoleBehavior(agent, ctx) {
+        // Role data is passed in context by AgentManager
+        const roleData = ctx.roleData;
+        if (!roleData || !roleData.behavior_rules?.length) return null;
+
+        const lines = [`## Rola: ${roleData.name} ${roleData.emoji || ''}`];
+        if (roleData.description) {
+            lines.push(roleData.description);
+        }
+        lines.push('');
+        lines.push('Zasady roli:');
+        for (const rule of roleData.behavior_rules) {
+            lines.push(`- ${rule}`);
+        }
+        return lines.join('\n');
     }
 
     // ─── tools_detailed (FAT PROMPT — only when NO minion) ───

@@ -397,30 +397,44 @@
 > **Szacunek:** 3-4 sesje
 > **Odniesienie:** Checkpoint punkt 3 (caly — 6 podpunktow)
 
-### 2.6.1 Rola agenta (punkt 3a)
-- [ ] Rola agenta wplywa na system prompt (rozne instrukcje per rola)
-- [ ] Rola wplywa na dostepne narzedzia (np. Orchestrator ma all, Specjalista ma subset)
-- [ ] Albo: usunac pole `role` jesli decyzja ze role nie maja sensu
+### 2.6.1 Archetyp → Rola (sesja 41: PART 1 DONE ✅)
+- [x] 4 archetypy: orchestrator, specialist, assistant, meta_agent — definiuja filozofie pracy ✅ sesja 41
+- [x] Archetyp → behavior_rules wstrzykiwane do system promptu (PromptBuilder) ✅ sesja 41
+- [x] Kolejnosc sekcji: tozsamosc → archetyp → pkm/env → rola → osobowosc ✅ sesja 41
+- [x] Archetyp NIE zmienia temperature/permissions — tylko Rola to robi ✅ sesja 41
 
-### 2.6.2 Archetypy (punkt 3b)
-- [ ] Archetyp buduje CALEGO agenta: prompt + skille + minion + playbook + vault_map + uprawnienia
-- [ ] Porownanie: prawdziwy agent (~787 linii jak Ezra w AG) vs nasz archetype (1 linijka personality)
-- [ ] Format exportu agenta: caly pakiet w jednym pliku (dla marketplace w przyszlosci)
+### 2.6.2 Role — specjalizacje agentow (sesja 41: DONE ✅)
+- [x] RoleLoader: ladowanie z built-in + YAML z .pkm-assistant/roles/ ✅ sesja 41
+- [x] 4 wbudowane role: jaskier-mentor, vault-builder, creative-writer, daily-assistant ✅ sesja 41
+- [x] Rola definiuje: behavior_rules, personality_template, skills, focus_folders, temp, permissions ✅ sesja 41
+- [x] Rola ZAWSZE nadpisuje dane w kreatorze, "Brak" = kasacja do domyslnych ✅ sesja 41
+- [x] Role Creator w Settings: formularz UI (nowa rola, edycja, usun, kopia wbudowanej) ✅ sesja 41
+- [x] RoleEditorModal: pelny formularz z emoji, nazwa, archetyp, opis, zasady, personality, skills, foldery, temp, permissions ✅ sesja 41
+- [ ] Role importowalne: YAML export/import do dzielenia sie rolami
 
-### 2.6.3 Playbook/vault_map w kreatorze (punkt 3c)
-- [ ] Playbook/vault_map jako czesc procesu tworzenia agenta (nie dopiero PO fakcie)
-- [ ] Kreator agenta pyta: jakie narzedzia? jakie skille? jakie procedury? jakie strefy?
-- [ ] User wie ze istnieja i wie jak je edytowac
+### 2.6.3 Migracja archetyp/rola (sesja 41: DONE ✅)
+- [x] Agent.js: archetype = broad class (orchestrator/specialist/assistant/meta_agent), role = specific specialization ✅ sesja 41
+- [x] AgentLoader._migrateArchetypeRole(): stare wartosci auto-konwertowane ✅ sesja 41
+- [x] HumanVibe/ObsidianExpert/AIExpert zaktualizowane do nowych wartosci ✅ sesja 41
 
-### 2.6.4 Uprawnienia (punkt 3d)
+### 2.6.4 Memory tab redesign (sesja 41: DONE ✅)
+- [x] 6 plikow widocznych: brain, playbook, vault_map, active_context, audit, sessions ✅ sesja 41
+- [x] Collapsible sekcje z markdown renderingiem (splitMarkdownSections) ✅ sesja 41
+- [x] Mini-formularze: "Dodaj instrukcje" (playbook), "Dodaj lokacje" (vault_map) ✅ sesja 41
+- [x] Edit button dla brain/active_context/audit ✅ sesja 41
+- [x] Sessions: lista z copy-path i otwieraniem ✅ sesja 41
+
+### 2.6.5 Uprawnienia — Access Control (ODLOZONE na sesje 42)
 - [x] Per-tool permissions: mozliwosc wlaczania/wylaczania KONKRETNYCH narzedzi (nie all-or-nothing MCP) ✅ sesja 37 TOOL_GROUPS + enabledTools[] + UI per-group toggle
 - [ ] Focus folders jako TWARDE blokowanie vault_read/list/search (punkt 3e)
 - [ ] Panel uprawnien z per-folder access control (read/write/none)
 - [ ] Per-agent master_task toggle (wlacz/wylacz delegacje W GORE per agent)
+- [ ] Fix: permission denial retry loop (agent powtarza tool call po odmowie)
 
-### 2.6.5 Rozbudowa Agent Creatora
-- [ ] Nowe pola w kreatorze: rola, playbook, vault_map, per-tool permissions, focus folders
+### 2.6.6 Rozbudowa Agent Creatora
+- [x] Archetyp dropdown (4 opcje) + Rola dropdown (sugerowane wg archetypu + pozostale) ✅ sesja 41
 - [ ] Podglad generowanego system promptu w kreatorze (zeby user widzial efekt zmian)
+- [ ] Format exportu agenta: caly pakiet w jednym pliku (dla marketplace w przyszlosci)
 
 ---
 
@@ -833,7 +847,8 @@ Wszystko powyzej → 2.10 UX Chatu (3-4 sesje)
 
 **Srodek (po stabilizacji):**
 5. ~~2.5 Prompt Transparency~~ ✅ DONE (sesja 40) — TokenTracker, SubAgentBlock, toggles, Backstage redesign
-6. 2.6 Personalizacja Agenta — najwazniejszy gap
+6. ~~2.6 Personalizacja Agenta Part 1~~ ✅ DONE (sesja 41) — Archetyp→Rola, RoleLoader, Role Creator, Memory tab
+   - 2.6 Part 2: Access Control — ODLOZONE na sesje 42
 7. 2.7 MasterRunner — pelny ekosystem
 8. 2.8 Skille v2 — system ktory naprawde dziala
 9. 2.9 Pamiec fix — bugi do naprawy

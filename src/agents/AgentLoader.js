@@ -4,7 +4,8 @@
  */
 import { Agent } from './Agent.js';
 import { parseYaml, validateAgentSchema } from '../utils/yamlParser.js';
-import { createJaskier, ARCHETYPE_DEFAULTS } from './archetypes/index.js';
+import { createJaskier, ARCHETYPE_DEFAULTS, OLD_ARCHETYPE_TO_ROLE, OLD_ROLE_VALUES } from './archetypes/index.js';
+import { ARCHETYPE_IDS } from './archetypes/Archetypes.js';
 
 /**
  * AgentLoader class - handles loading agents from files and built-in definitions
@@ -96,9 +97,12 @@ export class AgentLoader {
                 return null;
             }
 
-            // If archetype specified, merge with archetype defaults
-            if (data.archetype && ARCHETYPE_DEFAULTS[data.archetype]) {
-                const defaults = await ARCHETYPE_DEFAULTS[data.archetype]();
+            // ── Migration: old archetype/role → new system (sesja 41) ──
+            this._migrateArchetypeRole(data);
+
+            // If OLD archetype specified (human_vibe etc.), merge legacy defaults
+            if (data._legacyArchetype && ARCHETYPE_DEFAULTS[data._legacyArchetype]) {
+                const defaults = await ARCHETYPE_DEFAULTS[data._legacyArchetype]();
                 data.personality = data.personality || defaults.personality;
                 data.temperature = data.temperature ?? defaults.temperature;
                 data.default_permissions = {
@@ -106,6 +110,7 @@ export class AgentLoader {
                     ...(data.default_permissions || {})
                 };
             }
+            delete data._legacyArchetype;
 
             // Add file path reference
             data.filePath = filePath;
@@ -200,6 +205,8 @@ export class AgentLoader {
             if (data.models) agent.models = data.models;
             if (data.model) agent.model = data.model;
             if (data.focus_folders) agent.focusFolders = data.focus_folders;
+            if (data.enabled_tools) agent.enabledTools = data.enabled_tools;
+            if (data.role) agent.role = data.role;
         } catch (e) {
             // No overrides or error reading - use defaults
         }
@@ -244,6 +251,48 @@ export class AgentLoader {
             return true;
         } catch (e) {
             return false;
+        }
+    }
+
+    /**
+     * Migrate old archetype/role values to new system.
+     * OLD: archetype=human_vibe/obsidian_expert/ai_expert, role=orchestrator/specialist/meta_agent
+     * NEW: archetype=orchestrator/specialist/assistant/meta_agent, role=jaskier-mentor/vault-builder/etc.
+     * @private
+     * @param {Object} data - Raw YAML data (mutated in-place)
+     */
+    _migrateArchetypeRole(data) {
+        const oldArchetype = data.archetype;
+        const oldRole = data.role;
+
+        // Check if archetype is old-style (human_vibe, obsidian_expert, ai_expert)
+        if (oldArchetype && OLD_ARCHETYPE_TO_ROLE[oldArchetype]) {
+            // Save old archetype for legacy defaults merging
+            data._legacyArchetype = oldArchetype;
+
+            // Old archetype → new role (if no role set yet)
+            if (!oldRole || OLD_ROLE_VALUES.includes(oldRole)) {
+                data.role = OLD_ARCHETYPE_TO_ROLE[oldArchetype];
+            }
+
+            // Old role → new archetype
+            if (oldRole && OLD_ROLE_VALUES.includes(oldRole)) {
+                data.archetype = oldRole; // orchestrator/specialist/meta_agent → stays as archetype
+            } else {
+                data.archetype = 'specialist'; // default new archetype
+            }
+
+            return;
+        }
+
+        // Check if archetype is already new-style — no migration needed
+        if (oldArchetype && ARCHETYPE_IDS.includes(oldArchetype)) {
+            return;
+        }
+
+        // No archetype set — ensure default
+        if (!oldArchetype) {
+            data.archetype = 'specialist';
         }
     }
 

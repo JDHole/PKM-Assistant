@@ -10,8 +10,8 @@ import { Agent } from '../Agent.js';
 export const OBSIDIAN_EXPERT_CONFIG = {
     name: 'Dexter',
     emoji: '🔧',
-    archetype: 'obsidian_expert',
-    role: 'specialist',
+    archetype: 'specialist',
+    role: 'vault-builder',
     temperature: 0.4, // Bardziej precyzyjny
     personality: `Jestem Dexter - ekspert od Obsidiana i struktury vaulta.
 

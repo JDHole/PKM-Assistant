@@ -1,7 +1,7 @@
 # PKM Assistant (Obsek) - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-24 (sesja 40)
+> Ostatnia aktualizacja: 2026-02-25 (sesja 41)
 
 ---
 
@@ -347,6 +347,20 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Fix: TokenTracker liczy tokeny z tekstu (tiktoken) — nie polega na API usage (sesja 40)
 - [x] Fix: Auto-prep SubAgentBlock wewnątrz bańki asystenta — nie znika przy scrollowaniu (sesja 40)
 - [x] Fix: Token popup overlay z try-catch, "nie użyty" zamiast "brak użycia" (sesja 40)
+- [x] **Sesja 41: 2.6 Personalizacja Agenta Part 1 — Archetyp → Rola + Memory tab** ✅
+- [x] 4 archetypy (orchestrator, specialist, assistant, meta_agent) z behavior_rules wstrzykiwanymi do promptu (sesja 41)
+- [x] 4 wbudowane role (jaskier-mentor, vault-builder, creative-writer, daily-assistant) (sesja 41)
+- [x] RoleLoader: laduje role built-in + custom YAML z .pkm-assistant/roles/ (sesja 41)
+- [x] Agent.js migracja: archetype = broad class, role = specific specialization (sesja 41)
+- [x] AgentLoader._migrateArchetypeRole(): auto-konwersja starych YAML (sesja 41)
+- [x] PromptBuilder: archetype pod tozsamoscia, rola nad osobowoscia (sesja 41)
+- [x] AgentProfileView: nowy Creator flow (Archetyp dropdown → Rola dropdown z sugestiami) (sesja 41)
+- [x] AgentProfileView: rola ZAWSZE nadpisuje dane, "Brak" = kasacja do domyslnych (sesja 41)
+- [x] Memory tab redesign: 6 plikow collapsible (brain, playbook, vault_map, active_context, audit, sessions) (sesja 41)
+- [x] Mini-formularze w memory tab: "Dodaj instrukcje" (playbook) + "Dodaj lokacje" (vault_map) (sesja 41)
+- [x] Settings: sekcja "Role Agentow" z lista rol + Role Creator (RoleEditorModal) (sesja 41)
+- [x] Role Creator: pelny formularz (nazwa, emoji, archetyp, opis, zasady, personality, skills, foldery, temp, permissions) (sesja 41)
+- [x] Build: 7.0MB, wersja 1.0.9 (sesja 41)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
@@ -358,40 +372,25 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 > **PLAN_v2.md** zastapil stary PLAN.md (ktory zostal zbyt pomieszany sesjami/sprintami).
 > Nowy plan: CZESC 1 (zrobione ~170 checkboxow) + CZESC 2 (do v1.0 ~95 checkboxow) + CZESC 3 (post v1.0)
 
-- Postep: **~207/300 checkboxow (~69%)** - prawie 70%!
+- Postep: **~220/300 checkboxow (~73%)**
 - Wersja: 1.0.9
 - **Kluczowy wniosek (sesja 28):** Kod gotowy w ~90%. Problem jest w PROMPTACH.
-- **Kluczowy wniosek (sesja 33-34):** Embedding system KOMPLETNY — 0 re-embed, batch, czysta konsola, 4 miejsca uzycia.
-- **Sesja 35:** AGORA zaimplementowana — wspólna baza wiedzy agentów z pełnym UI.
-- **Sesja 36:** 2.2 MCP Tool Descriptions ZROBIONE — 20 narzedzi z pelną dokumentacją, system prompt przepisany.
-- **Sesja 37:** 2.3 PromptBuilder — modularny system promptu z Prompt Inspector i tool filtering.
-- **Sesja 38:** 4 bug fixy + 7 usprawnień promptu (edytowalne sekcje, L1 pointer, zasady adaptacyjne).
-- **Sesja 39:** 2.4 Oczko ZROBIONE — agent widzi aktywną notatkę (tytuł + frontmatter + treść), toggle 👁️ w toolbarze.
 - **Sesja 40:** 2.5 Prompt Transparency ZROBIONE — TokenTracker, SubAgentBlock, toggles, Backstage MCP redesign.
-
-### Nastepny: 2.1 Stabilizacja — bugi ZROBIONE, daily use
-- [x] Bug: agent update todo renderuje nowy widget zamiast aktualizowac istniejacy ✅
-- [x] Bug: wczytanie starej sesji crashuje chat, artefakty niedostepne ✅
-- [x] Bug: agenci ponawiaja tool call po odmowie uprawnien przez usera ✅
-- [ ] Daily use: minimum 3 dni codziennego uzywania bez krytycznych bledow
-
-### Nastepny: 2.2 Opisy MCP Tools — ZROBIONE ✅ (sesja 36)
-- [x] 19/19 narzedzi przepisanych (+ 1 weryfikacja do zrobienia w daily use)
-- [x] System prompt Agent.js przepisany (local + cloud)
-- [x] ToolCallDisplay.js: 3 nowe pozycje Agory
+- **Sesja 41:** 2.6 Part 1 ZROBIONE — Archetyp→Rola system, RoleLoader, Role Creator w Settings, Memory tab redesign.
 
 ### Kolejnosc do v1.0 (z PLAN_v2.md):
-1. ~~2.1 Stabilizacja — 3 bugi~~ ✅ ZROBIONE
-2. ~~2.2 Opisy MCP Tools~~ ✅ ZROBIONE (sesja 36)
-3. ~~2.3 System Prompt~~ ✅ ZROBIONE (sesja 37-38)
-4. ~~2.4 Oczko~~ ✅ ZROBIONE (sesja 39)
-5. ~~2.5 Prompt Transparency~~ ✅ ZROBIONE (sesja 40) — TokenTracker, SubAgentBlock, toggles, Backstage
-6. 2.6 Personalizacja Agenta — najwazniejszy gap
-7. 2.7 MasterRunner + 2.8 Skille v2
-8. 2.9 Pamiec fix + 2.10 UX Chatu + 2.11 Warstwa Wizualna
-9. 2.12-2.13 Inline + Sidebar fixy
-10. 2.14 Dokumentacja + Onboarding
-11. 2.15 Release v1.0
+1. ~~2.1 Stabilizacja~~ ✅
+2. ~~2.2 Opisy MCP Tools~~ ✅ (sesja 36)
+3. ~~2.3 System Prompt~~ ✅ (sesja 37-38)
+4. ~~2.4 Oczko~~ ✅ (sesja 39)
+5. ~~2.5 Prompt Transparency~~ ✅ (sesja 40)
+6. ~~2.6 Personalizacja Part 1~~ ✅ (sesja 41) — Archetyp→Rola, RoleLoader, Role Creator, Memory tab
+7. **2.6 Part 2: Access Control** — focus folders enforcement, permission denial loop, vault visibility
+8. 2.7 MasterRunner + 2.8 Skille v2
+9. 2.9 Pamiec fix + 2.10 UX Chatu + 2.11 Warstwa Wizualna
+10. 2.12-2.13 Inline + Sidebar fixy
+11. 2.14 Dokumentacja + Onboarding
+12. 2.15 Release v1.0
 
 ## Wazne sciezki
 

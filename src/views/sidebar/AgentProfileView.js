@@ -1,10 +1,11 @@
 /**
  * AgentProfileView - Inline agent profile/creator in the sidebar.
- * Adapted from AgentProfileModal.js for sidebar navigation.
  * Tabs: Profil, Uprawnienia, Umiejętności, Pamięć, Statystyki.
+ *
+ * Sesja 41: Archetype → Role flow, Memory tab redesign (6 files, collapsible, forms).
  */
 import { Setting, MarkdownRenderer, Notice } from 'obsidian';
-import { getArchetypeList, ARCHETYPE_DEFAULTS } from '../../agents/archetypes/index.js';
+import { getArchetypeList } from '../../agents/archetypes/Archetypes.js';
 import { PermissionSystem, PERMISSION_TYPES } from '../../core/PermissionSystem.js';
 import { DEFAULT_PERMISSIONS } from '../../agents/Agent.js';
 import { HiddenFileEditorModal } from '../AgentProfileModal.js';
@@ -40,10 +41,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
     const formData = agent ? {
         name: agent.name,
         emoji: agent.emoji,
-        archetype: agent.archetype || '',
+        archetype: agent.archetype || 'specialist',
+        role: agent.role || '',
         personality: agent.personality || '',
         temperature: agent.temperature,
-        role: agent.role || 'specialist',
         focus_folders: [...(agent.focusFolders || [])],
         model: agent.model || '',
         skills: [...(agent.skills || [])],
@@ -55,10 +56,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
     } : {
         name: '',
         emoji: '🤖',
-        archetype: 'human_vibe',
+        archetype: 'specialist',
+        role: '',
         personality: '',
         temperature: 0.7,
-        role: 'specialist',
         focus_folders: [],
         model: '',
         skills: [],
@@ -136,6 +137,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         }
     }
 
+    // ─── PROFILE TAB (sesja 41: Archetype → Role flow) ───
+
     function renderProfileTab(el) {
         new Setting(el)
             .setName('Nazwa')
@@ -155,37 +158,94 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 text.inputEl.style.width = '60px';
             });
 
+        // ── ARCHETYPE (broad class) ──
         const archetypes = getArchetypeList();
         new Setting(el)
             .setName('Archetyp')
-            .setDesc('Bazowy szablon osobowości')
+            .setDesc('Typ agenta — filozofia pracy')
             .addDropdown(dropdown => {
-                dropdown.addOption('', '— Bez archetypu —');
                 for (const arch of archetypes) {
                     dropdown.addOption(arch.id, `${arch.emoji} ${arch.name}`);
                 }
-                dropdown.setValue(formData.archetype || '');
+                dropdown.setValue(formData.archetype || 'specialist');
                 dropdown.onChange(async (value) => {
                     formData.archetype = value;
-                    if (value && ARCHETYPE_DEFAULTS[value] && isCreateMode) {
-                        const defaults = await ARCHETYPE_DEFAULTS[value]();
-                        if (!formData.personality) formData.personality = defaults.personality || '';
-                        formData.temperature = defaults.temperature ?? 0.7;
-                        formData.permissions = { ...DEFAULT_PERMISSIONS, ...(defaults.default_permissions || {}) };
-                        renderActiveTab();
-                    }
+                    // Archetyp NIE zmienia temperature/permissions — tylko Rola to robi
+                    renderActiveTab();
                 });
             });
 
-        new Setting(el)
-            .setName('Rola')
-            .addDropdown(dropdown => {
-                dropdown.addOption('specialist', 'Specjalista');
-                dropdown.addOption('orchestrator', 'Orchestrator');
-                dropdown.addOption('meta_agent', 'Meta-agent');
-                dropdown.setValue(formData.role);
-                dropdown.onChange(v => formData.role = v);
-            });
+        // ── ROLE (specific specialization) ──
+        const roleLoader = agentManager.roleLoader;
+        if (roleLoader) {
+            const allRoles = roleLoader.getRoleList();
+            const suggestedRoles = roleLoader.getRoleList(formData.archetype);
+            const otherRoles = allRoles.filter(r => r.archetype !== formData.archetype);
+
+            new Setting(el)
+                .setName('Rola')
+                .setDesc('Specjalizacja agenta — nadaje konkrety')
+                .addDropdown(dropdown => {
+                    dropdown.addOption('', '— Bez roli (custom) —');
+
+                    // Suggested roles for this archetype first
+                    if (suggestedRoles.length > 0) {
+                        for (const role of suggestedRoles) {
+                            dropdown.addOption(role.id, `${role.emoji} ${role.name}`);
+                        }
+                    }
+
+                    // Other roles (from different archetypes)
+                    if (otherRoles.length > 0) {
+                        for (const role of otherRoles) {
+                            dropdown.addOption(role.id, `${role.emoji} ${role.name} (${role.archetype})`);
+                        }
+                    }
+
+                    dropdown.setValue(formData.role || '');
+                    dropdown.onChange(async (value) => {
+                        formData.role = value || null;
+
+                        if (!value) {
+                            // "Brak" = kasacja — czyść wszystko do domyślnych
+                            formData.personality = '';
+                            formData.temperature = 0.7;
+                            formData.permissions = { ...DEFAULT_PERMISSIONS, mcp: true };
+                            formData.skills = [];
+                            formData.focus_folders = [];
+                            formData.emoji = '🤖';
+                            renderActiveTab();
+                            return;
+                        }
+
+                        // Rola ZAWSZE nadpisuje dane
+                        const roleData = roleLoader.getRole(value);
+                        if (roleData) {
+                            if (roleData.personality_template) {
+                                formData.personality = roleData.personality_template.replace(/\{name\}/g, formData.name || 'Agent');
+                            }
+                            if (roleData.temperature !== undefined) formData.temperature = roleData.temperature;
+                            if (roleData.default_permissions) {
+                                formData.permissions = { ...DEFAULT_PERMISSIONS, ...(roleData.default_permissions || {}) };
+                            }
+                            if (roleData.recommended_skills?.length > 0) {
+                                formData.skills = [...roleData.recommended_skills];
+                            } else {
+                                formData.skills = [];
+                            }
+                            if (roleData.focus_folders?.length > 0) {
+                                formData.focus_folders = [...roleData.focus_folders];
+                            } else {
+                                formData.focus_folders = [];
+                            }
+                            if (roleData.emoji) {
+                                formData.emoji = roleData.emoji;
+                            }
+                            renderActiveTab();
+                        }
+                    });
+                });
+        }
 
         new Setting(el)
             .setName('Osobowość')
@@ -227,6 +287,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 .setValue(formData.model || '')
                 .onChange(v => formData.model = v || null));
     }
+
+    // ─── PERMISSIONS TAB ───
 
     function renderPermissionsTab(el) {
         // Presets
@@ -275,6 +337,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 });
         }
     }
+
+    // ─── SKILLS TAB ───
 
     function renderSkillsTab(el) {
         el.createEl('h4', { text: '⚡ Skille' });
@@ -328,7 +392,6 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                         if (v) {
                             formData.enabled_tools = [];
                         } else {
-                            // When disabling "all", enable ALL tools explicitly so user can deselect
                             formData.enabled_tools = [...allTools];
                         }
                         renderActiveTab();
@@ -358,14 +421,12 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                             .setValue(allInGroup)
                             .onChange(v => {
                                 if (v) {
-                                    // Enable all tools in this group
                                     for (const tool of tools) {
                                         if (!formData.enabled_tools.includes(tool)) {
                                             formData.enabled_tools.push(tool);
                                         }
                                     }
                                 } else {
-                                    // Disable all tools in this group
                                     formData.enabled_tools = formData.enabled_tools.filter(t => !tools.includes(t));
                                 }
                                 renderActiveTab();
@@ -394,7 +455,6 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                     dropdown.onChange(v => formData.minion = v || null);
                 });
 
-            // Cross-reference link to minion detail
             if (formData.minion) {
                 const minionLink = el.createDiv({ cls: 'sidebar-cross-link' });
                 const link = minionLink.createSpan({
@@ -417,6 +477,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         }
     }
 
+    // ─── MEMORY TAB (sesja 41: full redesign — 6 files, collapsible, forms) ───
+
     async function renderMemoryTab(el) {
         if (!agent) return;
 
@@ -426,35 +488,89 @@ export function renderAgentProfileView(container, plugin, nav, params) {
             return;
         }
 
-        // Brain.md preview
-        el.createEl('h4', { text: '🧠 Brain' });
+        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const adapter = plugin.app.vault.adapter;
 
-        try {
-            const brain = await memory.getBrain();
-            if (brain) {
-                const brainPreview = el.createDiv({ cls: 'agent-profile-preview' });
-                await MarkdownRenderer.render(plugin.app, brain, brainPreview, '', plugin);
-            } else {
-                el.createEl('p', { text: 'Brain jest pusty.', cls: 'agent-profile-empty' });
-            }
-        } catch {
-            el.createEl('p', { text: 'Nie można odczytać brain.md', cls: 'agent-profile-empty' });
-        }
-
-        // Open brain button
-        const brainBtn = el.createEl('button', { text: '📝 Otwórz brain.md', cls: 'agent-profile-action-btn' });
-        brainBtn.addEventListener('click', async () => {
-            const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            const brainPath = `.pkm-assistant/agents/${safeName}/memory/brain.md`;
-            await openHiddenFile(plugin.app, brainPath, `brain_${safeName}.md`);
+        // ── 1. BRAIN.MD ──
+        await renderCollapsibleFile(el, {
+            icon: '🧠',
+            title: 'Brain (pamięć długoterminowa)',
+            path: `.pkm-assistant/agents/${safeName}/memory/brain.md`,
+            adapter,
+            defaultOpen: false,
+            showEditBtn: true,
         });
 
-        // Sessions list
-        el.createEl('h4', { text: '💬 Sesje', cls: 'agent-profile-section-header' });
+        // ── 2. PLAYBOOK ──
+        const playbookPath = `.pkm-assistant/agents/${safeName}/playbook.md`;
+        await renderCollapsibleFile(el, {
+            icon: '📖',
+            title: 'Playbook (procedury)',
+            path: playbookPath,
+            adapter,
+            defaultOpen: false,
+            showEditBtn: false,
+            customForm: (formContainer) => {
+                renderAddForm(formContainer, {
+                    label: 'Dodaj niestandardowe instrukcje',
+                    placeholder: 'np. Zawsze pytaj o deadline przed tworzeniem planu...',
+                    onAdd: async (text) => {
+                        await appendToFile(adapter, playbookPath,
+                            `\n\n## Instrukcje niestandardowe\n- ${text}`);
+                        renderActiveTab();
+                    }
+                });
+            }
+        });
+
+        // ── 3. VAULT MAP ──
+        const vaultMapPath = `.pkm-assistant/agents/${safeName}/vault_map.md`;
+        await renderCollapsibleFile(el, {
+            icon: '🗺️',
+            title: 'Mapa Vaulta (strefy dostępu)',
+            path: vaultMapPath,
+            adapter,
+            defaultOpen: false,
+            showEditBtn: false,
+            customForm: (formContainer) => {
+                renderAddForm(formContainer, {
+                    label: 'Dodaj niestandardową lokację',
+                    placeholder: 'np. Health/ — notatki o zdrowiu i ćwiczeniach',
+                    onAdd: async (text) => {
+                        await appendToFile(adapter, vaultMapPath,
+                            `\n\n## Lokacje niestandardowe\n- ${text}`);
+                        renderActiveTab();
+                    }
+                });
+            }
+        });
+
+        // ── 4. ACTIVE CONTEXT ──
+        await renderCollapsibleFile(el, {
+            icon: '📋',
+            title: 'Aktywny kontekst',
+            path: `.pkm-assistant/agents/${safeName}/memory/active_context.md`,
+            adapter,
+            defaultOpen: false,
+            showEditBtn: true,
+        });
+
+        // ── 5. AUDIT LOG ──
+        await renderCollapsibleFile(el, {
+            icon: '📝',
+            title: 'Audit log (historia zmian)',
+            path: `.pkm-assistant/agents/${safeName}/memory/audit.log`,
+            adapter,
+            defaultOpen: false,
+            showEditBtn: true,
+        });
+
+        // ── 6. SESSIONS ──
+        el.createEl('h4', { text: '💬 Sesje', cls: 'agent-profile-section-header memory-section-header' });
 
         try {
-            const sessionsPath = memory.paths.sessions;
-            const listed = await plugin.app.vault.adapter.list(sessionsPath);
+            const sessionsPath = `.pkm-assistant/agents/${safeName}/sessions`;
+            const listed = await adapter.list(sessionsPath);
             const sessionFiles = (listed?.files || []).filter(f => f.endsWith('.md')).reverse();
 
             if (sessionFiles.length === 0) {
@@ -465,6 +581,16 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                     const fileName = filePath.split('/').pop().replace('.md', '');
                     const item = sessionList.createDiv({ cls: 'agent-profile-session-item' });
                     item.createSpan({ text: `💬 ${fileName}` });
+
+                    // Copy path button
+                    const copyBtn = item.createSpan({ text: '📋', cls: 'memory-copy-btn' });
+                    copyBtn.title = 'Kopiuj ścieżkę';
+                    copyBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(filePath);
+                        new Notice('Skopiowano ścieżkę');
+                    });
+
                     item.addEventListener('click', async () => {
                         await openHiddenFile(plugin.app, filePath, `sesja_${fileName}.md`);
                     });
@@ -477,6 +603,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
             el.createEl('p', { text: 'Nie można odczytać sesji.', cls: 'agent-profile-empty' });
         }
     }
+
+    // ─── STATS TAB ───
 
     async function renderStatsTab(el) {
         if (!agent) return;
@@ -507,6 +635,12 @@ export function renderAgentProfileView(container, plugin, nav, params) {
             statEl.createDiv({ cls: 'agent-profile-stat-label', text: item.label });
         }
 
+        // Archetype + Role info
+        el.createEl('h4', { text: '🏷️ Typ', cls: 'agent-profile-section-header' });
+        const typeInfo = el.createDiv({ cls: 'agent-profile-type-info' });
+        typeInfo.createEl('p', { text: `Archetyp: ${agent.archetype || '—'}` });
+        typeInfo.createEl('p', { text: `Rola: ${agent.role || '— (custom)'}` });
+
         // MCP tools list (respects enabledTools)
         if (stats.hasMcp) {
             el.createEl('h4', { text: '🔧 Narzędzia MCP', cls: 'agent-profile-section-header' });
@@ -531,6 +665,85 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         }
     }
 
+    // ========== HELPERS: Collapsible file sections ==========
+
+    /**
+     * Render a collapsible file section with markdown preview.
+     */
+    async function renderCollapsibleFile(parentEl, opts) {
+        const { icon, title, path, adapter, defaultOpen, showEditBtn, customForm } = opts;
+
+        // Header (clickable to toggle)
+        const headerEl = parentEl.createDiv({ cls: 'memory-section-header' });
+        const arrow = headerEl.createSpan({ text: defaultOpen ? '▼' : '▶', cls: 'memory-section-arrow' });
+        headerEl.createSpan({ text: ` ${icon} ${title}` });
+
+        // Content container (collapsed by default)
+        const contentEl = parentEl.createDiv({ cls: 'memory-section-content' });
+        if (!defaultOpen) contentEl.style.display = 'none';
+
+        // Check if file exists
+        let fileContent = '';
+        let fileExists = false;
+        try {
+            fileExists = await adapter.exists(path);
+            if (fileExists) {
+                fileContent = await adapter.read(path);
+            }
+        } catch { /* ignore */ }
+
+        if (!fileExists) {
+            contentEl.createEl('p', { text: 'Plik nie istnieje.', cls: 'agent-profile-empty' });
+        } else if (!fileContent.trim()) {
+            contentEl.createEl('p', { text: 'Plik jest pusty.', cls: 'agent-profile-empty' });
+        } else {
+            // Render markdown sections (split by ## headers)
+            const sections = splitMarkdownSections(fileContent);
+            for (const section of sections) {
+                if (section.heading) {
+                    const sectionHeader = contentEl.createDiv({ cls: 'memory-subsection-header' });
+                    sectionHeader.createSpan({ text: `▸ ${section.heading}`, cls: 'memory-subsection-title' });
+
+                    const sectionBody = contentEl.createDiv({ cls: 'memory-subsection-body' });
+                    await MarkdownRenderer.render(plugin.app, section.content, sectionBody, '', plugin);
+
+                    // Toggle subsection
+                    sectionHeader.addEventListener('click', () => {
+                        const isHidden = sectionBody.style.display === 'none';
+                        sectionBody.style.display = isHidden ? 'block' : 'none';
+                        sectionHeader.querySelector('.memory-subsection-title').textContent =
+                            `${isHidden ? '▾' : '▸'} ${section.heading}`;
+                    });
+                } else {
+                    // Content without heading (intro)
+                    const previewEl = contentEl.createDiv({ cls: 'agent-profile-preview' });
+                    await MarkdownRenderer.render(plugin.app, section.content, previewEl, '', plugin);
+                }
+            }
+        }
+
+        // Edit button
+        if (showEditBtn && fileExists) {
+            const editBtn = contentEl.createEl('button', { text: '📝 Edytuj', cls: 'agent-profile-action-btn memory-edit-btn' });
+            editBtn.addEventListener('click', async () => {
+                await openHiddenFile(plugin.app, path, path.split('/').pop());
+            });
+        }
+
+        // Custom form (e.g. "Add custom instructions")
+        if (customForm) {
+            customForm(contentEl);
+        }
+
+        // Toggle collapse
+        headerEl.addEventListener('click', () => {
+            const isHidden = contentEl.style.display === 'none';
+            contentEl.style.display = isHidden ? 'block' : 'none';
+            arrow.textContent = isHidden ? '▼' : '▶';
+        });
+        headerEl.style.cursor = 'pointer';
+    }
+
     // ========== SAVE LOGIC ==========
 
     async function handleSave() {
@@ -548,10 +761,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 await agentManager.createAgent({
                     name: formData.name,
                     emoji: formData.emoji,
-                    archetype: formData.archetype || undefined,
+                    archetype: formData.archetype || 'specialist',
+                    role: formData.role || undefined,
                     personality: formData.personality,
                     temperature: formData.temperature,
-                    role: formData.role,
                     focus_folders: formData.focus_folders,
                     model: formData.model || undefined,
                     skills: formData.skills,
@@ -570,9 +783,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
             try {
                 const updates = {
                     emoji: formData.emoji,
+                    archetype: formData.archetype,
+                    role: formData.role,
                     personality: formData.personality,
                     temperature: formData.temperature,
-                    role: formData.role,
                     focus_folders: formData.focus_folders,
                     model: formData.model || null,
                     skills: formData.skills,
@@ -624,8 +838,8 @@ export function renderAgentProfileView(container, plugin, nav, params) {
 
         const btnRow = el.createDiv({ cls: 'sidebar-delete-actions' });
 
-        const cancelBtn = btnRow.createEl('button', { text: 'Anuluj' });
-        cancelBtn.addEventListener('click', () => renderActiveTab());
+        const cancelDeleteBtn = btnRow.createEl('button', { text: 'Anuluj' });
+        cancelDeleteBtn.addEventListener('click', () => renderActiveTab());
 
         const confirmBtn = btnRow.createEl('button', { text: 'Usuń', cls: 'mod-warning' });
         confirmBtn.addEventListener('click', async () => {
@@ -638,6 +852,89 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 new Notice('Błąd usuwania: ' + error.message);
             }
         });
+    }
+}
+
+// ========== UTILITY FUNCTIONS ==========
+
+/**
+ * Split markdown content into sections by ## headers.
+ */
+function splitMarkdownSections(content) {
+    const lines = content.split('\n');
+    const sections = [];
+    let currentHeading = null;
+    let currentLines = [];
+
+    for (const line of lines) {
+        const headingMatch = line.match(/^##\s+(.+)/);
+        if (headingMatch) {
+            if (currentLines.length > 0 || currentHeading) {
+                sections.push({
+                    heading: currentHeading,
+                    content: currentLines.join('\n').trim()
+                });
+            }
+            currentHeading = headingMatch[1];
+            currentLines = [];
+        } else {
+            currentLines.push(line);
+        }
+    }
+
+    // Last section
+    if (currentLines.length > 0 || currentHeading) {
+        sections.push({
+            heading: currentHeading,
+            content: currentLines.join('\n').trim()
+        });
+    }
+
+    return sections.filter(s => s.content || s.heading);
+}
+
+/**
+ * Render a mini form for adding content to a file.
+ */
+function renderAddForm(container, opts) {
+    const { label, placeholder, onAdd } = opts;
+    const formEl = container.createDiv({ cls: 'memory-add-form' });
+    formEl.createEl('label', { text: label, cls: 'memory-add-label' });
+
+    const row = formEl.createDiv({ cls: 'memory-add-row' });
+    const input = row.createEl('input', { type: 'text', placeholder, cls: 'memory-add-input' });
+    const btn = row.createEl('button', { text: '+', cls: 'memory-add-btn' });
+
+    btn.addEventListener('click', async () => {
+        const value = input.value.trim();
+        if (!value) return;
+        await onAdd(value);
+        input.value = '';
+        new Notice('Dodano!');
+    });
+
+    // Enter key support
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            btn.click();
+        }
+    });
+}
+
+/**
+ * Append text to a file (create if not exists).
+ */
+async function appendToFile(adapter, path, text) {
+    try {
+        const exists = await adapter.exists(path);
+        if (exists) {
+            const current = await adapter.read(path);
+            await adapter.write(path, current + text);
+        } else {
+            await adapter.write(path, text.trim());
+        }
+    } catch (e) {
+        new Notice('Błąd zapisu: ' + e.message);
     }
 }
 

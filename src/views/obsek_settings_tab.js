@@ -2,6 +2,7 @@ import { SmartPluginSettingsTab } from "obsidian-smart-env";
 import { Setting, Notice, Modal } from "obsidian";
 import { maskKey } from '../utils/keySanitizer.js';
 import { log } from '../utils/Logger.js';
+import { getArchetypeList } from '../agents/archetypes/Archetypes.js';
 
 /**
  * ObsekSettingsTab - Settings for PKM Assistant
@@ -493,7 +494,12 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             });
 
         // ══════════════════════════════════════════
-        // SEKCJA 5: SYSTEM PROMPT
+        // SEKCJA 5: ROLE AGENTÓW
+        // ══════════════════════════════════════════
+        await this._renderRoleCreator(container);
+
+        // ══════════════════════════════════════════
+        // SEKCJA 6: SYSTEM PROMPT
         // ══════════════════════════════════════════
         container.createEl('h2', { text: '📋 System Prompt' });
         container.createEl('p', {
@@ -548,7 +554,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         this._renderPromptInspector(inspectorEl);
 
         // ══════════════════════════════════════════
-        // SEKCJA 6: INFORMACJE
+        // SEKCJA 7: INFORMACJE
         // ══════════════════════════════════════════
         container.createEl('h2', { text: 'ℹ️ Informacje' });
 
@@ -573,6 +579,105 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             cls: 'setting-item-description'
         });
         linkEl.style.color = 'var(--link-color)';
+    }
+
+    // ══════════════════════════════════════════
+    // ROLE CREATOR
+    // ══════════════════════════════════════════
+
+    /**
+     * Render Role Creator section — list custom roles, add/edit/delete.
+     */
+    async _renderRoleCreator(container) {
+        container.createEl('h2', { text: '🎭 Role Agentów' });
+        container.createEl('p', {
+            text: 'Role definiują specjalizację agenta: osobowość, zachowanie, narzędzia, uprawnienia. Wbudowane role można edytować tworząc kopię.',
+            cls: 'setting-item-description'
+        });
+
+        const roleLoader = this.plugin?.agentManager?.roleLoader;
+        if (!roleLoader) {
+            container.createEl('p', {
+                text: 'Role Loader niedostępny — poczekaj na załadowanie Agent Managera.',
+                cls: 'setting-item-description'
+            });
+            return;
+        }
+
+        const allRoles = roleLoader.getAllRoles();
+        const builtIn = allRoles.filter(r => r.isBuiltIn);
+        const custom = allRoles.filter(r => !r.isBuiltIn);
+
+        // ── Built-in roles (read-only list) ──
+        if (builtIn.length > 0) {
+            container.createEl('h3', { text: 'Wbudowane role' });
+            for (const role of builtIn) {
+                const s = new Setting(container)
+                    .setName(`${role.emoji} ${role.name}`)
+                    .setDesc(role.description || '');
+                s.addExtraButton(btn => {
+                    btn.setIcon('copy')
+                        .setTooltip('Stwórz kopię do edycji')
+                        .onClick(() => {
+                            const copy = {
+                                ...role,
+                                id: '',
+                                name: `${role.name} (kopia)`,
+                                isBuiltIn: false,
+                                filePath: null,
+                            };
+                            new RoleEditorModal(this.app, roleLoader, copy, () => this.display()).open();
+                        });
+                });
+            }
+        }
+
+        // ── Custom roles (editable) ──
+        container.createEl('h3', { text: 'Własne role' });
+
+        if (custom.length === 0) {
+            container.createEl('p', {
+                text: 'Brak własnych ról. Kliknij "Nowa rola" żeby stworzyć pierwszą.',
+                cls: 'setting-item-description',
+                attr: { style: 'font-style:italic;' }
+            });
+        } else {
+            for (const role of custom) {
+                const s = new Setting(container)
+                    .setName(`${role.emoji} ${role.name}`)
+                    .setDesc(role.description || '');
+                s.addExtraButton(btn => {
+                    btn.setIcon('pencil')
+                        .setTooltip('Edytuj')
+                        .onClick(() => {
+                            new RoleEditorModal(this.app, roleLoader, { ...role }, () => this.display()).open();
+                        });
+                });
+                s.addExtraButton(btn => {
+                    btn.setIcon('trash')
+                        .setTooltip('Usuń')
+                        .onClick(async () => {
+                            const ok = await roleLoader.deleteRole(role.id);
+                            if (ok) {
+                                new Notice(`Usunięto rolę: ${role.name}`);
+                                this.display();
+                            } else {
+                                new Notice('Nie udało się usunąć roli.');
+                            }
+                        });
+                });
+            }
+        }
+
+        // Add button
+        new Setting(container)
+            .addButton(btn => {
+                btn.setButtonText('+ Nowa rola')
+                    .setCta()
+                    .onClick(() => {
+                        new RoleEditorModal(this.app, roleLoader, null, () => this.display()).open();
+                    });
+            });
     }
 
     // ══════════════════════════════════════════
@@ -838,5 +943,222 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
 
     async save_settings() {
         await this.env.smart_settings?.save();
+    }
+}
+
+// ══════════════════════════════════════════
+// RoleEditorModal — formularz tworzenia/edycji roli
+// ══════════════════════════════════════════
+
+class RoleEditorModal extends Modal {
+    /**
+     * @param {import('obsidian').App} app
+     * @param {import('../agents/roles/RoleLoader.js').RoleLoader} roleLoader
+     * @param {Object|null} roleData - Existing role data to edit, or null for new
+     * @param {Function} onSaved - Callback after save
+     */
+    constructor(app, roleLoader, roleData, onSaved) {
+        super(app);
+        this.roleLoader = roleLoader;
+        this.onSaved = onSaved;
+        this.isNew = !roleData?.id;
+
+        // Form state
+        this.form = {
+            id: roleData?.id || '',
+            name: roleData?.name || '',
+            emoji: roleData?.emoji || '🤖',
+            archetype: roleData?.archetype || 'specialist',
+            description: roleData?.description || '',
+            behavior_rules: (roleData?.behavior_rules || []).join('\n'),
+            personality_template: roleData?.personality_template || '',
+            recommended_skills: (roleData?.recommended_skills || []).join(', '),
+            focus_folders: (roleData?.focus_folders || []).join(', '),
+            temperature: roleData?.temperature ?? 0.6,
+            // permissions
+            perm_read: roleData?.default_permissions?.read_notes ?? true,
+            perm_edit: roleData?.default_permissions?.edit_notes ?? false,
+            perm_create: roleData?.default_permissions?.create_files ?? false,
+            perm_mcp: roleData?.default_permissions?.mcp ?? true,
+        };
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('role-editor-modal');
+
+        contentEl.createEl('h2', {
+            text: this.isNew ? 'Nowa rola agenta' : `Edytuj: ${this.form.emoji} ${this.form.name}`
+        });
+
+        const archetypes = getArchetypeList();
+
+        // ── Name + Emoji row ──
+        const nameRow = contentEl.createDiv({ attr: { style: 'display:flex; gap:10px; margin-bottom:12px;' } });
+
+        const emojiDiv = nameRow.createDiv({ attr: { style: 'flex:0 0 60px;' } });
+        emojiDiv.createEl('label', { text: 'Emoji', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
+        const emojiInput = emojiDiv.createEl('input', { type: 'text', value: this.form.emoji });
+        emojiInput.style.cssText = 'width:50px; text-align:center; font-size:1.2em; padding:4px;';
+        emojiInput.addEventListener('input', () => { this.form.emoji = emojiInput.value; });
+
+        const nameDiv = nameRow.createDiv({ attr: { style: 'flex:1;' } });
+        nameDiv.createEl('label', { text: 'Nazwa roli', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
+        const nameInput = nameDiv.createEl('input', { type: 'text', value: this.form.name, placeholder: 'np. Pisarz Kreatywny' });
+        nameInput.style.cssText = 'width:100%; padding:6px 8px;';
+        nameInput.addEventListener('input', () => { this.form.name = nameInput.value; });
+
+        // ── Archetype dropdown ──
+        new Setting(contentEl)
+            .setName('Archetyp')
+            .setDesc('Klasa agenta — definiuje filozofię pracy')
+            .addDropdown(dd => {
+                for (const a of archetypes) {
+                    dd.addOption(a.id, `${a.emoji} ${a.name}`);
+                }
+                dd.setValue(this.form.archetype);
+                dd.onChange(v => { this.form.archetype = v; });
+            });
+
+        // ── Description ──
+        new Setting(contentEl)
+            .setName('Opis')
+            .setDesc('Krótki opis roli (widoczny w listach)');
+
+        const descInput = contentEl.createEl('textarea', {
+            placeholder: 'Czym się zajmuje ta rola...',
+        });
+        descInput.value = this.form.description;
+        descInput.style.cssText = 'width:100%; min-height:60px; font-size:0.85em; padding:8px; resize:vertical; margin-bottom:12px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
+        descInput.addEventListener('input', () => { this.form.description = descInput.value; });
+
+        // ── Behavior rules ──
+        new Setting(contentEl)
+            .setName('Zasady zachowania')
+            .setDesc('Każda linia = osobna zasada wstrzykiwana do promptu');
+
+        const rulesInput = contentEl.createEl('textarea', {
+            placeholder: 'Zasada 1\nZasada 2\nZasada 3',
+        });
+        rulesInput.value = this.form.behavior_rules;
+        rulesInput.style.cssText = 'width:100%; min-height:100px; font-size:0.85em; padding:8px; resize:vertical; margin-bottom:12px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary); font-family:var(--font-monospace);';
+        rulesInput.addEventListener('input', () => { this.form.behavior_rules = rulesInput.value; });
+
+        // ── Personality template ──
+        new Setting(contentEl)
+            .setName('Szablon osobowości')
+            .setDesc('Tekst wstrzykiwany jako personality. Użyj {name} jako placeholder na imię agenta.');
+
+        const personInput = contentEl.createEl('textarea', {
+            placeholder: 'Jestem {name} — ekspert od...\n\nMoje podejście:\n- ...',
+        });
+        personInput.value = this.form.personality_template;
+        personInput.style.cssText = 'width:100%; min-height:120px; font-size:0.85em; padding:8px; resize:vertical; margin-bottom:12px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
+        personInput.addEventListener('input', () => { this.form.personality_template = personInput.value; });
+
+        // ── Skills + Folders row ──
+        const extraRow = contentEl.createDiv({ attr: { style: 'display:flex; gap:12px; margin-bottom:12px;' } });
+
+        const skillsDiv = extraRow.createDiv({ attr: { style: 'flex:1;' } });
+        skillsDiv.createEl('label', { text: 'Sugerowane skille', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
+        const skillsInput = skillsDiv.createEl('input', { type: 'text', placeholder: 'daily-review, vault-organization', value: this.form.recommended_skills });
+        skillsInput.style.cssText = 'width:100%; padding:6px 8px; font-size:0.85em;';
+        skillsInput.addEventListener('input', () => { this.form.recommended_skills = skillsInput.value; });
+
+        const foldersDiv = extraRow.createDiv({ attr: { style: 'flex:1;' } });
+        foldersDiv.createEl('label', { text: 'Focus foldery', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
+        const foldersInput = foldersDiv.createEl('input', { type: 'text', placeholder: 'Templates/**, Projects/**', value: this.form.focus_folders });
+        foldersInput.style.cssText = 'width:100%; padding:6px 8px; font-size:0.85em;';
+        foldersInput.addEventListener('input', () => { this.form.focus_folders = foldersInput.value; });
+
+        // ── Temperature ──
+        new Setting(contentEl)
+            .setName('Temperatura')
+            .setDesc(`Domyślna temperatura: ${this.form.temperature}`)
+            .addSlider(slider => {
+                slider.setLimits(0, 1, 0.1)
+                    .setValue(this.form.temperature)
+                    .setDynamicTooltip()
+                    .onChange(v => { this.form.temperature = v; });
+            });
+
+        // ── Permissions ──
+        contentEl.createEl('h3', { text: 'Domyślne uprawnienia', attr: { style: 'margin-top:8px;' } });
+
+        new Setting(contentEl)
+            .setName('Czytanie notatek')
+            .addToggle(t => t.setValue(this.form.perm_read).onChange(v => { this.form.perm_read = v; }));
+
+        new Setting(contentEl)
+            .setName('Edycja notatek')
+            .addToggle(t => t.setValue(this.form.perm_edit).onChange(v => { this.form.perm_edit = v; }));
+
+        new Setting(contentEl)
+            .setName('Tworzenie plików')
+            .addToggle(t => t.setValue(this.form.perm_create).onChange(v => { this.form.perm_create = v; }));
+
+        new Setting(contentEl)
+            .setName('Narzędzia MCP')
+            .addToggle(t => t.setValue(this.form.perm_mcp).onChange(v => { this.form.perm_mcp = v; }));
+
+        // ── Save / Cancel buttons ──
+        const btnRow = contentEl.createDiv({ attr: { style: 'display:flex; justify-content:flex-end; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--background-modifier-border);' } });
+
+        const cancelBtn = btnRow.createEl('button', { text: 'Anuluj' });
+        cancelBtn.addEventListener('click', () => this.close());
+
+        const saveBtn = btnRow.createEl('button', { text: 'Zapisz rolę', cls: 'mod-cta' });
+        saveBtn.addEventListener('click', () => this._save());
+    }
+
+    async _save() {
+        // Validate
+        if (!this.form.name.trim()) {
+            new Notice('Nazwa roli jest wymagana.');
+            return;
+        }
+
+        const roleData = {
+            id: this.form.id || undefined, // RoleLoader will slugify name if empty
+            name: this.form.name.trim(),
+            emoji: this.form.emoji.trim() || '🤖',
+            archetype: this.form.archetype,
+            description: this.form.description.trim(),
+            behavior_rules: this.form.behavior_rules
+                .split('\n')
+                .map(l => l.trim())
+                .filter(l => l.length > 0),
+            personality_template: this.form.personality_template.trim(),
+            recommended_skills: this.form.recommended_skills
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0),
+            focus_folders: this.form.focus_folders
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0),
+            temperature: this.form.temperature,
+            default_permissions: {
+                read_notes: this.form.perm_read,
+                edit_notes: this.form.perm_edit,
+                create_files: this.form.perm_create,
+                mcp: this.form.perm_mcp,
+            },
+        };
+
+        try {
+            await this.roleLoader.saveRole(roleData);
+            new Notice(`Zapisano rolę: ${roleData.emoji} ${roleData.name}`);
+            this.close();
+            this.onSaved?.();
+        } catch (e) {
+            console.error('[RoleEditor] Save error:', e);
+            new Notice(`Błąd zapisu roli: ${e.message}`);
+        }
+    }
+
+    onClose() {
+        this.contentEl.empty();
     }
 }

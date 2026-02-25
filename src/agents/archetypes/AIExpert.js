@@ -10,8 +10,8 @@ import { Agent } from '../Agent.js';
 export const AI_EXPERT_CONFIG = {
     name: 'Ezra',
     emoji: '🧠',
-    archetype: 'ai_expert',
-    role: 'meta_agent',
+    archetype: 'meta_agent',
+    role: 'ai-expert',
     temperature: 0.5,
     personality: `Jestem Ezra - ekspert od AI, promptingu i automatyzacji.
 

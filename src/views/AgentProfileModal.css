@@ -257,3 +257,177 @@
     padding: 8px 16px;
     border-radius: 6px;
 }
+
+/* ═══════════════════════════════════════════
+   Memory Tab — collapsible file sections (sesja 41)
+   ═══════════════════════════════════════════ */
+
+.memory-section-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    margin: 4px 0 2px 0;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--text-normal);
+    background: var(--background-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.memory-section-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+.memory-section-arrow {
+    font-size: 0.7em;
+    width: 12px;
+    display: inline-block;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.memory-section-content {
+    padding: 4px 8px 8px 8px;
+    margin-bottom: 4px;
+}
+
+/* Subsections (## headings within a file) */
+.memory-subsection-header {
+    padding: 4px 8px;
+    margin: 4px 0 0 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.memory-subsection-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+.memory-subsection-title {
+    font-size: 0.85em;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.memory-subsection-body {
+    padding: 4px 8px 4px 16px;
+    font-size: 0.85em;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.memory-subsection-body p {
+    margin: 2px 0;
+}
+
+.memory-subsection-body ul {
+    margin: 2px 0;
+    padding-left: 16px;
+}
+
+.memory-edit-btn {
+    margin-top: 6px;
+    font-size: 0.8em;
+    padding: 4px 10px;
+}
+
+/* Add form (playbook instructions, vault_map locations) */
+.memory-add-form {
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+}
+
+.memory-add-label {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.memory-add-row {
+    display: flex;
+    gap: 6px;
+}
+
+.memory-add-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+}
+
+.memory-add-btn {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.9em;
+    min-width: 30px;
+}
+
+/* Copy button in session list */
+.memory-copy-btn {
+    float: right;
+    cursor: pointer;
+    opacity: 0.4;
+    font-size: 0.8em;
+    transition: opacity 0.15s ease;
+}
+
+.memory-copy-btn:hover {
+    opacity: 1;
+}
+
+/* Session item with copy btn */
+.agent-profile-session-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ═══════════════════════════════════════════
+   Role Editor Modal (Settings → Role Creator)
+   ═══════════════════════════════════════════ */
+
+.role-editor-modal {
+    padding: 20px;
+    min-width: 550px;
+    max-width: 750px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.role-editor-modal h2 {
+    margin: 0 0 16px 0;
+}
+
+.role-editor-modal h3 {
+    font-size: 0.95em;
+    margin: 12px 0 6px 0;
+}
+
+.role-editor-modal .setting-item {
+    border-top: none;
+    padding: 6px 0;
+}
+
+.role-editor-modal textarea {
+    font-family: inherit;
+    color: var(--text-normal);
+}
+
+.role-editor-modal input[type="text"] {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}

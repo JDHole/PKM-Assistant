@@ -1,6 +1,10 @@
 /**
  * Base Agent class
- * Represents an AI assistant with unique personality and capabilities
+ * Represents an AI assistant with unique personality and capabilities.
+ *
+ * Hierarchy: Archetype (broad class) → Role (specific specialization) → Personality (custom text)
+ * - Archetype: orchestrator, specialist, assistant, meta_agent
+ * - Role: jaskier-mentor, vault-builder, creative-writer, daily-assistant, custom...
  */
 
 import { PromptBuilder } from '../core/PromptBuilder.js';
@@ -28,11 +32,11 @@ export class Agent {
      * @param {Object} config - Agent configuration
      * @param {string} config.name - Agent name
      * @param {string} config.emoji - Agent emoji icon
-     * @param {string} [config.archetype] - Base archetype name
+     * @param {string} [config.archetype] - Broad class: orchestrator, specialist, assistant, meta_agent
+     * @param {string} [config.role] - Specific role id (e.g. 'creative-writer', 'vault-builder')
      * @param {string} [config.personality] - Personality description / system prompt extension
      * @param {string} [config.model] - Preferred AI model
      * @param {number} [config.temperature] - Model temperature (0-2)
-     * @param {string} [config.role] - Agent role (orchestrator, specialist, meta_agent)
      * @param {string[]} [config.focus_folders] - Folders this agent focuses on
      * @param {Object} [config.default_permissions] - Permission overrides
      * @param {string[]} [config.enabled_tools] - Which MCP tools are enabled (empty = all)
@@ -42,11 +46,16 @@ export class Agent {
     constructor(config) {
         this.name = config.name;
         this.emoji = config.emoji || '🤖';
-        this.archetype = config.archetype || null;
+
+        // Archetype = broad class (orchestrator, specialist, assistant, meta_agent)
+        this.archetype = config.archetype || 'specialist';
+
+        // Role = specific specialization (e.g. 'vault-builder', 'creative-writer')
+        this.role = config.role || null;
+
         this.personality = config.personality || '';
         this.model = config.model || null; // null = use default from settings
         this.temperature = config.temperature ?? 0.7;
-        this.role = config.role || 'specialist';
         this.focusFolders = config.focus_folders || [];
         this.permissions = { ...DEFAULT_PERMISSIONS, ...(config.default_permissions || {}) };
         this.skills = config.skills || [];
@@ -139,15 +148,15 @@ export class Agent {
 
     /**
      * Get display info for UI
-     * @returns {Object} { name, emoji, role, isBuiltIn }
+     * @returns {Object} { name, emoji, archetype, role, isBuiltIn }
      */
     getDisplayInfo() {
         return {
             name: this.name,
             emoji: this.emoji,
+            archetype: this.archetype,
             role: this.role,
-            isBuiltIn: this.isBuiltIn,
-            archetype: this.archetype
+            isBuiltIn: this.isBuiltIn
         };
     }
 
@@ -161,11 +170,11 @@ export class Agent {
             emoji: this.emoji
         };
 
-        if (this.archetype) data.archetype = this.archetype;
+        if (this.archetype && this.archetype !== 'specialist') data.archetype = this.archetype;
+        if (this.role) data.role = this.role;
         if (this.personality) data.personality = this.personality;
         if (this.model) data.model = this.model;
         if (this.temperature !== 0.7) data.temperature = this.temperature;
-        if (this.role !== 'specialist') data.role = this.role;
         if (this.focusFolders.length > 0) data.focus_folders = this.focusFolders;
         if (this.skills.length > 0) data.skills = this.skills;
         if (this.enabledTools.length > 0) data.enabled_tools = this.enabledTools;
@@ -203,7 +212,7 @@ export class Agent {
     update(updates) {
         const allowedFields = [
             'name', 'emoji', 'personality', 'model',
-            'temperature', 'role', 'focus_folders', 'default_permissions', 'skills',
+            'temperature', 'archetype', 'role', 'focus_folders', 'default_permissions', 'skills',
             'enabled_tools', 'minion', 'minion_enabled', 'models'
         ];
 
