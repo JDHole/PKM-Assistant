@@ -1,14 +1,23 @@
 /**
- * PromptBuilder — modularny system budowania system promptu agenta.
- * Buduje prompt z nazwanych sekcji, każda z liczbą tokenów i możliwością wł/wył.
+ * PromptBuilder v2.1 — modularny system budowania system promptu agenta.
  *
- * Dwa tryby:
- * - Z minionem: lean prompt (~3000-4000 tok) + minion do ciężkiej roboty
- * - Bez miniona: fat prompt (~5000-8000 tok) ze szczegółowymi instrukcjami
+ * Struktura v2.1:
+ * A: KIM JESTEM (identity, archetype, role, personality)
+ * B: GDZIE PRACUJĘ (environment, folders, permissions + agent_rules)
+ * ★ TRYB PRACY (work_mode — na górze, przed drzewem!)
+ * C: JAK PRACUJĘ (decision_tree, minion_guide, master_guide, rules)
+ * D: KONTEKST (memory, agora, oczko, artifacts, RAG, minion auto-prep)
+ *
+ * Filozofia:
+ * - Opis → Instrukcja (nie mów czym jest, mów co robić)
+ * - 1 info = 1 miejsce (zero duplikacji)
+ * - JSON tools mówią same za siebie (nie powtarzamy opisów narzędzi)
+ * - Wszystko edytowalne: agent override > global override > factory default
  */
 
 import { getTokenCount } from '../utils/tokenCounter.js';
 import { getArchetype } from '../agents/archetypes/Archetypes.js';
+import { getModeInfo } from './WorkMode.js';
 
 // ═══════════════════════════════════════════
 // TOOL GROUPS — do filtrowania per-agent
@@ -25,7 +34,185 @@ export const TOOL_GROUPS = {
 };
 
 // ═══════════════════════════════════════════
-// PROMPT BUILDER
+// TRYB PRACY — sekcja promptu
+// ═══════════════════════════════════════════
+
+const MODE_BEHAVIORS = {
+    rozmowa: [
+        'Rozmawiasz z użytkownikiem. Słuchaj, odpowiadaj, doradzaj.',
+        'NIE proponuj zmian w plikach — nie masz do nich dostępu.',
+        'NIE oferuj "mogę to zrobić" gdy dotyczy edycji vault.',
+        'Możesz przeszukiwać pamięć (memory_search) żeby odwołać się do wcześniejszych rozmów.',
+        'Jeśli temat wymaga pracy z plikami, zaproponuj zmianę trybu na Planowanie lub Praca.',
+    ],
+    planowanie: [
+        'Analizujesz i planujesz. Czytaj, przeszukuj, projektuj — NIE edytuj plików.',
+        'Twórz plany (plan_action), listy zadań (chat_todo), analizuj vault.',
+        'Jeśli potrzebujesz napisać lub edytować pliki, zaproponuj zmianę trybu na Praca.',
+        'Odpowiadaj wyczerpująco — dawaj konkretne rekomendacje i szczegółowe plany.',
+    ],
+    praca: [
+        'Masz pełny dostęp do wszystkich narzędzi. Wykonuj zadania, edytuj pliki, deleguj.',
+        'Działaj konkretnie — nie pytaj o pozwolenie na każdy krok, wykonuj zadanie.',
+        'Korzystaj z minionów do zbierania kontekstu i ciężkiej pracy.',
+    ],
+    kreatywny: [
+        'Tworzysz nowe treści — notatki, dokumenty, artykuły, pomysły.',
+        'Pisz, generuj, buduj — NIE kasuj istniejących plików.',
+        'Skup się na jakości treści, nie na zarządzaniu vault.',
+        'Jeśli potrzebujesz kasować lub reorganizować, zaproponuj zmianę trybu na Praca.',
+    ],
+};
+
+/**
+ * Build a TRYB PRACY section for the system prompt.
+ * Exported for backward compat (used by chat_view fallback in "Pokaż prompt").
+ * In v2.1, normally called internally by PromptBuilder.build() via context.workMode.
+ * @param {string} mode - Current work mode id
+ * @returns {string} Markdown section
+ */
+export function buildModePromptSection(mode) {
+    const info = getModeInfo(mode);
+    if (!info) return '';
+    const behaviors = MODE_BEHAVIORS[mode] || [];
+    const lines = [
+        `## TRYB PRACY: ${info.icon} ${info.label}`,
+        info.description,
+        '',
+        ...behaviors.map((b, i) => `${i + 1}. ${b}`),
+    ];
+    return lines.join('\n');
+}
+
+// ═══════════════════════════════════════════
+// FACTORY DEFAULTS — edytowalne przez usera
+// ═══════════════════════════════════════════
+
+export const FACTORY_DEFAULTS = {
+    environment: `## Środowisko
+Pracujesz wewnątrz Obsidian.md — edytora notatek Markdown.
+Vault to kolekcja plików .md w folderach.
+Folder .pkm-assistant/ — konfiguracja systemu (agenci, skille, pamięć, artefakty).
+Folder .obsidian/ — konfiguracja Obsidiana — NIE RUSZAJ bez prośby usera.`,
+
+    /** @deprecated v2 — use DECISION_TREE_DEFAULTS + DECISION_TREE_GROUPS instead */
+    decision_tree: '',
+
+    minion_guide: `## Minion — Twój asystent do ciężkiej roboty
+Twój minion to "{minion_name}" — tańszy model z dostępem do narzędzi.
+Minion NIE podejmuje decyzji. Ty decydujesz, minion zbiera dane i wykonuje robotę.
+Szczegóły delegacji w drzewie decyzyjnym powyżej.
+
+Formuluj zadania KONKRETNIE:
+✅ minion_task(task:"Przeszukaj folder Projekty/ pod kątem deadline'ów. Podsumuj.")
+✅ minion_task(task:"Przeczytaj notatkę X i wyciągnij wszystkie daty", minion:"reader")
+❌ minion_task(task:"Sprawdź coś w vaultcie")
+
+Jeśli masz kilku minionów, wybierz po nazwie: minion_task(task:"...", minion:"nazwa")
+
+Playbook: .pkm-assistant/agents/{agent_safe_name}/playbook.md
+Vault map: .pkm-assistant/agents/{agent_safe_name}/vault_map.md`,
+
+    master_guide: `## Master — delegacja W GÓRĘ
+Mocniejszy model AI do głębokiej analizy i ekspertyzy.
+Master NIE szuka sam — dostarczaj mu bogaty kontekst (sam lub przez miniona).
+
+3 TRYBY:
+1. DOMYŚLNY: master_task(task:"pytanie") → minion zbiera kontekst → Master analizuje
+2. Z INSTRUKCJAMI: master_task(task:"pytanie", minion_instructions:"Szukaj w X...") → minion szuka wg wskazówek → Master analizuje
+3. BEZ MINIONA: master_task(task:"pytanie", context:"dane od Ciebie/miniona", skip_minion:true) → Master dostaje gotowy kontekst
+
+WAŻNE: Nie przerabiaj odpowiedzi Mastera — przekaż ją userowi bez zmian.`,
+
+    rules: `## Zasady
+1. Odpowiadaj po polsku (chyba że user pisze w innym języku).
+2. NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników. NIE mów "zaraz sprawdzę" — po prostu wywołaj tool.
+3. Gdy user mówi "zapamiętaj" → OD RAZU memory_update, nie pytaj o potwierdzenie.
+
+ANTY-LOOPING — bądź konkretny i efektywny:
+4. JEDNO wyszukiwanie na temat. Nie znalazł → powiedz userowi, NIE szukaj tego samego innymi słowami.
+5. Błąd narzędzia → przeczytaj komunikat, napraw, spróbuj RAZ. Nie ponawiaj w nieskończoność.
+6. Nie wywołuj tego samego narzędzia z tymi samymi argumentami dwa razy.
+7. Gdy nie masz pewności → ZAPYTAJ usera.
+8. Max 3 tool calle na krok. Potem podsumuj i zapytaj o dalsze.
+
+KOMENTARZ INLINE:
+9. Wiadomość zaczyna się od "KOMENTARZ INLINE" → vault_read → znajdź fragment → vault_write mode:"replace". Odpowiedz krótko.`,
+};
+
+// ═══════════════════════════════════════════
+// DRZEWO DECYZYJNE v2 — granularne instrukcje
+// ═══════════════════════════════════════════
+
+/**
+ * Decision tree group definitions.
+ * requiredGroups: group is visible if ANY of these TOOL_GROUPS is enabled.
+ */
+export const DECISION_TREE_GROUPS = {
+    delegacja:   { label: 'DELEGACJA',     order: 0, requiredGroups: ['delegation'] },
+    szukanie:    { label: 'SZUKANIE',      order: 1, requiredGroups: ['vault', 'memory'] },
+    pamiec:      { label: 'PAMIĘĆ',        order: 2, requiredGroups: ['memory'] },
+    pliki:       { label: 'PLIKI',         order: 3, requiredGroups: ['vault'] },
+    artefakty:   { label: 'ARTEFAKTY',     order: 4, requiredGroups: ['artifacts'] },
+    skille:      { label: 'SKILLE',        order: 5, requiredGroups: ['skills'] },
+    komunikacja: { label: 'KOMUNIKACJA',   order: 6, requiredGroups: ['communication'] },
+    agora:       { label: 'AGORA',         order: 7, requiredGroups: ['agora'] },
+};
+
+/**
+ * Individual instruction defaults.
+ * id: stable key for overrides
+ * group: which DECISION_TREE_GROUPS section this belongs to
+ * tool: specific tool required (null = always visible when group is visible)
+ * text: default instruction text (user-editable)
+ */
+export const DECISION_TREE_DEFAULTS = [
+    // ─── DELEGACJA (na górze — ogólna info o pomocnikach) ───
+    { id: 'deleg_minion_info', group: 'delegacja', tool: 'minion_task',
+      text: 'Masz miniona — tańszy model do zbierania danych i ciężkiej roboty. Formułuj zadania PRECYZYJNIE!' },
+    { id: 'deleg_master_info', group: 'delegacja', tool: 'master_task',
+      text: 'Masz mastera — mocniejszy model do analizy i ekspertyzy. Zawsze dostarczaj bogaty kontekst (sam lub przez miniona)!' },
+
+    // ─── SZUKANIE ───
+    { id: 'search_vault_read',    group: 'szukanie', tool: 'vault_read',    text: 'User pyta o konkretną notatkę → vault_read(path)' },
+    { id: 'search_vault_search',  group: 'szukanie', tool: 'vault_search',  text: 'Szybkie pytanie o vault → vault_search(query)' },
+    { id: 'search_memory',        group: 'szukanie', tool: 'memory_search', text: 'User pyta "co o mnie wiesz?" / "pamiętasz?" → memory_search(query)' },
+    { id: 'search_minion_multi',  group: 'szukanie', tool: 'minion_task',   text: 'Przeszukanie WIELU źródeł/notatek naraz → minion_task' },
+    { id: 'search_minion_reader', group: 'szukanie', tool: 'minion_task',   text: 'Wyciągnięcie info z długiego tekstu → minion_task' },
+
+    // ─── PAMIĘĆ ───
+    { id: 'mem_update', group: 'pamiec', tool: 'memory_update', text: '"zapamiętaj że..." → memory_update(operation:"update_brain", content: fakt w 3. osobie)' },
+    { id: 'mem_delete', group: 'pamiec', tool: 'memory_update', text: '"zapomnij o..." → memory_update(operation:"delete_from_brain")' },
+    { id: 'mem_read',   group: 'pamiec', tool: 'memory_update', text: '"co o mnie wiesz?" → memory_update(operation:"read_brain")' },
+    { id: 'mem_dedup',  group: 'pamiec', tool: null,            text: 'Sprawdź brain PRZED dodaniem — nie dodawaj duplikatów!' },
+
+    // ─── PLIKI ───
+    { id: 'file_create',  group: 'pliki', tool: 'vault_write',  text: 'Tworzenie nowej notatki → vault_write(mode:"create")' },
+    { id: 'file_append',  group: 'pliki', tool: 'vault_write',  text: 'Dopisanie do istniejącej → vault_write(mode:"append") — PREFERUJ nad replace' },
+    { id: 'file_replace', group: 'pliki', tool: 'vault_write',  text: 'Edycja fragmentu → vault_write(mode:"replace") — PYTAJ usera najpierw!' },
+    { id: 'file_delete',  group: 'pliki', tool: 'vault_delete', text: 'Usunięcie → vault_delete — ZAWSZE pytaj usera!' },
+
+    // ─── ARTEFAKTY ───
+    { id: 'art_todo',        group: 'artefakty', tool: 'chat_todo',   text: 'Prosta lista/checklist → chat_todo(create)' },
+    { id: 'art_plan',        group: 'artefakty', tool: 'plan_action', text: 'Złożone zadanie z etapami → plan_action(create) — CZEKAJ na zatwierdzenie!' },
+    { id: 'art_existing',    group: 'artefakty', tool: null,          text: 'User odnosi się do istniejącego → użyj jego ID, nie twórz nowego' },
+    { id: 'art_master_plan', group: 'artefakty', tool: 'master_task', text: 'Bardzo złożony plan wymagający ekspertyzy → master_task' },
+
+    // ─── SKILLE ───
+    { id: 'skill_use',   group: 'skille', tool: 'skill_execute', text: 'User chce procedurę (przegląd, organizacja) → skill_execute(name)' },
+    { id: 'skill_known', group: 'skille', tool: null,            text: 'Znasz swoje skille — nie musisz wołać skill_list' },
+
+    // ─── KOMUNIKACJA ───
+    { id: 'comms_delegate', group: 'komunikacja', tool: 'agent_delegate', text: 'Temat poza kompetencjami → agent_delegate (ZAWSZE podaj context_summary!)' },
+    { id: 'comms_message',  group: 'komunikacja', tool: 'agent_message',  text: 'Poinformuj innego agenta → agent_message' },
+
+    // ─── AGORA ───
+    { id: 'agora_update',    group: 'agora', tool: 'agora_update', text: 'Na KOŃCU ważnych sesji → agora_update(section:"activity", summary:"co zrobiłeś")' },
+    { id: 'agora_knowledge', group: 'agora', tool: null,           text: 'Nowe fakty o userze → zapytaj "Czy zaktualizować Bazę Wiedzy?"' },
+];
+
+// ═══════════════════════════════════════════
+// PROMPT BUILDER v2.1
 // ═══════════════════════════════════════════
 
 export class PromptBuilder {
@@ -47,6 +234,9 @@ export class PromptBuilder {
      * @param {Array<{name:string, description:string, category:string}>} [context.skills]
      * @param {string[]} [context.agentList] - other agent names
      * @param {number} [context.unreadInbox] - unread messages count
+     * @param {string} [context.workMode] - current work mode id
+     * @param {Object} [context.artifacts] - {todos: Map, plans: Map} from chat session
+     * @param {Object} [context.promptDefaults] - global prompt overrides from settings
      * @returns {PromptBuilder} this (for chaining)
      */
     build(agent, context) {
@@ -56,15 +246,15 @@ export class PromptBuilder {
         const hasMinion = !!(context.hasMinion);
         const hasMaster = !!(context.hasMaster);
         const enabledGroups = this._getEnabledGroups(agent);
+        const overrides = agent.promptOverrides || {};
+        const globalDefaults = context.promptDefaults || {};
 
-        // ── CORE (always present, stable prefix for cache) ──
-        // Kolejność: tożsamość → archetyp → pkm/env → rola → osobowość
+        // ══ BLOK A: KIM JESTEM ══
 
         this._add('identity', 'Tożsamość', this._buildIdentity(agent, context), {
-            required: true, category: 'core'
+            category: 'core'
         });
 
-        // Archetyp: pod tożsamością — filozofia pracy
         const archetypeBehavior = this._buildArchetypeBehavior(agent, context);
         if (archetypeBehavior) {
             this._add('archetype_behavior', 'Archetyp', archetypeBehavior, {
@@ -72,15 +262,6 @@ export class PromptBuilder {
             });
         }
 
-        this._add('pkm_system', 'PKM Assistant', this._buildPkmSystem(agent, context), {
-            required: true, category: 'core'
-        });
-
-        this._add('environment', 'Środowisko', this._buildEnvironment(agent, context), {
-            required: true, category: 'core'
-        });
-
-        // Rola: nad osobowością — konkrety specjalizacji
         const roleBehavior = this._buildRoleBehavior(agent, context);
         if (roleBehavior) {
             this._add('role_behavior', 'Rola', roleBehavior, {
@@ -94,89 +275,60 @@ export class PromptBuilder {
             });
         }
 
-        // ── CAPABILITIES ──
+        // ══ BLOK B: GDZIE PRACUJĘ ══
 
-        this._add('capabilities', 'Możliwości', this._buildCapabilities(agent, context, enabledGroups), {
-            category: 'capabilities'
-        });
-
-        if (hasMCP) {
-            this._add('tools_overview', 'Narzędzia (przegląd)',
-                this._buildToolsOverview(agent, context, enabledGroups), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (context.skills && context.skills.length > 0) {
-            this._add('skills_list', 'Skille agenta',
-                this._buildSkillsList(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (hasMinion) {
-            this._add('minion_guide', 'Minion',
-                this._buildMinionGuide(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (hasMaster) {
-            this._add('master_guide', 'Master',
-                this._buildMasterGuide(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (hasMCP && enabledGroups.communication) {
-            this._add('comms_overview', 'Komunikacja',
-                this._buildCommsOverview(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (hasMCP && enabledGroups.artifacts) {
-            this._add('artifacts_overview', 'Artefakty',
-                this._buildArtifactsOverview(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        if (hasMCP && enabledGroups.agora) {
-            this._add('agora_overview', 'Agora',
-                this._buildAgoraOverview(agent, context), {
-                    category: 'capabilities'
-                });
-        }
-
-        // ── RULES ──
+        this._add('environment', 'Środowisko',
+            this._resolveSection('environment', overrides, globalDefaults, this._buildEnvironment(agent, context)),
+            { category: 'core' }
+        );
 
         this._add('permissions', 'Uprawnienia',
             this._buildPermissions(agent, context, enabledGroups), {
                 category: 'rules'
             });
 
-        this._add('rules', 'Zasady', this._buildRules(agent, context, enabledGroups), {
-            required: true, category: 'rules'
-        });
+        // ══ ★ TRYB PRACY (na górze, przed drzewem!) ══
 
-        // ── PLAYBOOK ──
+        if (context.workMode) {
+            const modeSection = buildModePromptSection(context.workMode);
+            if (modeSection) {
+                this._add('work_mode', 'Tryb pracy', modeSection, {
+                    category: 'behavior'
+                });
+            }
+        }
+
+        // ══ BLOK C: JAK PRACUJĘ ══
+
+        if (hasMCP) {
+            // Decision tree: resolution per-instruction (not per-section)
+            this._add('decision_tree', 'Drzewo decyzyjne',
+                this._buildDecisionTree(agent, context, enabledGroups),
+                { category: 'behavior' }
+            );
+        }
 
         if (hasMinion) {
-            this._add('playbook_pointer', 'Playbook',
-                this._buildPlaybookPointer(agent, context), {
-                    category: 'capabilities'
-                });
+            this._add('minion_guide', 'Minion',
+                this._resolveSection('minion_guide', overrides, globalDefaults,
+                    this._buildMinionGuide(agent, context)),
+                { category: 'behavior' }
+            );
         }
 
-        // ── FAT PROMPT FALLBACK (no minion) ──
-
-        if (!hasMinion && hasMCP) {
-            this._add('tools_detailed', 'Narzędzia (szczegóły)',
-                this._buildToolsDetailed(agent, context, enabledGroups), {
-                    category: 'capabilities'
-                });
+        if (hasMaster) {
+            this._add('master_guide', 'Master',
+                this._resolveSection('master_guide', overrides, globalDefaults,
+                    this._buildMasterGuide(agent, context)),
+                { category: 'behavior' }
+            );
         }
+
+        this._add('rules', 'Zasady',
+            this._resolveSection('rules', overrides, globalDefaults,
+                this._buildRules(agent, context, enabledGroups)),
+            { category: 'rules' }
+        );
 
         return this;
     }
@@ -186,7 +338,7 @@ export class PromptBuilder {
     // ═══════════════════════════════════════════
 
     /**
-     * Add a dynamic section (memory, RAG, artifacts, inbox — injected per message by chat_view)
+     * Add a dynamic section (memory, RAG, oczko, inbox — injected per message by chat_view)
      */
     addDynamicSection(key, label, content, category = 'context') {
         if (!content || !content.trim()) return;
@@ -208,6 +360,9 @@ export class PromptBuilder {
      * @returns {Array<{key, label, tokens, enabled, required, category}>}
      */
     getSections() {
+        const EDITABLE_KEYS = new Set([
+            'environment', 'decision_tree', 'minion_guide', 'master_guide', 'rules'
+        ]);
         return [...this.sections.entries()].map(([key, data]) => ({
             key,
             label: data.label,
@@ -215,6 +370,8 @@ export class PromptBuilder {
             enabled: data.enabled,
             required: data.required,
             category: data.category,
+            content: data.content,
+            editable: EDITABLE_KEYS.has(key),
         }));
     }
 
@@ -236,7 +393,7 @@ export class PromptBuilder {
     toggleSection(key, enabled) {
         const section = this.sections.get(key);
         if (!section) return false;
-        if (section.required && !enabled) return false; // can't disable required
+        if (section.required && !enabled) return false;
         section.enabled = enabled;
         return true;
     }
@@ -269,6 +426,20 @@ export class PromptBuilder {
     }
 
     /**
+     * Resolve section content: agent override > global override > factory default.
+     * @param {string} key - Section key (e.g. 'decision_tree')
+     * @param {Object} agentOverrides - agent.promptOverrides
+     * @param {Object} globalDefaults - obsek.promptDefaults from settings
+     * @param {string} factoryContent - built-in default from code
+     * @returns {string}
+     */
+    _resolveSection(key, agentOverrides, globalDefaults, factoryContent) {
+        if (agentOverrides[key]) return agentOverrides[key];
+        if (globalDefaults[key]) return globalDefaults[key];
+        return factoryContent;
+    }
+
+    /**
      * Which tool groups does this agent have enabled?
      * Empty/undefined enabledTools = ALL groups.
      */
@@ -276,8 +447,9 @@ export class PromptBuilder {
         const enabled = agent.enabledTools;
         const result = {};
         for (const [group, tools] of Object.entries(TOOL_GROUPS)) {
+            if (group === 'memory' && agent.permissions?.memory === false) continue;
             if (!enabled || enabled.length === 0) {
-                result[group] = tools; // all
+                result[group] = tools;
             } else {
                 const active = tools.filter(t => enabled.includes(t));
                 if (active.length > 0) result[group] = active;
@@ -286,412 +458,14 @@ export class PromptBuilder {
         return result;
     }
 
-    // ─── identity ───
+    // ─── A1: identity ───
 
     _buildIdentity(agent, ctx) {
         return `Jesteś ${agent.name} ${agent.emoji}
 Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Date().toLocaleDateString('pl-PL')}`;
     }
 
-    // ─── pkm_system ───
-
-    _buildPkmSystem(agent, ctx) {
-        if (ctx.pkmSystemPrompt) {
-            return ctx.pkmSystemPrompt;
-        }
-        return `## PKM Assistant — Twój ekosystem
-Jesteś częścią PKM Assistant — pluginu do Obsidiana, który daje użytkownikowi zespół AI agentów z pamięcią, narzędziami i współpracą.
-
-Elementy systemu:
-- **Agenci** — AI z osobowością, pamięcią i skillami. Każdy agent ma swoją rolę i specjalizację.
-- **Narzędzia MCP** — zestaw narzędzi do pracy z vaultem, pamięcią, skillami i komunikacją. Wywołujesz je bezpośrednio.
-- **Pamięć** — brain.md (fakty o userze), sesje rozmów, podsumowania L1/L2. Pamiętasz między sesjami.
-- **Skille** — gotowe procedury do uruchomienia (np. daily-review, vault-organization). Znasz swoje skille.
-- **Embedding** — indeks semantyczny vaulta. Szukanie po znaczeniu, nie tylko po słowach.
-- **Artefakty** — interaktywne checklisty (TODO) i plany (PLAN) widoczne w oknie chatu.
-- **Agora** — wspólna baza wiedzy WSZYSTKICH agentów. Profil usera, mapa vaulta, tablica aktywności, projekty.
-- **Komunikator** — wymiana wiadomości między agentami. Delegacja zadań innemu agentowi.
-- **Minion** — Twój asystent. Tańszy model z narzędziami do ciężkiej roboty (szukanie, analiza wielu plików).
-- **Master** — mocniejszy model AI. Deleguj W GÓRĘ gdy zadanie Cię przerasta.
-- **Playbook** — Twoja encyklopedia z procedurami, instrukcjami i wiedzą domenową.
-
-Sesja = jedna rozmowa z userem. Na końcu ważnych sesji → zapisz ustalenia do Agory (agora_update).`;
-    }
-
-    // ─── environment ───
-
-    _buildEnvironment(agent, ctx) {
-        const lines = [];
-        if (ctx.environmentPrompt) {
-            lines.push(ctx.environmentPrompt);
-        } else {
-            lines.push('## Środowisko');
-            lines.push('Pracujesz wewnątrz Obsidian.md — edytora notatek w formacie Markdown.');
-            lines.push('Vault (skarbiec) to kolekcja plików .md zorganizowanych w foldery.');
-            lines.push('Notatki mogą zawierać: frontmatter YAML (metadane), [[wikilinki]], #tagi, tabele, listy, bloki kodu.');
-            lines.push('Folder .pkm-assistant/ — konfiguracja agentów, skille, miniony, pamięć, artefakty, agora.');
-            lines.push('Folder .obsidian/ — konfiguracja Obsidiana (pluginy, motywy, skróty) — NIE RUSZAJ bez prośby usera.');
-        }
-
-        // Focus folders — agent's main work areas
-        if (agent.focusFolders && agent.focusFolders.length > 0) {
-            lines.push('');
-            lines.push('Twoje główne obszary w vaultcie:');
-            for (const folder of agent.focusFolders) {
-                lines.push(`- ${folder}`);
-            }
-        }
-
-        return lines.join('\n');
-    }
-
-    // ─── capabilities ───
-
-    _buildCapabilities(agent, ctx, enabledGroups) {
-        const lines = ['## Twoje możliwości'];
-
-        const hasMCP = agent.permissions?.mcp;
-        if (hasMCP) {
-            const toolCount = Object.values(enabledGroups).reduce((sum, tools) => sum + tools.length, 0);
-            lines.push(`- 🔧 Narzędzia MCP: ${toolCount} narzędzi do pracy z vaultem, pamięcią, skillami i komunikacją`);
-        }
-
-        lines.push(`- 🧠 Pamięć długoterminowa: brain.md z faktami o userze + historia sesji + podsumowania`);
-
-        if (ctx.skills && ctx.skills.length > 0) {
-            const skillNames = ctx.skills.map(s => s.name).join(', ');
-            lines.push(`- 🎯 Skille: ${ctx.skills.length} procedur (${skillNames})`);
-        }
-
-        if (ctx.hasMinion) {
-            const minionName = agent.minion || 'minion';
-            lines.push(`- 🤖 Minion: ${minionName} — Twój asystent do ciężkiej roboty (szukanie, analiza wielu plików)`);
-        }
-
-        if (ctx.hasMaster) {
-            lines.push(`- 👑 Master — mocniejszy model do trudnych zadań analitycznych`);
-        }
-
-        if (enabledGroups.communication) {
-            const otherAgents = ctx.agentList?.filter(a => a !== agent.name) || [];
-            if (otherAgents.length > 0) {
-                lines.push(`- 📡 Komunikator: możesz pisać do ${otherAgents.join(', ')}`);
-            }
-        }
-
-        if (enabledGroups.agora) {
-            lines.push(`- 🏛️ Agora: wspólna baza wiedzy agentów (profil usera, mapa vaulta, projekty)`);
-        }
-
-        if (enabledGroups.artifacts) {
-            lines.push(`- 📋 Artefakty: interaktywne checklisty i plany w chacie`);
-        }
-
-        lines.push(`- 🔍 Embedding: semantic search po vaultcie i pamięci`);
-
-        return lines.join('\n');
-    }
-
-    // ─── tools_overview (lean — with minion) ───
-
-    _buildToolsOverview(agent, ctx, enabledGroups) {
-        const lines = ['## Narzędzia (przegląd)'];
-
-        if (enabledGroups.vault) {
-            const tools = enabledGroups.vault;
-            const parts = [];
-            if (tools.includes('vault_list')) parts.push('vault_list (lista plików)');
-            if (tools.includes('vault_read')) parts.push('vault_read (czytaj notatkę)');
-            if (tools.includes('vault_search')) parts.push('vault_search (szukaj semantycznie)');
-            if (tools.includes('vault_write')) parts.push('vault_write (twórz/edytuj — tryby: create, append, prepend, replace)');
-            if (tools.includes('vault_delete')) parts.push('vault_delete (usuń — ZAWSZE pytaj usera!)');
-            lines.push(`VAULT: ${parts.join(', ')}`);
-        }
-
-        if (enabledGroups.memory) {
-            const tools = enabledGroups.memory;
-            const parts = [];
-            if (tools.includes('memory_search')) parts.push('memory_search (szukaj w pamięci)');
-            if (tools.includes('memory_update')) parts.push('memory_update (zapamiętaj/zapomnij/czytaj brain)');
-            if (tools.includes('memory_status')) parts.push('memory_status (statystyki)');
-            lines.push(`PAMIĘĆ: ${parts.join(', ')}`);
-            lines.push(`  Komendy: "zapamiętaj X" → memory_update(operation:"update_brain"). "co pamiętasz?" → memory_search. "zapomnij X" → memory_update(operation:"delete_from_brain").`);
-        }
-
-        if (enabledGroups.skills) {
-            lines.push(`SKILLE: skill_list (lista dostępnych), skill_execute (uruchom procedurę krok po kroku)`);
-        }
-
-        if (enabledGroups.delegation) {
-            const parts = [];
-            if (enabledGroups.delegation.includes('minion_task')) parts.push('minion_task (deleguj ciężką robotę)');
-            if (enabledGroups.delegation.includes('master_task')) parts.push('master_task (deleguj trudne W GÓRĘ)');
-            if (parts.length > 0) lines.push(`DELEGACJA: ${parts.join(', ')}`);
-        }
-
-        if (enabledGroups.communication) {
-            lines.push(`KOMUNIKATOR: agent_message (wyślij wiadomość), agent_delegate (przekaż rozmowę — user klika przycisk!)`);
-        }
-
-        if (enabledGroups.artifacts) {
-            lines.push(`ARTEFAKTY: chat_todo (interaktywna checklista), plan_action (wieloetapowy plan z krokami)`);
-        }
-
-        if (enabledGroups.agora) {
-            lines.push(`AGORA: agora_read (czytaj wspólną bazę), agora_update (aktualizuj profil/mapę/aktywność), agora_project (projekty współdzielone)`);
-        }
-
-        // Decision tree
-        if (enabledGroups.vault && enabledGroups.memory) {
-            lines.push('');
-            lines.push('Drzewo decyzyjne — gdzie szukać:');
-            lines.push('- W NOTATKACH usera → vault_search');
-            lines.push('- We WŁASNEJ pamięci → memory_search');
-            if (enabledGroups.delegation?.includes('minion_task')) {
-                lines.push('- W WIELU źródłach naraz / analiza wielu plików → minion_task');
-            }
-        }
-
-        return lines.join('\n');
-    }
-
-    // ─── skills_list ───
-
-    _buildSkillsList(agent, ctx) {
-        const lines = ['## Twoje skille (gotowe procedury)'];
-        lines.push('Znasz je — nie musisz wołać skill_list. Aktywuj: skill_execute(skill_name).');
-        lines.push('');
-
-        for (const skill of ctx.skills) {
-            lines.push(`- **${skill.name}**: ${skill.description} [${skill.category || 'ogólne'}]`);
-        }
-
-        lines.push('');
-        lines.push('Nowe skille tworzysz przez: vault_write do .pkm-assistant/skills/{nazwa}/skill.md');
-
-        return lines.join('\n');
-    }
-
-    // ─── minion_guide ───
-
-    _buildMinionGuide(agent, ctx) {
-        const minionName = agent.minion || 'minion';
-        return `## Minion — Twój asystent do ciężkiej roboty
-Twój minion to "${minionName}" — tańszy model z dostępem do narzędzi i playbooka.
-Minion NIE podejmuje decyzji. Ty decydujesz, minion zbiera dane i wykonuje robotę.
-
-DELEGUJ DO MINIONA (minion_task):
-- Szukanie w wielu źródłach naraz (vault + pamięć + agora)
-- Analiza wielu plików (np. "przejrzyj 10 notatek i podsumuj")
-- Zbieranie rozproszonego kontekstu na temat X
-- Przegląd i podsumowanie fragmentów vaulta
-- Ciężkie operacje na wielu plikach
-
-RÓB SAM (bez miniona):
-- Odczyt JEDNEGO pliku (vault_read)
-- Zapis notatki (vault_write)
-- Pamięć (memory_update, memory_search)
-- Uruchomienie skilla (skill_execute)
-- Odpowiedzi na proste pytania
-- Tworzenie artefaktów (chat_todo, plan_action)
-
-Formuluj zadania KONKRETNIE:
-✅ minion_task(task:"Przeszukaj folder Projekty/ i pamięć pod kątem deadline'ów. Podsumuj co znalazłeś.")
-❌ minion_task(task:"Sprawdź coś w vaultcie")`;
-    }
-
-    // ─── master_guide ───
-
-    _buildMasterGuide(agent, ctx) {
-        return `## Master — delegacja W GÓRĘ
-Masz dostęp do mocniejszego modelu AI do trudnych zadań.
-Wywołanie: master_task(task, context?, skip_minion?, minion_instructions?)
-
-3 TRYBY:
-1. DOMYŚLNY: master_task(task:"pytanie") → minion zbiera kontekst → Master odpowiada
-2. Z INSTRUKCJAMI: master_task(task:"pytanie", minion_instructions:"Szukaj w folderze X...") → minion szuka wg wskazówek
-3. BEZ MINIONA: master_task(task:"pytanie", context:"zebrane dane", skip_minion:true) → Ty dostarczasz dane
-
-Kiedy delegować W GÓRĘ:
-- Złożona analiza wymagająca głębokiego rozumowania
-- Zadanie przekraczające Twoje możliwości (np. długi tekst, skomplikowana logika)
-- User prosi o "głębszą analizę" lub "dokładniejsze podejście"
-
-WAŻNE: Nie przerabiaj odpowiedzi Mastera — przekaż ją userowi bez zmian.`;
-    }
-
-    // ─── permissions ───
-
-    _buildPermissions(agent, ctx, enabledGroups) {
-        const lines = ['## Uprawnienia'];
-
-        // Explicit no-tools warning for agents without MCP
-        if (!agent.permissions?.mcp) {
-            lines.push('⛔ NIE MASZ NARZĘDZI. Nie możesz przeszukiwać vaulta, pamięci, ani wykonywać żadnych akcji.');
-            lines.push('Nie wspominaj o narzędziach, nie obiecuj że coś sprawdzisz. Możesz TYLKO rozmawiać.');
-            lines.push('');
-        }
-
-        // What agent CAN do
-        const canDo = [];
-        if (agent.permissions.read_notes) canDo.push('czytać notatki');
-        if (agent.permissions.mcp) canDo.push('używać narzędzi MCP');
-        if (agent.permissions.thinking) canDo.push('extended thinking');
-        if (canDo.length > 0) lines.push(`MOŻESZ: ${canDo.join(', ')}`);
-
-        // What requires approval
-        const needsApproval = [];
-        if (agent.permissions.edit_notes) needsApproval.push('edytować notatki (vault_write)');
-        if (agent.permissions.create_files) needsApproval.push('tworzyć pliki');
-        if (needsApproval.length > 0) lines.push(`WYMAGA ZATWIERDZENIA: ${needsApproval.join(', ')}`);
-
-        // What agent CANNOT do
-        const cantDo = [];
-        if (!agent.permissions.edit_notes) cantDo.push('edytować notatek');
-        if (!agent.permissions.create_files) cantDo.push('tworzyć plików');
-        if (!agent.permissions.delete_files) cantDo.push('usuwać plików');
-        if (!agent.permissions.execute_commands) cantDo.push('wykonywać komend systemowych');
-        if (!agent.permissions.access_outside_vault) cantDo.push('wychodzić poza vault');
-        if (!agent.permissions.mcp) cantDo.push('używać narzędzi MCP');
-        if (cantDo.length > 0) lines.push(`NIE MOŻESZ: ${cantDo.join(', ')}`);
-
-        // Disabled tool groups
-        if (agent.enabledTools && agent.enabledTools.length > 0) {
-            const allTools = Object.values(TOOL_GROUPS).flat();
-            const disabled = allTools.filter(t => !agent.enabledTools.includes(t));
-            if (disabled.length > 0) {
-                lines.push(`WYŁĄCZONE NARZĘDZIA: ${disabled.join(', ')} — nie próbuj ich używać`);
-            }
-        }
-
-        return lines.join('\n');
-    }
-
-    // ─── comms_overview ───
-
-    _buildCommsOverview(agent, ctx) {
-        const lines = ['## Komunikator — między agentami'];
-
-        // Unread inbox notification
-        if (ctx.unreadInbox && ctx.unreadInbox > 0) {
-            const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            lines.push(`📬 MASZ ${ctx.unreadInbox} NIEPRZECZYTANYCH WIADOMOŚCI.`);
-            lines.push(`Odczytaj: vault_read(path:".pkm-assistant/komunikator/inbox_${safeName}.md")`);
-            lines.push(`Na początku rozmowy poinformuj usera: "Masz ${ctx.unreadInbox} wiadomości — chcesz przejrzeć?"`);
-            lines.push('');
-        }
-
-        lines.push('- agent_message(to_agent, subject, content) — wyślij wiadomość asynchroniczną. Agent odczyta ją przy następnej sesji.');
-        lines.push('- agent_delegate(to_agent, reason?, context_summary?) — zaproponuj przekazanie rozmowy. User MUSI kliknąć przycisk!');
-        lines.push('');
-        lines.push('KIEDY agent_message: informujesz, prosisz o pomoc, przekazujesz wyniki.');
-        lines.push('KIEDY agent_delegate: temat poza Twoimi kompetencjami, user prosi o innego agenta.');
-        lines.push('KRYTYCZNE: ZAWSZE podaj context_summary przy agent_delegate — co user chciał, co zrobiłeś, co zostało.');
-        lines.push('PO DELEGACJI: NIE wywołuj dodatkowych narzędzi (agora_update, memory_update itp.). Delegacja = koniec Twojej tury.');
-
-        if (ctx.agentList) {
-            const others = ctx.agentList.filter(a => a !== agent.name);
-            if (others.length > 0) {
-                lines.push(`Agenci w systemie: ${others.join(', ')}`);
-            }
-        }
-
-        return lines.join('\n');
-    }
-
-    // ─── artifacts_overview ───
-
-    _buildArtifactsOverview(agent, ctx) {
-        return `## Artefakty w chacie
-- chat_todo — interaktywna checklista z checkboxami i paskiem postępu.
-  Użyj gdy: lista zadań, plan zakupów, checklist. Akcje: create(title, items[]), update, add_item, remove_item, save.
-- plan_action — wieloetapowy plan z krokami, statusami i subtaskami.
-  Użyj gdy: złożone zadanie wymagające etapów. Akcje: create(title, steps[]), update_step, add_subtask, get.
-  Statusy: pending → in_progress → done (lub skipped). CZEKAJ na zatwierdzenie planu!
-
-ROZRÓŻNIENIE: Prosta lista → chat_todo. Wieloetapowy plan z postępem → plan_action.`;
-    }
-
-    // ─── agora_overview ───
-
-    _buildAgoraOverview(agent, ctx) {
-        return `## Agora — wspólna baza wiedzy
-Agora to baza wiedzy WSZYSTKICH agentów o użytkowniku. Dane widzi każdy agent.
-- agora_read(section) — czytaj: "profile" (profil usera), "vault_map" (mapa), "activity" (tablica), "projects_list".
-- agora_update(section, ...) — aktualizuj: profil, mapę vaulta, tablicę aktywności.
-- agora_project(action, ...) — zarządzaj projektami: create, update, add_task, update_task, ping, delete.
-
-PROFIL: Dowiedziałeś się czegoś nowego o userze → zapytaj "Czy zaktualizować Bazę Wiedzy?"
-AKTYWNOŚĆ: Na KOŃCU ważnych sesji → agora_update(section:"activity", summary:"co zrobiłeś").
-PROJEKTY: Wspólne zadanie wielu agentów → agora_project(action:"create").`;
-    }
-
-    // ─── rules ───
-
-    _buildRules(agent, ctx, enabledGroups = {}) {
-        const hasMCP = agent.permissions?.mcp === true;
-        const rules = [];
-
-        // Always
-        rules.push('Odpowiadaj po polsku (chyba że user pisze w innym języku).');
-
-        if (hasMCP) {
-            rules.push('NAJPIERW wywołaj narzędzie, POTEM odpowiadaj na podstawie wyników. NIE mów "zaraz sprawdzę" — po prostu wywołaj tool.');
-        }
-
-        if (enabledGroups.memory) {
-            rules.push('Gdy user mówi "zapamiętaj" → OD RAZU memory_update, nie pytaj o potwierdzenie.');
-        }
-
-        if (enabledGroups.vault?.includes('vault_write')) {
-            rules.push('NIE nadpisuj notatek usera bez pytania — preferuj append zamiast replace.');
-        }
-
-        if (enabledGroups.vault?.includes('vault_delete')) {
-            rules.push('NIE usuwaj plików (vault_delete) bez wyraźnej prośby usera.');
-        }
-
-        // Anti-looping — only when agent has tools
-        if (hasMCP) {
-            rules.push('');
-            rules.push('ANTY-LOOPING — bądź konkretny i efektywny:');
-            rules.push('JEDNO wyszukiwanie na temat. Jeśli vault_search nie znalazł — powiedz userowi, NIE szukaj tego samego 5 razy innymi słowami.');
-            rules.push('Jeśli narzędzie zwróciło błąd — przeczytaj komunikat, napraw problem, spróbuj RAZ. Nie ponawiaj w nieskończoność.');
-            rules.push('Nie wywołuj tego samego narzędzia z tymi samymi argumentami dwa razy pod rząd.');
-            rules.push('Gdy nie masz pewności — ZAPYTAJ usera zamiast zgadywać i loopować.');
-            rules.push('Maksymalnie 3 tool calle na jeden krok zadania. Potem podsumuj co masz i zapytaj usera o dalsze kroki.');
-        }
-
-        // Inline comment — only when vault tools available
-        if (enabledGroups.vault?.includes('vault_read') && enabledGroups.vault?.includes('vault_write')) {
-            rules.push('');
-            rules.push('KOMENTARZ INLINE: Gdy wiadomość zaczyna się od "KOMENTARZ INLINE" — user wybrał fragment tekstu.');
-            rules.push('Działanie: vault_read → znajdź fragment → zmodyfikuj → vault_write mode:"replace". Odpowiedz krótko.');
-        }
-
-        // Auto-number the rules (skip empty lines)
-        let num = 0;
-        const numbered = rules.map(line => {
-            if (!line) return '';
-            if (line.startsWith('ANTY-LOOPING') || line.startsWith('KOMENTARZ INLINE:')) return line;
-            num++;
-            return `${num}. ${line}`;
-        });
-
-        return '## Zasady\n' + numbered.join('\n');
-    }
-
-    // ─── playbook_pointer ───
-
-    _buildPlaybookPointer(agent, ctx) {
-        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        return `## Playbook
-Masz playbook z procedurami i wiedzą domenową: .pkm-assistant/agents/${safeName}/playbook.md
-Masz vault map ze strukturą vaulta: .pkm-assistant/agents/${safeName}/vault_map.md
-Minion zna te pliki — deleguj mu szukanie w playbooku: minion_task(task:"Sprawdź w playbooku jak...")`;
-    }
-
-    // ─── archetype_behavior (sesja 41) ───
+    // ─── A2: archetype ───
 
     _buildArchetypeBehavior(agent, ctx) {
         const archetype = getArchetype(agent.archetype);
@@ -707,10 +481,9 @@ Minion zna te pliki — deleguj mu szukanie w playbooku: minion_task(task:"Spraw
         return lines.join('\n');
     }
 
-    // ─── role_behavior (sesja 41) ───
+    // ─── A3: role ───
 
     _buildRoleBehavior(agent, ctx) {
-        // Role data is passed in context by AgentManager
         const roleData = ctx.roleData;
         if (!roleData || !roleData.behavior_rules?.length) return null;
 
@@ -726,91 +499,338 @@ Minion zna te pliki — deleguj mu szukanie w playbooku: minion_task(task:"Spraw
         return lines.join('\n');
     }
 
-    // ─── tools_detailed (FAT PROMPT — only when NO minion) ───
+    // ─── B1: environment (skrócone — bez README ekosystemu) ───
 
-    _buildToolsDetailed(agent, ctx, enabledGroups) {
-        const lines = ['## Narzędzia — szczegółowe instrukcje'];
-        lines.push('(Nie masz miniona — pełne instrukcje poniżej)');
-        lines.push('');
+    _buildEnvironment(agent, ctx) {
+        const lines = [];
+        // Use factory default text (will be resolved by _resolveSection for overrides)
+        lines.push(FACTORY_DEFAULTS.environment);
 
-        if (enabledGroups.vault) {
-            lines.push('### VAULT (Notatki użytkownika)');
-            if (enabledGroups.vault.includes('vault_list'))
-                lines.push('- vault_list(folder?, recursive?) — zawartość folderu. Bez argumentów = root vaulta. recursive:true = zagnieżdżone.');
-            if (enabledGroups.vault.includes('vault_read'))
-                lines.push('- vault_read(path) — odczyt notatki po ścieżce (np. "Projekty/pomysł.md"). Zwraca pełny markdown.');
-            if (enabledGroups.vault.includes('vault_search'))
-                lines.push('- vault_search(query, mode?) — szukanie. mode:"semantic" (domyślnie) = po znaczeniu, mode:"keyword" = po słowach. Zwraca top wyniki ze score.');
-            if (enabledGroups.vault.includes('vault_write')) {
-                lines.push('- vault_write(path, content, mode?) — zapis. mode: "create" (nowy), "append" (dopisz na końcu), "prepend" (na początku), "replace" (nadpisz).');
-                lines.push('  Domyślnie: create. UWAGA: NIE nadpisuj (replace) bez pytania usera!');
+        // Focus folders — WHITELIST or Guidance mode (always auto-generated)
+        if (agent.focusFolders && agent.focusFolders.length > 0) {
+            const isGuidance = agent.permissions?.guidance_mode === true;
+            lines.push('');
+
+            if (isGuidance) {
+                lines.push('### PRIORYTETOWE FOLDERY');
+                lines.push('Masz dostęp do całego vaulta. Te foldery są Twoim priorytetem — szukaj i pracuj tu w pierwszej kolejności:');
+            } else {
+                lines.push('### TWÓJ OBSZAR ROBOCZY (WHITELIST)');
+                lines.push('Widzisz TYLKO te foldery. Reszta vaulta NIE ISTNIEJE dla Ciebie. Nie próbuj szukać ani pisać poza tym obszarem.');
             }
-            if (enabledGroups.vault.includes('vault_delete'))
-                lines.push('- vault_delete(path) — NIEODWRACALNE usunięcie. ZAWSZE pytaj usera o zgodę!');
-            lines.push('');
-        }
 
-        if (enabledGroups.memory) {
-            lines.push('### PAMIĘĆ (Twoja prywatna pamięć)');
-            if (enabledGroups.memory.includes('memory_search'))
-                lines.push('- memory_search(query, scope?) — przeszukaj sesje/brain/podsumowania. scope: "sessions", "brain", "summaries". Bez scope = wszystko.');
-            if (enabledGroups.memory.includes('memory_update')) {
-                lines.push('- memory_update(operation, content?, section?) — zarządzaj pamięcią.');
-                lines.push('  operation: "read_brain" (czytaj), "update_brain" (dodaj/zmień), "delete_from_brain" (usuń), "add_session_summary".');
+            lines.push('');
+            for (const folder of agent.focusFolders) {
+                const path = typeof folder === 'string' ? folder : folder.path;
+                const access = typeof folder === 'string' ? 'readwrite' : (folder.access || 'readwrite');
+                const icon = access === 'read' ? '👁️' : '📝';
+                const label = access === 'read' ? 'odczyt' : 'odczyt + zapis';
+                const desc = ctx.vaultMapDescriptions?.[path];
+                const descPart = desc ? ` — ${desc}` : '';
+                lines.push(`- ${icon} **${path}** [${label}]${descPart}`);
             }
-            if (enabledGroups.memory.includes('memory_status'))
-                lines.push('- memory_status — ile sesji, rozmiar brain, ostatnia aktywność.');
+        } else {
             lines.push('');
-            lines.push('Komendy pamięciowe:');
-            lines.push('- "zapamiętaj że..." → memory_update(operation:"update_brain", content:fakt w 3. osobie)');
-            lines.push('- "zapomnij o..." → memory_update(operation:"delete_from_brain", content:co usunąć)');
-            lines.push('- "co o mnie wiesz?" → memory_update(operation:"read_brain")');
-            lines.push('- "pokaż pamięć" → memory_status');
-            lines.push('- "czy pamiętasz...?" → memory_search');
-            lines.push('UWAGA: brain.md to fakty w 3. osobie: "User lubi kawę". Sprawdź read_brain PRZED dodaniem — nie dodawaj duplikatów!');
-            lines.push('');
+            lines.push('Masz dostęp do całego vaulta (brak ograniczeń folderowych).');
         }
-
-        if (enabledGroups.skills) {
-            lines.push('### SKILLE');
-            lines.push('- skill_list(category?) — lista dostępnych skilli. Opcjonalnie filtruj po kategorii.');
-            lines.push('- skill_execute(skill_name) — aktywuj skill. Zwraca instrukcje krok-po-kroku → wykonuj je po kolei.');
-            lines.push('Nowe skille: vault_write do .pkm-assistant/skills/{nazwa}/skill.md (frontmatter YAML + markdown).');
-            lines.push('');
-        }
-
-        if (enabledGroups.communication) {
-            lines.push('### KOMUNIKATOR');
-            lines.push('- agent_message(to_agent, subject, content) — wyślij wiadomość asynchroniczną.');
-            lines.push('- agent_delegate(to_agent, reason?, context_summary?) — zaproponuj przekazanie. User klika przycisk!');
-            lines.push('KRYTYCZNE: ZAWSZE podaj context_summary przy delegate — co user chciał, co zrobiłeś, co zostało.');
-            lines.push('');
-        }
-
-        if (enabledGroups.artifacts) {
-            lines.push('### ARTEFAKTY');
-            lines.push('- chat_todo: create(title, items[]) → update(id, item_index, done) → add_item → remove_item → save(id, path?)');
-            lines.push('- plan_action: create(title, steps[{label, description?, subtasks?}]) → update_step(id, step_index, status, note?) → get(id)');
-            lines.push('  Statusy: pending → in_progress → done / skipped. CZEKAJ na zatwierdzenie planu!');
-            lines.push('');
-        }
-
-        if (enabledGroups.agora) {
-            lines.push('### AGORA');
-            lines.push('- agora_read(section) — "profile", "vault_map", "activity", "projects_list".');
-            lines.push('- agora_update(section, ...) — profil (add/update/remove), mapa, aktywność.');
-            lines.push('- agora_project(action, ...) — create, update, add_task, update_task, ping, delete.');
-            lines.push('Na KOŃCU ważnych sesji → agora_update(section:"activity", summary:"..."). Nowe fakty o userze → profil.');
-            lines.push('');
-        }
-
-        // Drzewo decyzyjne
-        lines.push('### Drzewo decyzyjne');
-        lines.push('- Szukasz w NOTATKACH usera → vault_search');
-        lines.push('- Szukasz we WŁASNEJ pamięci → memory_search');
-        lines.push('- Szukasz w WIELU źródłach → vault_search + memory_search (ale max 2-3 wyszukiwania)');
-        lines.push('- Temat poza kompetencjami → agent_delegate');
 
         return lines.join('\n');
     }
+
+    // ─── B3: permissions + agent_rules ───
+
+    _buildPermissions(agent, ctx, enabledGroups) {
+        const lines = ['## Uprawnienia'];
+
+        if (!agent.permissions?.mcp) {
+            lines.push('⛔ NIE MASZ NARZĘDZI. Nie możesz przeszukiwać vaulta, pamięci, ani wykonywać żadnych akcji.');
+            lines.push('Nie wspominaj o narzędziach, nie obiecuj że coś sprawdzisz. Możesz TYLKO rozmawiać.');
+            lines.push('');
+        }
+
+        const canDo = [];
+        if (agent.permissions.read_notes) canDo.push('czytać notatki');
+        if (agent.permissions.mcp) canDo.push('używać narzędzi MCP');
+        if (agent.permissions.thinking) canDo.push('extended thinking');
+        if (canDo.length > 0) lines.push(`MOŻESZ: ${canDo.join(', ')}`);
+
+        const needsApproval = [];
+        if (agent.permissions.edit_notes) needsApproval.push('edytować notatki (vault_write)');
+        if (agent.permissions.create_files) needsApproval.push('tworzyć pliki');
+        if (needsApproval.length > 0) lines.push(`WYMAGA ZATWIERDZENIA: ${needsApproval.join(', ')}`);
+
+        const cantDo = [];
+        if (!agent.permissions.edit_notes) cantDo.push('edytować notatek');
+        if (!agent.permissions.create_files) cantDo.push('tworzyć plików');
+        if (!agent.permissions.delete_files) cantDo.push('usuwać plików');
+        if (!agent.permissions.execute_commands) cantDo.push('wykonywać komend systemowych');
+        if (!agent.permissions.access_outside_vault) cantDo.push('wychodzić poza vault');
+        if (!agent.permissions.mcp) cantDo.push('używać narzędzi MCP');
+        if (cantDo.length > 0) lines.push(`NIE MOŻESZ: ${cantDo.join(', ')}`);
+
+        if (agent.enabledTools && agent.enabledTools.length > 0) {
+            const allTools = Object.values(TOOL_GROUPS).flat();
+            const disabled = allTools.filter(t => !agent.enabledTools.includes(t));
+            if (disabled.length > 0) {
+                lines.push(`WYŁĄCZONE NARZĘDZIA: ${disabled.join(', ')} — nie próbuj ich używać`);
+            }
+        }
+
+        if (agent.permissions?.mcp) {
+            lines.push('');
+            lines.push('ODMOWA: Jeśli user odmówi — NIE ponawiaj. Zapytaj czego potrzebuje.');
+        }
+
+        // Agent-specific domain rules (B3)
+        if (agent.agentRules) {
+            lines.push('');
+            lines.push('### Reguły specjalne agenta');
+            lines.push(agent.agentRules);
+        }
+
+        return lines.join('\n');
+    }
+
+    // ─── C1: decision_tree v2 — per-instruction overrides + dynamic filtering ───
+
+    /**
+     * Build decision tree with granular instruction resolution.
+     * Each instruction is independently: editable, disableable, tool-filtered.
+     * Resolution: agent override > global override > factory default.
+     * Tool filtering ALWAYS active regardless of overrides.
+     */
+    _buildDecisionTree(agent, ctx, enabledGroups) {
+        const lines = ['## Jak pracować — drzewo decyzyjne', ''];
+
+        // Resolve all instructions (factory + overrides + custom)
+        const agentDT = agent.promptOverrides?.decisionTreeInstructions || {};
+        const globalDT = ctx.promptDefaults?.decisionTreeOverrides || {};
+
+        // Warn about legacy string overrides
+        if (typeof agent.promptOverrides?.decision_tree === 'string' && agent.promptOverrides.decision_tree) {
+            console.warn('[PromptBuilder] Agent ma stary format decision_tree (string) — ignorowany. Użyj decisionTreeInstructions.');
+        }
+        if (typeof ctx.promptDefaults?.decision_tree === 'string' && ctx.promptDefaults.decision_tree) {
+            console.warn('[PromptBuilder] Globalny decision_tree (string) — ignorowany. Użyj decisionTreeOverrides.');
+        }
+
+        const resolved = this._resolveDecisionTreeInstructions(agentDT, globalDT);
+
+        // Filter by enabled tools + hideWhenMinion/hideWhenMaster
+        const filtered = resolved.filter(instr => {
+            if (!instr.tool) return true; // null tool = always visible when group visible
+            if (!this._isToolEnabled(instr.tool, enabledGroups)) return false;
+            if (instr.hideWhenMinion && this._isToolEnabled('minion_task', enabledGroups)) return false;
+            if (instr.hideWhenMaster && this._isToolEnabled('master_task', enabledGroups)) return false;
+            return true;
+        });
+
+        // Group instructions
+        const grouped = {};
+        for (const instr of filtered) {
+            if (!grouped[instr.group]) grouped[instr.group] = [];
+            grouped[instr.group].push(instr);
+        }
+
+        // Render groups in order
+        const sortedGroups = Object.entries(DECISION_TREE_GROUPS)
+            .filter(([gid, gdef]) => {
+                // Group visible if ANY required tool group is enabled
+                if (!gdef.requiredGroups.some(rg => enabledGroups[rg])) return false;
+                // And has at least one visible instruction
+                return grouped[gid]?.length > 0;
+            })
+            .sort(([, a], [, b]) => a.order - b.order);
+
+        for (const [groupId, groupDef] of sortedGroups) {
+            lines.push(`${groupDef.label}:`);
+            for (const instr of grouped[groupId]) {
+                lines.push(`- ${instr.text}`);
+            }
+
+            // Dynamic injections per group
+            this._injectGroupDynamics(groupId, lines, ctx, agent);
+
+            lines.push('');
+        }
+
+        // Inbox fallback: if komunikacja group not rendered, inject inbox at bottom
+        const hasCommunicationGroup = sortedGroups.some(([gid]) => gid === 'komunikacja');
+        if (!hasCommunicationGroup) {
+            this._injectInboxNotification(lines, ctx, agent);
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Resolve all decision tree instructions: factory + global overrides + agent overrides + custom.
+     * @returns {Array<{id, group, tool, text}>}
+     */
+    _resolveDecisionTreeInstructions(agentOverrides, globalOverrides) {
+        const result = [];
+
+        // Process factory defaults
+        for (const def of DECISION_TREE_DEFAULTS) {
+            const agentVal = agentOverrides[def.id];
+            const globalVal = globalOverrides[def.id];
+
+            // false = disabled (at either level)
+            if (agentVal === false || (agentVal === undefined && globalVal === false)) {
+                continue;
+            }
+
+            const text = (typeof agentVal === 'string') ? agentVal
+                       : (typeof globalVal === 'string') ? globalVal
+                       : def.text;
+
+            result.push({ id: def.id, group: def.group, tool: def.tool, text });
+        }
+
+        // Process custom instructions (keys starting with "custom_")
+        const allCustomKeys = new Set([
+            ...Object.keys(globalOverrides).filter(k => k.startsWith('custom_')),
+            ...Object.keys(agentOverrides).filter(k => k.startsWith('custom_')),
+        ]);
+
+        for (const key of allCustomKeys) {
+            const agentVal = agentOverrides[key];
+            const globalVal = globalOverrides[key];
+            if (agentVal === false || (agentVal === undefined && globalVal === false)) continue;
+
+            const source = (typeof agentVal === 'object' && agentVal?.text) ? agentVal
+                         : (typeof globalVal === 'object' && globalVal?.text) ? globalVal
+                         : null;
+
+            if (source) {
+                result.push({
+                    id: key,
+                    group: source.group || 'szukanie',
+                    tool: source.tool || null,
+                    text: source.text,
+                });
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Check if a tool is enabled in any group.
+     */
+    _isToolEnabled(toolName, enabledGroups) {
+        for (const tools of Object.values(enabledGroups)) {
+            if (tools.includes(toolName)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Inject dynamic content per group (artifacts, skills, agents).
+     */
+    _injectGroupDynamics(groupId, lines, ctx, agent) {
+        if (groupId === 'artefakty') {
+            const todos = ctx.artifacts?.todos;
+            const plans = ctx.artifacts?.plans;
+            if ((todos?.size > 0) || (plans?.size > 0)) {
+                lines.push('');
+                lines.push('Istniejące artefakty:');
+                if (todos?.size > 0) {
+                    for (const [id, todo] of todos) {
+                        const done = todo.items?.filter(i => i.done).length || 0;
+                        const total = todo.items?.length || 0;
+                        lines.push(`  📋 TODO "${todo.title}" (id: ${id}) — ${done}/${total} gotowe`);
+                    }
+                }
+                if (plans?.size > 0) {
+                    for (const [id, plan] of plans) {
+                        const done = plan.steps?.filter(s => s.status === 'done').length || 0;
+                        const total = plan.steps?.length || 0;
+                        const status = plan.approved ? 'zatwierdzony' : 'niezatwierdzony';
+                        lines.push(`  📝 PLAN "${plan.title}" (id: ${id}) — ${done}/${total} kroków, ${status}`);
+                    }
+                }
+            }
+        }
+
+        if (groupId === 'skille' && ctx.skills?.length > 0) {
+            const names = ctx.skills.map(s => s.name).join(', ');
+            lines.push(`- Znasz: ${names}`);
+        }
+
+        if (groupId === 'delegacja') {
+            if (ctx.minionList?.length > 0) {
+                const desc = ctx.minionList.map(m => `${m.name} (${m.description})`).join(', ');
+                lines.push(`- Dostępni minioni: ${desc}`);
+            }
+        }
+
+        if (groupId === 'komunikacja') {
+            if (ctx.agentList) {
+                const others = ctx.agentList.filter(a => a !== agent.name);
+                if (others.length > 0) {
+                    lines.push(`- Agenci: ${others.join(', ')}`);
+                }
+            }
+            this._injectInboxNotification(lines, ctx, agent);
+        }
+    }
+
+    /**
+     * Inject inbox notification at bottom of decision tree.
+     */
+    _injectInboxNotification(lines, ctx, agent) {
+        if (ctx.unreadInbox && ctx.unreadInbox > 0) {
+            const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            lines.push(`📬 MASZ ${ctx.unreadInbox} NIEPRZECZYTANYCH WIADOMOŚCI.`);
+            lines.push(`Odczytaj: vault_read(path:".pkm-assistant/komunikator/inbox_${safeName}.md")`);
+            lines.push(`Na początku rozmowy poinformuj usera: "Masz ${ctx.unreadInbox} wiadomości — chcesz przejrzeć?"`);
+        }
+    }
+
+    // ─── C2: minion_guide (merged with playbook pointer) ───
+
+    _buildMinionGuide(agent, ctx) {
+        const minionName = agent.minion || 'minion';
+        const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        // Apply placeholders to factory default or return directly
+        return FACTORY_DEFAULTS.minion_guide
+            .replace(/\{minion_name\}/g, minionName)
+            .replace(/\{agent_safe_name\}/g, safeName);
+    }
+
+    // ─── C3: master_guide ───
+
+    _buildMasterGuide(agent, ctx) {
+        return FACTORY_DEFAULTS.master_guide;
+    }
+
+    // ─── C4: rules ───
+
+    _buildRules(agent, ctx, enabledGroups = {}) {
+        return FACTORY_DEFAULTS.rules;
+    }
+
+    // ═══════════════════════════════════════════
+    // DEPRECATED: kept as no-ops for backward compat
+    // ═══════════════════════════════════════════
+
+    /** @deprecated Use decision_tree instead */
+    _buildPkmSystem() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildCapabilities() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildToolsOverview() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildSkillsList() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildArtifactsOverview() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildAgoraOverview() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildCommsOverview() { return null; }
+    /** @deprecated Use decision_tree instead */
+    _buildToolsDetailed() { return null; }
+    /** @deprecated Merged into minion_guide */
+    _buildPlaybookPointer() { return null; }
 }

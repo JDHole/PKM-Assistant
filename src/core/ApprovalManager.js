@@ -27,34 +27,37 @@ export class ApprovalManager {
      * @param {string} action.targetPath - Target path
      * @param {string} action.agentName - Agent name
      * @param {string} [action.preview] - Optional preview
-     * @returns {Promise<boolean>} True if approved
+     * @returns {Promise<{result: 'approve'|'deny', reason: string}>}
      */
     async requestApproval(action) {
         // Check if action is always approved for this agent
         if (this.isAlwaysApproved(action.agentName, action.type, action.targetPath)) {
             this.logApproval(action, 'auto-approved');
             console.log('[ApprovalManager] Auto-approved:', action.type, action.targetPath);
-            return true;
+            return { result: 'approve', reason: '' };
         }
 
-        // Show approval modal
-        const result = await requestApproval(this.app, action);
+        // Show approval modal — returns {result, reason}
+        const modalResult = await requestApproval(this.app, action);
 
-        // Handle result
-        switch (result) {
+        // Handle result (supports both old string and new object format)
+        const resultKey = modalResult?.result || modalResult;
+        const denyReason = modalResult?.reason || '';
+
+        switch (resultKey) {
             case 'approve':
                 this.logApproval(action, 'approved');
-                return true;
+                return { result: 'approve', reason: '' };
 
             case 'always':
                 this.addToAlwaysApproved(action.agentName, action.type, action.targetPath);
                 this.logApproval(action, 'always-approved');
-                return true;
+                return { result: 'approve', reason: '' };
 
             case 'deny':
             default:
                 this.logApproval(action, 'denied');
-                return false;
+                return { result: 'deny', reason: denyReason };
         }
     }
 

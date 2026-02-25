@@ -1,4 +1,5 @@
 import { log } from '../utils/Logger.js';
+import { AccessGuard } from '../core/AccessGuard.js';
 
 const ACTION_TYPE_MAP = {
     'vault_read': 'vault.read',
@@ -35,6 +36,51 @@ export class MCPClient {
         this.app = app;
         this.plugin = plugin;
         this.toolRegistry = toolRegistry;
+
+        /** @type {Map<string, Set<string>>} agentName → Set of "toolName::targetPath" denied this session */
+        this._deniedActions = new Map();
+    }
+
+    // ─── Denial memory helpers ─────────────────────────────
+
+    _getDenialKey(toolName, targetPath) {
+        return `${toolName}::${targetPath || '*'}`;
+    }
+
+    _isDenied(agentName, toolName, targetPath) {
+        const denied = this._deniedActions.get(agentName);
+        if (!denied) return false;
+        return denied.has(this._getDenialKey(toolName, targetPath));
+    }
+
+    _recordDenial(agentName, toolName, targetPath) {
+        if (!this._deniedActions.has(agentName)) {
+            this._deniedActions.set(agentName, new Set());
+        }
+        this._deniedActions.get(agentName).add(this._getDenialKey(toolName, targetPath));
+    }
+
+    /** Clear denial memory for agent (call on session/agent switch). */
+    clearDenials(agentName) {
+        if (agentName) {
+            this._deniedActions.delete(agentName);
+        } else {
+            this._deniedActions.clear();
+        }
+    }
+
+    _getActionLabel(toolName) {
+        const labels = {
+            'vault_write': 'zapisu pliku',
+            'vault_delete': 'usunięcia pliku',
+            'vault_read': 'odczytu pliku',
+            'vault_list': 'listowania folderów',
+            'vault_search': 'wyszukiwania',
+            'agent_message': 'wysłania wiadomości',
+            'agora_update': 'aktualizacji Agory',
+            'agora_project': 'zmiany projektu'
+        };
+        return labels[toolName] || toolName;
     }
 
     /**
@@ -102,24 +148,54 @@ export class MCPClient {
 
             // 5. Handle approval if required
             if (permResult.requiresApproval) {
+                // Check denial memory first — instant block without showing modal
+                if (agentName && this._isDenied(agentName, toolCall.name, targetPath)) {
+                    log.info('MCPClient', `Automatyczny blok (wcześniej odmówione): ${toolCall.name} → ${targetPath}`);
+                    throw new Error(
+                        `Użytkownik WCZEŚNIEJ odmówił ${this._getActionLabel(toolCall.name)} na "${targetPath}". ` +
+                        `NIE ponawiaj tej samej akcji. Zapytaj użytkownika czego potrzebuje lub zaproponuj inną ścieżkę.`
+                    );
+                }
+
                 log.info('MCPClient', `${toolCall.name} wymaga zatwierdzenia usera...`);
                 const approved = await this.plugin.approvalManager.requestApproval({
                     type: actionType,
                     description: tool.description,
                     targetPath: targetPath,
                     agentName: agentName,
-                    preview: args.content ? `Content length: ${args.content.length}` : JSON.stringify(args)
+                    preview: args.content ? `Długość treści: ${args.content.length} znaków` : null,
+                    contentPreview: args.content || null
                 });
 
-                if (!approved) {
+                if (approved.result === 'deny') {
                     log.warn('MCPClient', `User ODMÓWIŁ zatwierdzenia: ${toolCall.name}`);
-                    throw new Error("User denied approval for this action.");
+                    if (agentName) this._recordDenial(agentName, toolCall.name, targetPath);
+                    const reasonPart = approved.reason ? ` Powód: "${approved.reason}".` : '';
+                    throw new Error(
+                        `Użytkownik odmówił ${this._getActionLabel(toolCall.name)} na "${targetPath}".${reasonPart} ` +
+                        `NIE ponawiaj tej akcji. Zapytaj użytkownika czego potrzebuje.`
+                    );
                 }
                 log.debug('MCPClient', `User ZATWIERDZIŁ: ${toolCall.name}`);
             }
 
             // 6. Execute tool (pass plugin as 3rd arg for tools that need it, e.g. memory_search)
             const result = await tool.execute(args, this.app, this.plugin);
+
+            // 7. Whitelist post-filtering for list/search results
+            if (agent && (toolCall.name === 'vault_list' || toolCall.name === 'vault_search')) {
+                if (result?.success && result?.files) {
+                    result.files = AccessGuard.filterResults(agent, result.files);
+                    result.count = result.files.length;
+                    result.totalCount = result.files.length;
+                }
+                if (result?.success && result?.results) {
+                    result.results = AccessGuard.filterResults(agent, result.results);
+                    result.count = result.results.length;
+                    result.totalCount = result.results.length;
+                }
+            }
+
             log.tool(toolCall.name, args, result);
             log.timing('MCPClient', `${toolCall.name} wykonanie`, toolStart);
             return result;

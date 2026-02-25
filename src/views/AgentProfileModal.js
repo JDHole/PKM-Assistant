@@ -236,7 +236,7 @@ export class AgentProfileModal extends Modal {
             .setDesc('Foldery na których agent się skupia (jeden per linia)')
             .addTextArea(text => {
                 text.setPlaceholder('Projects/**\nNotes/**')
-                    .setValue(this.formData.focus_folders.join('\n'))
+                    .setValue(this.formData.focus_folders.map(f => typeof f === 'string' ? f : f.path).join('\n'))
                     .onChange(v => {
                         this.formData.focus_folders = v.split('\n').map(f => f.trim()).filter(f => f.length > 0);
                     });

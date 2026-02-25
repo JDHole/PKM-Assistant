@@ -3,6 +3,8 @@ import { Setting, Notice, Modal } from "obsidian";
 import { maskKey } from '../utils/keySanitizer.js';
 import { log } from '../utils/Logger.js';
 import { getArchetypeList } from '../agents/archetypes/Archetypes.js';
+import { buildModePromptSection, FACTORY_DEFAULTS, DECISION_TREE_GROUPS, DECISION_TREE_DEFAULTS } from '../core/PromptBuilder.js';
+import { getTokenCount } from '../utils/tokenCounter.js';
 
 /**
  * ObsekSettingsTab - Settings for PKM Assistant
@@ -348,6 +350,35 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         });
 
         // ══════════════════════════════════════════
+        // SEKCJA: NO-GO (prywatne foldery)
+        // ══════════════════════════════════════════
+        container.createEl('h2', { text: '🚫 No-Go — foldery prywatne' });
+        container.createEl('p', {
+            text: 'Foldery całkowicie niedostępne dla agentów i wykluczone z indeksowania. Jeden folder na linię.',
+            cls: 'setting-item-description'
+        });
+
+        const noGoTextarea = new Setting(container)
+            .setName('Foldery No-Go')
+            .setDesc('np. _private, Secrets, .env')
+            .addTextArea(text => {
+                text
+                    .setPlaceholder('_private\nSecrets')
+                    .setValue((obsek.no_go_folders || []).join('\n'))
+                    .onChange(async (value) => {
+                        obsek.no_go_folders = value.split('\n').map(s => s.trim()).filter(Boolean);
+                        // Update AccessGuard immediately
+                        try {
+                            const { AccessGuard } = await import('../core/AccessGuard.js');
+                            AccessGuard.setNoGoFolders(obsek.no_go_folders);
+                        } catch { /* ok */ }
+                        await this.save_settings();
+                    });
+                text.inputEl.rows = 4;
+                text.inputEl.style.width = '100%';
+            });
+
+        // ══════════════════════════════════════════
         // SEKCJA 3: PAMIĘĆ
         // ══════════════════════════════════════════
         container.createEl('h2', { text: '🧠 Pamięć' });
@@ -519,39 +550,41 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 })
             );
 
-        // PKM System prompt textarea
+        // --- Tryby Pracy ---
+        container.createEl('h4', { text: 'Tryby Pracy' });
+
         new Setting(container)
-            .setName('Sekcja "PKM Assistant"')
-            .setDesc('Opis ekosystemu PKM wstrzykiwany do każdego agenta. Pusty = domyślny tekst z kodu.');
+            .setName('Domyślny tryb pracy')
+            .setDesc('Tryb wybrany na starcie nowego chatu (gdy agent nie ma swojego)')
+            .addDropdown(dropdown => {
+                dropdown.addOption('rozmowa', '💬 Rozmowa');
+                dropdown.addOption('planowanie', '📋 Planowanie');
+                dropdown.addOption('praca', '🔨 Praca');
+                dropdown.addOption('kreatywny', '✨ Kreatywny');
+                dropdown.setValue(obsek.globalDefaultMode || 'rozmowa');
+                dropdown.onChange(async (value) => {
+                    obsek.globalDefaultMode = value;
+                    await this.save_settings();
+                });
+            });
 
-        const pkmTextarea = container.createEl('textarea', {
-            placeholder: 'Pusty = domyślny opis PKM Assistant (agenci, narzędzia, pamięć, skille, embedding...)',
-        });
-        pkmTextarea.value = obsek.pkmSystemPrompt || '';
-        pkmTextarea.style.cssText = 'width:100%; min-height:120px; font-family:monospace; font-size:0.85em; resize:vertical; margin-bottom:12px; padding:8px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
-        pkmTextarea.addEventListener('change', async () => {
-            obsek.pkmSystemPrompt = pkmTextarea.value.trim();
-            await this.save_settings();
-        });
-
-        // Environment prompt textarea
         new Setting(container)
-            .setName('Sekcja "Środowisko"')
-            .setDesc('Opis środowiska pracy (Obsidian, vault, foldery). Pusty = domyślny tekst z kodu.');
+            .setName('Auto-zmiana trybu przez agenta')
+            .setDesc('Czy agent może sam proponować/zmieniać tryb pracy')
+            .addDropdown(dropdown => {
+                dropdown.addOption('off', 'Wyłączone — tylko ręcznie');
+                dropdown.addOption('ask', 'Pytaj — agent proponuje, user zatwierdza');
+                dropdown.addOption('on', 'Automatycznie — agent zmienia sam');
+                dropdown.setValue(obsek.autoChangeMode || 'ask');
+                dropdown.onChange(async (value) => {
+                    obsek.autoChangeMode = value;
+                    await this.save_settings();
+                });
+            });
 
-        const envTextarea = container.createEl('textarea', {
-            placeholder: 'Pusty = domyślny opis Obsidian/Vault (markdown, wikilinki, foldery .pkm-assistant i .obsidian...)',
-        });
-        envTextarea.value = obsek.environmentPrompt || '';
-        envTextarea.style.cssText = 'width:100%; min-height:120px; font-family:monospace; font-size:0.85em; resize:vertical; margin-bottom:12px; padding:8px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
-        envTextarea.addEventListener('change', async () => {
-            obsek.environmentPrompt = envTextarea.value.trim();
-            await this.save_settings();
-        });
-
-        // Prompt Inspector panel (async)
-        const inspectorEl = container.createDiv({ cls: 'prompt-inspector' });
-        this._renderPromptInspector(inspectorEl);
+        // ── Prompt Builder — unified panel ──
+        const builderEl = container.createDiv({ cls: 'prompt-builder' });
+        this._renderPromptBuilder(builderEl);
 
         // ══════════════════════════════════════════
         // SEKCJA 7: INFORMACJE
@@ -774,142 +807,566 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
     }
 
     /**
-     * Render Prompt Inspector — shows sections + token breakdown for active agent
+     * Render Prompt Builder — unified panel with agent selector, toggleable/expandable sections,
+     * live token counts, inline editors for editable sections.
      */
-    async _renderPromptInspector(container) {
+    async _renderPromptBuilder(container) {
         const agentManager = this.plugin?.agentManager;
         if (!agentManager) {
             container.createEl('p', { text: 'Agent Manager niedostępny.', cls: 'setting-item-description' });
             return;
         }
 
-        const activeAgent = agentManager.getActiveAgent();
-        if (!activeAgent) {
-            container.createEl('p', { text: 'Brak aktywnego agenta.', cls: 'setting-item-description' });
+        const agents = agentManager.getAllAgents();
+        if (!agents.length) {
+            container.createEl('p', { text: 'Brak agentów.', cls: 'setting-item-description' });
             return;
         }
 
-        container.createEl('p', {
-            text: `Aktywny agent: ${activeAgent.emoji} ${activeAgent.name}`,
-            cls: 'setting-item-description'
+        const obsek = this.env?.settings?.obsek || {};
+        if (!obsek.promptDefaults) obsek.promptDefaults = {};
+        let selectedAgentName = agentManager.getActiveAgent()?.name || agents[0].name;
+
+        // ── Header: agent selector + totals ──
+        const headerEl = container.createDiv();
+        headerEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--background-modifier-border); margin-bottom:8px; flex-wrap:wrap; gap:8px;';
+
+        const leftHeader = headerEl.createDiv();
+        leftHeader.style.cssText = 'display:flex; align-items:center; gap:8px;';
+        leftHeader.createEl('span', { text: 'Agent:' });
+        const agentSelect = leftHeader.createEl('select');
+        agentSelect.style.cssText = 'padding:4px 8px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-primary);';
+        for (const agent of agents) {
+            const opt = agentSelect.createEl('option', {
+                text: `${agent.emoji} ${agent.name}`,
+                value: agent.name,
+            });
+            if (agent.name === selectedAgentName) opt.selected = true;
+        }
+
+        const rightHeader = headerEl.createDiv();
+        rightHeader.style.cssText = 'display:flex; align-items:center; gap:12px;';
+        const totalTokensEl = rightHeader.createEl('strong', { text: '...' });
+        const totalCountEl = rightHeader.createEl('span', { text: '...', cls: 'setting-item-description' });
+
+        // ── Body ──
+        const bodyEl = container.createDiv();
+
+        // ── Categories ──
+        const categories = {
+            core:     '🔵 Rdzeń',
+            behavior: '🟢 Zachowanie',
+            rules:    '🟡 Zasady',
+            context:  '🟣 Kontekst dynamiczny',
+        };
+
+        // State
+        const expandedSet = new Set();
+        let allSections = [];
+        const catTokenEls = new Map();
+
+        // Live token update
+        const updateTokenDisplays = () => {
+            let total = 0;
+            let enabledCount = 0;
+            for (const s of allSections) {
+                if (s.enabled) { total += s.tokens; enabledCount++; }
+            }
+            totalTokensEl.textContent = `${total.toLocaleString()} tok`;
+            totalCountEl.textContent = `${enabledCount}/${allSections.length} sekcji`;
+            for (const [catKey, el] of catTokenEls) {
+                const catTotal = allSections
+                    .filter(s => s.category === catKey && s.enabled)
+                    .reduce((sum, s) => sum + s.tokens, 0);
+                el.textContent = `${catTotal.toLocaleString()} tok`;
+            }
+        };
+
+        // Render body for selected agent
+        const renderBody = async (agentName) => {
+            bodyEl.empty();
+            catTokenEls.clear();
+
+            try {
+                const data = await agentManager.getPromptInspectorDataForAgent(agentName);
+                allSections = data.sections || [];
+
+                if (!allSections.length) {
+                    bodyEl.createEl('p', { text: 'Brak sekcji promptu.', cls: 'setting-item-description' });
+                    updateTokenDisplays();
+                    return;
+                }
+
+                for (const [catKey, catLabel] of Object.entries(categories)) {
+                    const catSections = allSections.filter(s => s.category === catKey);
+                    if (catSections.length === 0) continue;
+
+                    const groupEl = bodyEl.createDiv();
+                    groupEl.style.cssText = 'margin:10px 0 4px 0;';
+
+                    // Category header
+                    const catHeader = groupEl.createDiv();
+                    catHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-weight:600;';
+                    catHeader.createEl('span', { text: catLabel });
+                    const catTokenEl = catHeader.createEl('span', { text: '0 tok', cls: 'setting-item-description' });
+                    catTokenEls.set(catKey, catTokenEl);
+
+                    // Section rows
+                    for (const section of catSections) {
+                        this._renderPromptBuilderRow(groupEl, section, expandedSet, updateTokenDisplays, obsek);
+                    }
+                }
+
+                updateTokenDisplays();
+            } catch (e) {
+                bodyEl.createEl('p', { text: `Błąd: ${e.message}`, cls: 'setting-item-description' });
+                log.warn('Settings', 'Prompt Builder error:', e);
+            }
+        };
+
+        agentSelect.addEventListener('change', () => {
+            selectedAgentName = agentSelect.value;
+            renderBody(selectedAgentName);
         });
 
-        try {
-            const data = await agentManager.getPromptInspectorData();
-            const { sections, breakdown } = data;
+        await renderBody(selectedAgentName);
 
-            if (!sections || sections.length === 0) {
-                container.createEl('p', { text: 'Brak sekcji promptu.', cls: 'setting-item-description' });
-                return;
+        // ── Footer: Preview + Copy ──
+        const footerEl = container.createDiv();
+        footerEl.style.cssText = 'border-top:1px solid var(--background-modifier-border); margin-top:12px; padding-top:8px;';
+
+        const previewSetting = new Setting(footerEl)
+            .setName('Podgląd pełnego promptu')
+            .setDesc('Kompletny prompt ze wszystkimi warstwami dynamicznymi');
+        previewSetting.addButton(btn => {
+            btn.setButtonText('Pokaż prompt')
+                .onClick(async () => {
+                    try {
+                        const agent = agentManager.getAgent(selectedAgentName) || agentManager.getActiveAgent();
+                        let fullPrompt;
+                        let lastUserMessage = null;
+                        let source;
+
+                        const snapshot = this.plugin._lastSentSnapshot;
+
+                        if (snapshot && snapshot.systemPrompt && agent.name === agentManager.getActiveAgent()?.name) {
+                            fullPrompt = snapshot.systemPrompt;
+                            if (snapshot.conversationSummary) {
+                                fullPrompt += '\n\n---\nPodsumowanie poprzedniej części rozmowy:\n' + snapshot.conversationSummary;
+                            }
+                            lastUserMessage = snapshot.lastUserMessage;
+                            source = 'snapshot';
+                        } else {
+                            fullPrompt = await agentManager.getActiveSystemPromptWithMemory();
+
+                            const currentMode = this.plugin.currentWorkMode || 'rozmowa';
+                            const modeSection = buildModePromptSection(currentMode);
+                            if (modeSection) fullPrompt += '\n\n' + modeSection;
+
+                            const oczkoEnabled = this.env?.settings?.obsek?.enableOczko !== false;
+                            if (oczkoEnabled) {
+                                const activeFile = this.app.workspace.getActiveFile();
+                                if (activeFile && activeFile.extension === 'md') {
+                                    const lines = [`## Otwarta notatka: ${activeFile.basename}`, `Ścieżka: ${activeFile.path}`];
+                                    try {
+                                        const cache = this.app.metadataCache.getFileCache(activeFile);
+                                        const fm = cache?.frontmatter;
+                                        if (fm && Object.keys(fm).length > 0) {
+                                            const entries = Object.entries(fm)
+                                                .filter(([k]) => k !== 'position')
+                                                .map(([k, v]) => `  ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                                                .join('\n');
+                                            if (entries) lines.push(`Frontmatter:\n${entries}`);
+                                        }
+                                    } catch (e) { /* ignore */ }
+                                    try {
+                                        const raw = await this.app.vault.cachedRead(activeFile);
+                                        let content = raw.replace(/^---\n[\s\S]*?\n---\n?/, '').trim();
+                                        if (content.length > 2000) content = content.slice(0, 2000) + '\n[...obcięto]';
+                                        if (content) lines.push(`Treść (początek):\n${content}`);
+                                    } catch (e) { /* ignore */ }
+                                    fullPrompt += '\n\n' + lines.join('\n');
+                                }
+                            }
+
+                            const todoStore = this.plugin._chatTodoStore;
+                            const planStore = this.plugin._planStore;
+                            if ((todoStore?.size > 0) || (planStore?.size > 0)) {
+                                const aLines = ['--- Istniejące artefakty (użyj tych ID zamiast tworzyć nowe) ---'];
+                                if (todoStore?.size > 0) {
+                                    for (const [id, todo] of todoStore) {
+                                        const done = todo.items?.filter(i => i.done).length || 0;
+                                        const total = todo.items?.length || 0;
+                                        aLines.push(`TODO "${todo.title}" (id: ${id}) — ${done}/${total} gotowe`);
+                                    }
+                                }
+                                if (planStore?.size > 0) {
+                                    for (const [id, plan] of planStore) {
+                                        const done = plan.steps?.filter(s => s.status === 'done').length || 0;
+                                        const total = plan.steps?.length || 0;
+                                        const status = plan.approved ? 'zatwierdzony' : 'niezatwierdzony';
+                                        aLines.push(`PLAN "${plan.title}" (id: ${id}) — ${done}/${total} kroków, ${status}`);
+                                    }
+                                }
+                                fullPrompt += '\n\n' + aLines.join('\n');
+                            }
+
+                            fullPrompt += '\n\n[--- RAG: niedostępny w podglądzie (wymaga wiadomości) ---]';
+                            fullPrompt += '\n[--- Minion auto-prep: niedostępny w podglądzie (wymaga wiadomości) ---]';
+                            source = 'fallback';
+                        }
+
+                        const modal = new Modal(this.app);
+                        modal.titleEl.setText(`System Prompt — ${agent.emoji} ${agent.name}`);
+
+                        const copyBtn = modal.titleEl.createEl('button', {
+                            text: 'Kopiuj',
+                            attr: { style: 'margin-left: 12px; font-size: 0.8em; cursor: pointer;' }
+                        });
+                        copyBtn.addEventListener('click', async () => {
+                            let copyText = fullPrompt;
+                            if (lastUserMessage) {
+                                copyText += '\n\n--- Ostatnia wiadomość użytkownika ---\n' + lastUserMessage;
+                            }
+                            await navigator.clipboard.writeText(copyText);
+                            copyBtn.textContent = 'Skopiowano!';
+                            setTimeout(() => { copyBtn.textContent = 'Kopiuj'; }, 2000);
+                        });
+
+                        const sourceText = source === 'snapshot'
+                            ? `Rzeczywisty prompt z ostatniego wysłania (${new Date(snapshot.timestamp).toLocaleTimeString('pl-PL')})`
+                            : 'Podgląd — brak wysłanych wiadomości, symulacja warstw dynamicznych';
+                        const infoEl = modal.contentEl.createDiv();
+                        infoEl.style.cssText = 'padding:4px 8px; margin-bottom:8px; font-size:0.8em; color:var(--text-muted); border-left:3px solid var(--interactive-accent);';
+                        infoEl.textContent = sourceText;
+
+                        const contentEl = modal.contentEl.createDiv();
+                        contentEl.style.cssText = 'white-space:pre-wrap; font-family:monospace; font-size:0.8em; max-height:60vh; overflow-y:auto; padding:8px;';
+                        contentEl.textContent = fullPrompt;
+
+                        if (lastUserMessage) {
+                            modal.contentEl.createDiv().style.cssText = 'border-top:2px solid var(--interactive-accent); margin:12px 0 8px 0;';
+                            const msgHeader = modal.contentEl.createDiv();
+                            msgHeader.style.cssText = 'font-weight:bold; font-size:0.85em; margin-bottom:4px;';
+                            msgHeader.textContent = 'I teraz to co napisałeś:';
+                            const msgEl = modal.contentEl.createDiv();
+                            msgEl.style.cssText = 'white-space:pre-wrap; font-family:monospace; font-size:0.8em; max-height:20vh; overflow-y:auto; padding:8px; background:var(--background-secondary); border-radius:4px;';
+                            msgEl.textContent = lastUserMessage;
+                        }
+
+                        modal.open();
+                    } catch (e) {
+                        new Notice('Błąd podglądu promptu: ' + e.message);
+                    }
+                });
+        });
+    }
+
+    /**
+     * Render a single section row in the Prompt Builder panel.
+     * [checkbox] [▸/▾ arrow] [label] [XX tok]
+     * + expandable content below
+     */
+    _renderPromptBuilderRow(parentEl, section, expandedSet, updateTokenDisplays, obsek) {
+        const rowEl = parentEl.createDiv();
+        rowEl.style.cssText = 'display:flex; align-items:center; padding:3px 0 3px 8px; font-size:0.88em; gap:6px;';
+
+        // Checkbox toggle
+        const cb = rowEl.createEl('input', { type: 'checkbox' });
+        cb.checked = section.enabled;
+        cb.style.cssText = 'flex-shrink:0; cursor:pointer; margin:0;';
+        if (!section.enabled) rowEl.style.opacity = '0.5';
+
+        // Expand arrow
+        const isExpanded = expandedSet.has(section.key);
+        const arrow = rowEl.createEl('span', { text: isExpanded ? '▾' : '▸' });
+        arrow.style.cssText = 'flex-shrink:0; width:14px; font-size:0.85em; user-select:none; cursor:pointer; text-align:center;';
+
+        // Label (clickable for expand)
+        const labelEl = rowEl.createEl('span', { text: section.label });
+        labelEl.style.cssText = 'cursor:pointer; user-select:none;';
+
+        // Token count (right-aligned)
+        const tokEl = rowEl.createEl('span', {
+            text: section.enabled ? `${section.tokens.toLocaleString()} tok` : '—',
+            cls: 'setting-item-description',
+        });
+        tokEl.style.cssText = 'margin-left:auto; white-space:nowrap;';
+
+        // Expand container (below row)
+        const expandEl = parentEl.createDiv();
+        expandEl.style.cssText = `display:${isExpanded ? 'block' : 'none'}; margin:4px 0 8px 28px; padding:8px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-secondary-alt);`;
+
+        // Toggle enable/disable
+        cb.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!obsek.disabledPromptSections) obsek.disabledPromptSections = [];
+
+            if (section.enabled) {
+                if (!obsek.disabledPromptSections.includes(section.key)) {
+                    obsek.disabledPromptSections.push(section.key);
+                }
+                section.enabled = false;
+                rowEl.style.opacity = '0.5';
+                tokEl.textContent = '—';
+            } else {
+                obsek.disabledPromptSections = obsek.disabledPromptSections.filter(k => k !== section.key);
+                section.enabled = true;
+                rowEl.style.opacity = '1';
+                tokEl.textContent = `${section.tokens.toLocaleString()} tok`;
             }
+            await this.save_settings();
+            updateTokenDisplays();
+        });
 
-            // Total tokens header
-            const totalEl = container.createDiv({ cls: 'prompt-inspector-total' });
-            totalEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--background-modifier-border); margin-bottom:8px;';
-            totalEl.createEl('strong', { text: `Łącznie: ${breakdown.total.toLocaleString()} tokenów` });
-            totalEl.createEl('span', {
-                text: `${sections.filter(s => s.enabled).length}/${sections.length} sekcji`,
-                cls: 'setting-item-description'
-            });
+        // Expand/collapse
+        const toggleExpand = () => {
+            if (expandEl.style.display === 'none') {
+                expandedSet.add(section.key);
+                expandEl.style.display = 'block';
+                arrow.textContent = '▾';
+                if (!expandEl.dataset.rendered) {
+                    this._renderExpandedContent(expandEl, section, obsek, tokEl, updateTokenDisplays);
+                    expandEl.dataset.rendered = 'true';
+                }
+            } else {
+                expandedSet.delete(section.key);
+                expandEl.style.display = 'none';
+                arrow.textContent = '▸';
+            }
+        };
 
-            // Category groups
-            const categories = {
-                core: '🔵 Rdzeń',
-                capabilities: '🟢 Możliwości',
-                rules: '🟡 Zasady',
-                context: '🟣 Kontekst dynamiczny',
-            };
+        arrow.addEventListener('click', toggleExpand);
+        labelEl.addEventListener('click', toggleExpand);
+    }
 
-            for (const [catKey, catLabel] of Object.entries(categories)) {
-                const catSections = sections.filter(s => s.category === catKey);
-                if (catSections.length === 0) continue;
+    /**
+     * Render expanded content for a section in Prompt Builder.
+     * Chooses editor type based on section key and editable flag.
+     */
+    _renderExpandedContent(container, section, obsek, tokEl, updateTokenDisplays) {
+        const pd = obsek.promptDefaults || {};
 
-                const catTokens = catSections.filter(s => s.enabled).reduce((sum, s) => sum + s.tokens, 0);
+        if (section.key === 'decision_tree') {
+            this._renderDTEditorInline(container, pd);
+        } else if (section.key === 'agora_data') {
+            this._renderAgoraEditorInline(container, obsek, section.content);
+        } else if (section.editable) {
+            this._renderTextareaEditorInline(container, section.key, pd, section, tokEl, updateTokenDisplays);
+        } else {
+            // Read-only preview
+            const pre = container.createEl('pre');
+            pre.style.cssText = 'white-space:pre-wrap; font-size:0.82em; font-family:monospace; margin:0; max-height:300px; overflow-y:auto; color:var(--text-muted);';
+            pre.textContent = section.content || '(brak treści)';
+            container.createEl('p', {
+                text: '(edycja w profilu agenta)',
+                cls: 'setting-item-description',
+            }).style.cssText = 'margin:4px 0 0 0; font-size:0.75em; font-style:italic;';
+        }
+    }
 
-                const groupEl = container.createDiv();
-                groupEl.style.cssText = 'margin: 8px 0;';
+    /**
+     * Textarea editor for editable sections (environment, rules, minion_guide, master_guide).
+     */
+    _renderTextareaEditorInline(container, key, pd, section, tokEl, updateTokenDisplays) {
+        const taStyle = 'width:100%; min-height:100px; font-family:monospace; font-size:0.82em; resize:vertical; padding:6px; border:1px solid var(--background-modifier-border); border-radius:3px; background:var(--background-primary);';
 
-                const headerEl = groupEl.createDiv();
-                headerEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 0;';
-                headerEl.createEl('span', { text: catLabel });
-                headerEl.createEl('span', {
-                    text: `${catTokens.toLocaleString()} tok`,
-                    cls: 'setting-item-description'
+        const textarea = container.createEl('textarea');
+        textarea.value = pd[key] || FACTORY_DEFAULTS[key] || '';
+        textarea.style.cssText = taStyle;
+
+        textarea.addEventListener('change', async () => {
+            const val = textarea.value.trim();
+            if (val === FACTORY_DEFAULTS[key]?.trim()) {
+                delete pd[key];
+            } else {
+                pd[key] = val;
+            }
+            await this.save_settings();
+            // Update token count in-place
+            section.tokens = getTokenCount(val || FACTORY_DEFAULTS[key] || '');
+            tokEl.textContent = `${section.tokens.toLocaleString()} tok`;
+            updateTokenDisplays();
+        });
+
+        const btnRow = container.createDiv();
+        btnRow.style.cssText = 'margin-top:4px;';
+        const resetBtn = btnRow.createEl('button', { text: 'Przywróć domyślne', cls: 'mod-cta' });
+        resetBtn.style.cssText = 'font-size:0.78em; padding:2px 8px;';
+        resetBtn.addEventListener('click', async () => {
+            textarea.value = FACTORY_DEFAULTS[key] || '';
+            delete pd[key];
+            await this.save_settings();
+            section.tokens = getTokenCount(FACTORY_DEFAULTS[key] || '');
+            tokEl.textContent = `${section.tokens.toLocaleString()} tok`;
+            updateTokenDisplays();
+        });
+    }
+
+    /**
+     * Decision tree instruction editor (inline in Prompt Builder).
+     */
+    _renderDTEditorInline(container, pd) {
+        if (!pd.decisionTreeOverrides) pd.decisionTreeOverrides = {};
+        const dtOvr = pd.decisionTreeOverrides;
+
+        const inputStyle = 'flex:1; font-family:monospace; font-size:0.82em; padding:3px 6px; border:1px solid var(--background-modifier-border); border-radius:3px; background:var(--background-primary);';
+        const rowStyle = 'display:flex; align-items:center; gap:6px; margin-bottom:3px; padding:2px 0;';
+
+        const sortedGroups = Object.entries(DECISION_TREE_GROUPS)
+            .sort(([, a], [, b]) => a.order - b.order);
+
+        for (const [groupId, groupDef] of sortedGroups) {
+            container.createEl('strong', { text: groupDef.label }).style.cssText = 'display:block; margin:8px 0 4px 0; font-size:0.85em;';
+
+            const groupInstructions = DECISION_TREE_DEFAULTS.filter(d => d.group === groupId);
+
+            for (const instr of groupInstructions) {
+                const isDisabled = dtOvr[instr.id] === false;
+                const overrideText = typeof dtOvr[instr.id] === 'string' ? dtOvr[instr.id] : '';
+
+                const row = container.createDiv();
+                row.style.cssText = rowStyle;
+
+                const cb = row.createEl('input', { type: 'checkbox' });
+                cb.checked = !isDisabled;
+                cb.style.cssText = 'flex-shrink:0; cursor:pointer;';
+
+                const input = row.createEl('input', { type: 'text' });
+                input.value = overrideText || instr.text;
+                input.placeholder = instr.text;
+                input.style.cssText = inputStyle;
+                input.disabled = isDisabled;
+                if (isDisabled) input.style.opacity = '0.4';
+
+                if (instr.tool) {
+                    const badge = row.createEl('span', { text: instr.tool });
+                    badge.style.cssText = 'font-size:0.65em; opacity:0.4; white-space:nowrap; font-family:monospace;';
+                }
+
+                const resetBtn = row.createEl('button', { text: '↺', cls: 'clickable-icon' });
+                resetBtn.title = 'Przywróć domyślny';
+                resetBtn.style.cssText = 'flex-shrink:0; font-size:0.9em; padding:1px 5px;';
+
+                cb.addEventListener('change', async () => {
+                    if (cb.checked) {
+                        if (dtOvr[instr.id] === false) delete dtOvr[instr.id];
+                        input.disabled = false;
+                        input.style.opacity = '1';
+                    } else {
+                        dtOvr[instr.id] = false;
+                        input.disabled = true;
+                        input.style.opacity = '0.4';
+                    }
+                    await this.save_settings();
                 });
 
-                for (const section of catSections) {
-                    const rowEl = groupEl.createDiv();
-                    rowEl.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:2px 0 2px 16px; font-size:0.85em; gap:6px;';
-
-                    if (section.required) {
-                        // Required sections: locked, no toggle
-                        rowEl.createEl('span', { text: `🔒 ${section.label}` });
+                input.addEventListener('change', async () => {
+                    const val = input.value.trim();
+                    if (val === instr.text || val === '') {
+                        delete dtOvr[instr.id];
+                        input.value = instr.text;
                     } else {
-                        // Toggleable sections
-                        const toggleBtn = rowEl.createEl('span', {
-                            text: section.enabled ? '✅' : '⬜',
-                            attr: { 'aria-label': section.enabled ? 'Wyłącz' : 'Włącz' }
-                        });
-                        toggleBtn.style.cssText = 'cursor:pointer; user-select:none;';
-                        toggleBtn.createSpan({ text: ` ${section.label}` });
-                        if (!section.enabled) rowEl.style.opacity = '0.5';
-
-                        toggleBtn.addEventListener('click', async () => {
-                            const obsek = this.env?.settings?.obsek || {};
-                            if (!obsek.disabledPromptSections) obsek.disabledPromptSections = [];
-                            if (section.enabled) {
-                                // Disable
-                                if (!obsek.disabledPromptSections.includes(section.key)) {
-                                    obsek.disabledPromptSections.push(section.key);
-                                }
-                                // Update in-place (no re-render)
-                                toggleBtn.firstChild.textContent = '⬜';
-                                toggleBtn.setAttribute('aria-label', 'Włącz');
-                                rowEl.style.opacity = '0.5';
-                            } else {
-                                // Enable
-                                obsek.disabledPromptSections = obsek.disabledPromptSections.filter(k => k !== section.key);
-                                // Update in-place (no re-render)
-                                toggleBtn.firstChild.textContent = '✅';
-                                toggleBtn.setAttribute('aria-label', 'Wyłącz');
-                                rowEl.style.opacity = '1';
-                            }
-                            section.enabled = !section.enabled;
-                            await this.save_settings();
-                        });
+                        dtOvr[instr.id] = val;
                     }
+                    await this.save_settings();
+                });
 
-                    rowEl.createEl('span', {
-                        text: `${section.tokens.toLocaleString()} tok`,
-                        cls: 'setting-item-description',
-                        attr: { style: 'margin-left:auto;' }
-                    });
-                }
+                resetBtn.addEventListener('click', async () => {
+                    input.value = instr.text;
+                    delete dtOvr[instr.id];
+                    cb.checked = true;
+                    input.disabled = false;
+                    input.style.opacity = '1';
+                    await this.save_settings();
+                });
             }
 
-            // Preview button
-            const previewSetting = new Setting(container)
-                .setName('Podgląd pełnego promptu')
-                .setDesc('Pokaż cały złożony system prompt aktywnego agenta');
-            previewSetting.addButton(btn => {
-                btn.setButtonText('Pokaż prompt')
-                    .onClick(async () => {
-                        try {
-                            const fullPrompt = await agentManager.getActiveSystemPromptWithMemory();
-                            const modal = new Modal(this.app);
-                            modal.titleEl.setText(`System Prompt — ${activeAgent.emoji} ${activeAgent.name}`);
-                            const contentEl = modal.contentEl.createDiv();
-                            contentEl.style.cssText = 'white-space:pre-wrap; font-family:monospace; font-size:0.8em; max-height:70vh; overflow-y:auto; padding:8px;';
-                            contentEl.textContent = fullPrompt;
-                            modal.open();
-                        } catch (e) {
-                            new Notice('Błąd podglądu promptu: ' + e.message);
-                        }
-                    });
+            // Custom instructions for this group
+            const customKeys = Object.keys(dtOvr).filter(k =>
+                k.startsWith('custom_') && typeof dtOvr[k] === 'object' && dtOvr[k]?.group === groupId
+            );
+            for (const key of customKeys) {
+                const custom = dtOvr[key];
+                const row = container.createDiv();
+                row.style.cssText = rowStyle;
+
+                const cb = row.createEl('input', { type: 'checkbox' });
+                cb.checked = true;
+                cb.style.cssText = 'flex-shrink:0; cursor:pointer;';
+
+                const input = row.createEl('input', { type: 'text' });
+                input.value = custom.text;
+                input.style.cssText = inputStyle;
+
+                const badge = row.createEl('span', { text: 'custom' });
+                badge.style.cssText = 'font-size:0.65em; opacity:0.4; white-space:nowrap; font-family:monospace; color:var(--text-accent);';
+
+                const delBtn = row.createEl('button', { text: '✕', cls: 'clickable-icon' });
+                delBtn.title = 'Usuń instrukcję';
+                delBtn.style.cssText = 'flex-shrink:0; font-size:0.9em; padding:1px 5px; color:var(--text-error);';
+
+                input.addEventListener('change', async () => {
+                    custom.text = input.value.trim();
+                    await this.save_settings();
+                });
+
+                delBtn.addEventListener('click', async () => {
+                    delete dtOvr[key];
+                    await this.save_settings();
+                    row.remove();
+                });
+            }
+
+            // "+ Dodaj instrukcję" button
+            const addBtn = container.createEl('button', { text: '+ Dodaj instrukcję', cls: 'clickable-icon' });
+            addBtn.style.cssText = 'font-size:0.75em; margin-bottom:6px; opacity:0.6;';
+            addBtn.addEventListener('click', async () => {
+                const customId = `custom_${groupId}_${Date.now()}`;
+                dtOvr[customId] = { group: groupId, text: 'Nowa instrukcja — edytuj tekst', tool: null };
+                await this.save_settings();
+                // Re-render just the DT container
+                container.empty();
+                this._renderDTEditorInline(container, pd);
             });
-        } catch (e) {
-            container.createEl('p', { text: `Błąd: ${e.message}`, cls: 'setting-item-description' });
-            log.warn('Settings', 'Prompt Inspector error:', e);
+        }
+    }
+
+    /**
+     * Agora scope editor (inline in Prompt Builder).
+     * Checkboxes for profile/activity/projects + content preview.
+     */
+    _renderAgoraEditorInline(container, obsek, contentPreview) {
+        if (!obsek.agoraScope) obsek.agoraScope = {};
+        const agoraScope = obsek.agoraScope;
+
+        const agoraSections = [
+            { key: 'profile', label: 'Profil użytkownika' },
+            { key: 'activity', label: 'Ostatnia aktywność' },
+            { key: 'projects', label: 'Aktywne projekty' },
+        ];
+
+        for (const as of agoraSections) {
+            const row = container.createDiv();
+            row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:2px 0;';
+
+            const cb = row.createEl('input', { type: 'checkbox' });
+            cb.checked = agoraScope[as.key] !== false;
+            cb.style.cssText = 'cursor:pointer; margin:0;';
+
+            row.createEl('span', { text: as.label }).style.cssText = 'font-size:0.88em;';
+
+            cb.addEventListener('change', async () => {
+                agoraScope[as.key] = cb.checked;
+                await this.save_settings();
+            });
+        }
+
+        // Content preview
+        if (contentPreview) {
+            const pre = container.createEl('pre');
+            pre.style.cssText = 'white-space:pre-wrap; font-size:0.78em; font-family:monospace; margin:8px 0 0 0; max-height:200px; overflow-y:auto; color:var(--text-muted); border-top:1px solid var(--background-modifier-border); padding-top:6px;';
+            pre.textContent = contentPreview;
         }
     }
 

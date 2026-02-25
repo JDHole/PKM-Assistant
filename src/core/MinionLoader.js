@@ -304,6 +304,7 @@ export class MinionLoader {
             model: frontmatter.model || null,
             tools: frontmatter.tools || ['vault_search', 'memory_search', 'vault_read'],
             max_iterations: frontmatter.max_iterations || 3,
+            min_iterations: frontmatter.min_iterations || 1,
             enabled: frontmatter.enabled !== false,
             prompt: content.trim(),
             path: minionFilePath

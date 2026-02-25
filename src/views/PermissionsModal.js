@@ -34,45 +34,66 @@ export class PermissionsModal extends Modal {
 
         const presetButtons = presetContainer.createDiv('preset-buttons');
 
-        // Safe Mode button
         const safeBtn = presetButtons.createEl('button', {
-            text: '🔒 Safe Mode',
+            text: '🔒 Safe',
             cls: 'mod-cta'
         });
         safeBtn.onclick = () => this.applyPreset('safe');
 
-        // Standard button
         const stdBtn = presetButtons.createEl('button', { text: '⚖️ Standard' });
         stdBtn.onclick = () => this.applyPreset('standard');
 
-        // YOLO button
         const yoloBtn = presetButtons.createEl('button', {
-            text: '🚀 YOLO',
+            text: '🚀 Full',
             cls: 'mod-warning'
         });
         yoloBtn.onclick = () => this.applyPreset('yolo');
 
-        // Permissions list
+        // Active permissions
         contentEl.createEl('h4', { text: 'Szczegółowe uprawnienia' });
 
         const permissionsList = contentEl.createDiv('permissions-list');
 
-        const allPermissions = PermissionSystem.getAllPermissionTypes();
+        const activePerms = [
+            { key: PERMISSION_TYPES.READ_NOTES, hint: 'Czytanie notatek' },
+            { key: PERMISSION_TYPES.EDIT_NOTES, hint: 'Modyfikacja notatek' },
+            { key: PERMISSION_TYPES.CREATE_FILES, hint: 'Tworzenie plików' },
+            { key: PERMISSION_TYPES.DELETE_FILES, hint: 'Usuwanie plików' },
+            { key: PERMISSION_TYPES.MCP, hint: 'Narzędzia MCP (wyszukiwanie, zapis, delegacja)' },
+            { key: PERMISSION_TYPES.YOLO_MODE, hint: 'Automatyczne zatwierdzanie (bez pytania)' },
+            { key: 'memory', hint: 'Pamięć agenta (brain.md, sesje, narzędzia pamięci)' },
+            { key: 'guidance_mode', hint: 'Wyłączony = WHITELIST (tylko focus folders). Włączony = cały vault (focus folders to priorytety).' }
+        ];
 
-        for (const { key, label } of allPermissions) {
+        for (const { key, hint } of activePerms) {
             new Setting(permissionsList)
-                .setName(label)
-                .setDesc(this.getPermissionHint(key))
+                .setName(PermissionSystem.getPermissionDescription(key) || hint)
+                .setDesc(hint)
                 .addToggle(toggle => {
                     toggle
                         .setValue(this.tempPermissions[key] === true)
                         .onChange(value => {
                             this.tempPermissions[key] = value;
-                            // If YOLO enabled, show warning
                             if (key === PERMISSION_TYPES.YOLO_MODE && value) {
                                 this.showYoloWarning();
                             }
                         });
+                });
+        }
+
+        // Planned permissions (disabled)
+        contentEl.createEl('h4', { text: 'Planowane' });
+        const plannedList = contentEl.createDiv('permissions-list');
+        const comingSoon = [
+            { label: 'Dostęp poza vaultem', desc: 'Wkrótce' },
+            { label: 'Komendy systemowe', desc: 'Wkrótce' }
+        ];
+        for (const { label, desc } of comingSoon) {
+            new Setting(plannedList)
+                .setName(label)
+                .setDesc(desc)
+                .addToggle(toggle => {
+                    toggle.setValue(false).setDisabled(true);
                 });
         }
 
@@ -99,9 +120,11 @@ export class PermissionsModal extends Modal {
                     delete_files: false,
                     access_outside_vault: false,
                     execute_commands: false,
-                    thinking: true,
+                    thinking: false,
                     mcp: false,
-                    yolo_mode: false
+                    yolo_mode: false,
+                    memory: true,
+                    guidance_mode: false
                 };
                 break;
             case 'standard':
@@ -112,9 +135,11 @@ export class PermissionsModal extends Modal {
                     delete_files: false,
                     access_outside_vault: false,
                     execute_commands: false,
-                    thinking: true,
+                    thinking: false,
                     mcp: true,
-                    yolo_mode: false
+                    yolo_mode: false,
+                    memory: true,
+                    guidance_mode: false
                 };
                 break;
             case 'yolo':
@@ -123,11 +148,13 @@ export class PermissionsModal extends Modal {
                     edit_notes: true,
                     create_files: true,
                     delete_files: true,
-                    access_outside_vault: true,
-                    execute_commands: true,
-                    thinking: true,
+                    access_outside_vault: false,
+                    execute_commands: false,
+                    thinking: false,
                     mcp: true,
-                    yolo_mode: true
+                    yolo_mode: true,
+                    memory: true,
+                    guidance_mode: false
                 };
                 this.showYoloWarning();
                 break;
@@ -155,11 +182,10 @@ export class PermissionsModal extends Modal {
             [PERMISSION_TYPES.EDIT_NOTES]: 'Pozwala modyfikować istniejące notatki',
             [PERMISSION_TYPES.CREATE_FILES]: 'Pozwala tworzyć nowe pliki',
             [PERMISSION_TYPES.DELETE_FILES]: 'Pozwala usuwać pliki (niebezpieczne!)',
-            [PERMISSION_TYPES.ACCESS_OUTSIDE_VAULT]: 'Dostęp do plików poza vaultem',
-            [PERMISSION_TYPES.EXECUTE_COMMANDS]: 'Wykonywanie komend systemowych',
-            [PERMISSION_TYPES.THINKING]: 'Extended thinking w Claude',
-            [PERMISSION_TYPES.MCP]: 'Używanie narzędzi MCP',
-            [PERMISSION_TYPES.YOLO_MODE]: 'Auto-approve wszystkich akcji'
+            [PERMISSION_TYPES.MCP]: 'Narzędzia MCP (wyszukiwanie, zapis, delegacja)',
+            [PERMISSION_TYPES.YOLO_MODE]: 'Automatyczne zatwierdzanie (bez pytania)',
+            'memory': 'Pamięć agenta (brain.md, sesje, narzędzia pamięci)',
+            'guidance_mode': 'OFF = WHITELIST (strict). ON = cały vault, focus folders to priorytety.'
         };
         return hints[key] || '';
     }

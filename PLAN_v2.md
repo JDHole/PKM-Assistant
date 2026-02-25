@@ -331,7 +331,7 @@
 - [x] Lista skilli z krotkimi opisami wstrzykiwana do system promptu (punkt 4c z checkpointu) ✅ sesja 37 _buildSkillsList
 - [x] Uprawnienia widoczne w system prompcie — agent WIE czego NIE moze (punkt 3d) ✅ sesja 37 _buildPermissions + sesja 38 "NIE MASZ NARZEDZI"
 - [x] Info o minionie i masterze: kiedy delegowac, jak formulowac zadania ✅ sesja 37 _buildMinionGuide + _buildMasterGuide
-- [ ] Kontekst roli agenta wplywa na instrukcje (nie tylko dekoracja — punkt 3a)
+- [x] Kontekst roli agenta wplywa na instrukcje (nie tylko dekoracja — punkt 3a) ✅ sesja 44 PromptBuilder _buildRoleBehavior() + 3-layer overrides
 - [x] Wersja skrocona dla lokalnych modeli (<14B) — tylko essentials ✅ sesja 37 lean/fat mode (hasMinion toggle)
 - [x] Edytowalne sekcje PKM System + Srodowisko z Settings ✅ sesja 38 textarea w obsek_settings_tab.js
 - [x] Zasady adaptacyjne wg permissions agenta ✅ sesja 38 _buildRules z enabledGroups
@@ -343,7 +343,7 @@
 ### 2.3.2 Testy promptow
 - [x] Test: agent NIE probuje narzedzi ktorych nie ma (po dodaniu uprawnien do promptu) ✅ sesja 38 fix "NIE MASZ NARZEDZI" + tools:0
 - [ ] Test: agent poprawnie deleguje do miniona/mastera
-- [ ] Test: agent uzywa skilli bez koniecznosci wywolywania skill_list
+- [x] Test: agent uzywa skilli bez koniecznosci wywolywania skill_list ✅ sesja 44 DT instrukcja "Znasz swoje skille" + _injectGroupDynamics() lista nazw
 - [ ] Test na DeepSeek, Ollama, OpenRouter — rozne modele, ten sam prompt
 
 ---
@@ -384,8 +384,8 @@
 - [x] Podglad opisow narzedzi z ich rozmiarem w tokenach ✅ sesja 37 sekcja tools_overview z tokenami
 
 ### 2.5.3 Edycja z UI
-- [x] Mozliwosc edycji system promptu agenta bezposrednio z Prompt Inspectora ✅ sesja 38 textarea PKM + Srodowisko
-- [x] Mozliwosc wylaczenia/wlaczenia poszczegolnych elementow (RAG, pamiec, opisy narzedzi) ✅ sesja 40 toggles w Inspector
+- [x] Mozliwosc edycji system promptu agenta bezposrednio z Prompt Inspectora ✅ sesja 38 textarea PKM + Srodowisko → sesja 44 Prompt Builder z inline edytorami per sekcja
+- [x] Mozliwosc wylaczenia/wlaczenia poszczegolnych elementow (RAG, pamiec, opisy narzedzi) ✅ sesja 40 toggles → sesja 44 WSZYSTKO toggleable (usuniety required:true), live token update
 - [ ] Mozliwosc edycji opisow narzedzi z UI (krotsze/dluzsze/dokladniejsze)
 
 ---
@@ -424,16 +424,19 @@
 - [x] Edit button dla brain/active_context/audit ✅ sesja 41
 - [x] Sessions: lista z copy-path i otwieraniem ✅ sesja 41
 
-### 2.6.5 Uprawnienia — Access Control (ODLOZONE na sesje 42)
+### 2.6.5 Uprawnienia — Access Control ✅ sesja 42
 - [x] Per-tool permissions: mozliwosc wlaczania/wylaczania KONKRETNYCH narzedzi (nie all-or-nothing MCP) ✅ sesja 37 TOOL_GROUPS + enabledTools[] + UI per-group toggle
-- [ ] Focus folders jako TWARDE blokowanie vault_read/list/search (punkt 3e)
-- [ ] Panel uprawnien z per-folder access control (read/write/none)
+- [x] Focus folders jako TWARDE blokowanie vault_read/list/search — AccessGuard.js WHITELIST model ✅ sesja 42
+- [x] Panel uprawnien z per-folder access control (read/write) — autocomplete + chipy z toggle 👁️/📝 ✅ sesja 42
 - [ ] Per-agent master_task toggle (wlacz/wylacz delegacje W GORE per agent)
-- [ ] Fix: permission denial retry loop (agent powtarza tool call po odmowie)
+- [x] Fix: permission denial retry loop — denial memory w MCPClient + rich error messages + PromptBuilder info ✅ sesja 42
+- [x] MinionRunner security fix — route przez MCPClient zamiast direct execute ✅ sesja 42
+- [x] ApprovalModal rewrite — polskie opisy, content preview, structured deny z powodem ✅ sesja 42
+- [x] AgoraView cross-reference — "Dostep agentow (WHITELIST)" z folder badges ✅ sesja 42
 
 ### 2.6.6 Rozbudowa Agent Creatora
 - [x] Archetyp dropdown (4 opcje) + Rola dropdown (sugerowane wg archetypu + pozostale) ✅ sesja 41
-- [ ] Podglad generowanego system promptu w kreatorze (zeby user widzial efekt zmian)
+- [x] Podglad generowanego system promptu w kreatorze (zeby user widzial efekt zmian) ✅ sesja 44 Prompt Builder panel z agent selector + expand/collapse
 - [ ] Format exportu agenta: caly pakiet w jednym pliku (dla marketplace w przyszlosci)
 
 ---
@@ -649,7 +652,8 @@
 ### 2.15.3 Prywatnosc
 - [ ] Wykrywacz wrazliwych danych PRZED wyslaniem (regex: hasla, klucze API, numery kart)
 - [ ] LOCAL vs CLOUD wskaznik przy kazdym modelu (zielona/pomaranczowa ikona)
-- [ ] Blacklist plikow/folderow ("ten plik NIGDY nie idzie do AI")
+- [x] Blacklist plikow/folderow ("ten plik NIGDY nie idzie do AI") → No-Go zone (sesja 42)
+- [ ] **🚨 WAŻNE: No-Go foldery — wykluczenie z indeksowania embeddings** (smart_sources musi pomijać No-Go foldery, nie tylko AccessGuard blokuje dostęp agentów — dane NIE MOGĄ trafić do indeksu wektorowego)
 
 ### 2.15.4 Testowanie
 - [ ] Test na min. 5 platformach (DeepSeek, Ollama, OpenRouter, Anthropic, OpenAI)
@@ -773,13 +777,14 @@
 - [ ] Adaptery / LoRA: fine-tuning modeli na danych usera
 - [ ] Concept routing: automatyczne tagowanie notatek
 
-## 3.8 OBSIDIAN_COMMAND — WYKONYWANIE POLECEN OBSIDIANA [v2.0+]
+## 3.8 OBSIDIAN_COMMAND + OUTSIDE VAULT ACCESS [v2.0+]
 
 > **Cel:** Agent moze "kliknac" dowolne polecenie Obsidiana — dostep do SETEK funkcji.
 > **Przeniesione z CZESCI 2** (dawne 2.5) — wymaga solidnego permission systemu, whitelisty komend, community feedback.
 > **Szacunek:** 3-5 sesji (wliczajac sandbox + bezpieczenstwo)
 > **Odniesienie:** Checkpoint punkt 9e (Obsidian API goldmine)
 
+### Obsidian Commands
 - [ ] Bezpieczny sandbox: whitelist dozwolonych komend (nie wszystkie!)
 - [ ] Permission system: user zatwierdza komendy przed wykonaniem
 - [ ] app.commands.listCommands() — lista dostepnych polecen (read-only)
@@ -789,6 +794,15 @@
 - [ ] Rejestracja w ToolRegistry + MCPClient
 - [ ] Community feedback: jakie komendy sa bezpieczne?
 - [ ] Test: agent odpalil polecenie z whitelisty
+
+### Outside Vault Access (dodane sesja 42)
+> Agent-programista (np. do pisania pluginow) potrzebuje dostepu POZA vault — pliki systemowe, node_modules, itp.
+> Wymaga nowego permission `access_outside_vault` z dodatkowym sandbox.
+- [ ] Nowy tool: file_read_external / file_write_external (oddzielne od vault_read/write)
+- [ ] Whitelist sciezek poza vaultem (konfiguracja per-agent)
+- [ ] Approval modal z informacja o sciezce POZA vaultem (wyrazne ostrzezenie)
+- [ ] Sandbox: agent NIE moze czytac .env, credentials, kluczy API
+- [ ] Integracja z AccessGuard — osobna logika dla sciezek poza vaultem
 
 ## 3.9 AGORA — TABLICA AKTYWNOSCI AGENTOW [v2.0] ✅ DONE (sesja 35)
 
@@ -848,8 +862,10 @@ Wszystko powyzej → 2.10 UX Chatu (3-4 sesje)
 **Srodek (po stabilizacji):**
 5. ~~2.5 Prompt Transparency~~ ✅ DONE (sesja 40) — TokenTracker, SubAgentBlock, toggles, Backstage redesign
 6. ~~2.6 Personalizacja Agenta Part 1~~ ✅ DONE (sesja 41) — Archetyp→Rola, RoleLoader, Role Creator, Memory tab
-   - 2.6 Part 2: Access Control — ODLOZONE na sesje 42
-7. 2.7 MasterRunner — pelny ekosystem
+   - ~~2.6 Part 2: Access Control~~ ✅ DONE (sesja 42) — WHITELIST, denial, guidance mode, No-Go
+   - ~~Tryby Pracy~~ ✅ DONE (sesja 43) — 4 modes, cascade, switch_mode, toolbar
+   - ~~Prompt v2.1 + DT v2 + Prompt Builder~~ ✅ DONE (sesja 44) — 3-layer overrides, 24 instrukcji, unified panel
+7. 2.7 MasterRunner — pelny ekosystem ← NASTEPNY
 8. 2.8 Skille v2 — system ktory naprawde dziala
 9. 2.9 Pamiec fix — bugi do naprawy
 

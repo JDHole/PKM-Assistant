@@ -28,6 +28,7 @@ import { ChatView } from "./views/chat_view.js";
 import { AgentManager } from "./core/AgentManager.js";
 import { VaultZones } from "./core/VaultZones.js";
 import { PermissionSystem } from "./core/PermissionSystem.js";
+import { AccessGuard } from "./core/AccessGuard.js";
 import { ApprovalManager } from "./core/ApprovalManager.js";
 import { ToolRegistry } from "./mcp/ToolRegistry.js";
 import { MCPClient } from "./mcp/MCPClient.js";
@@ -51,6 +52,7 @@ import { createPlanTool } from "./mcp/PlanTool.js";
 import { createAgoraReadTool } from "./mcp/AgoraReadTool.js";
 import { createAgoraUpdateTool } from "./mcp/AgoraUpdateTool.js";
 import { createAgoraProjectTool } from "./mcp/AgoraProjectTool.js";
+import { createSwitchModeTool } from "./mcp/SwitchModeTool.js";
 import { AgoraManager } from "./core/AgoraManager.js";
 import { registerAgentSidebar, openAgentSidebar } from "./views/AgentSidebar.js";
 import { SendToAgentModal } from "./views/SendToAgentModal.js";
@@ -214,6 +216,9 @@ export default class ObsekPlugin extends PKMPlugin {
       log.error('Plugin', 'AgoraManager FAIL:', e);
     }
 
+    // No-Go folders (from settings → AccessGuard)
+    AccessGuard.setNoGoFolders(this.env?.settings?.obsek?.no_go_folders);
+
     // MCP system
     try {
       log.debug('Plugin', 'Inicjalizacja MCP system...');
@@ -246,6 +251,7 @@ export default class ObsekPlugin extends PKMPlugin {
       this.toolRegistry.registerTool(createAgoraReadTool(this.app));
       this.toolRegistry.registerTool(createAgoraUpdateTool(this.app));
       this.toolRegistry.registerTool(createAgoraProjectTool(this.app));
+      this.toolRegistry.registerTool(createSwitchModeTool(this.app));
 
       this.toolLoader = new ToolLoader(this.app.vault);
       const customTools = await this.toolLoader.loadAllTools();

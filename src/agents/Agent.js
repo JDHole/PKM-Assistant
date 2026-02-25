@@ -19,9 +19,11 @@ export const DEFAULT_PERMISSIONS = {
     delete_files: false,
     access_outside_vault: false,
     execute_commands: false,
-    thinking: true,
+    thinking: false,
     mcp: false,
-    yolo_mode: false
+    yolo_mode: false,
+    memory: true,
+    guidance_mode: false  // false = WHITELIST (strict), true = cały vault except No-Go
 };
 
 /**
@@ -42,6 +44,8 @@ export class Agent {
      * @param {string[]} [config.enabled_tools] - Which MCP tools are enabled (empty = all)
      * @param {boolean} [config.isBuiltIn] - Whether this is a built-in agent
      * @param {string} [config.filePath] - Path to YAML definition file (for custom agents)
+     * @param {Object} [config.prompt_overrides] - Per-agent prompt section overrides {decision_tree, minion_guide, ...}
+     * @param {string} [config.agent_rules] - Domain-specific rules for this agent (e.g. "Grafiki w 16:9")
      */
     constructor(config) {
         this.name = config.name;
@@ -56,15 +60,18 @@ export class Agent {
         this.personality = config.personality || '';
         this.model = config.model || null; // null = use default from settings
         this.temperature = config.temperature ?? 0.7;
-        this.focusFolders = config.focus_folders || [];
+        this.focusFolders = Agent._normalizeFocusFolders(config.focus_folders);
         this.permissions = { ...DEFAULT_PERMISSIONS, ...(config.default_permissions || {}) };
         this.skills = config.skills || [];
         this.enabledTools = config.enabled_tools || []; // empty = all tools
         this.minion = config.minion || null; // minion config name (e.g. 'jaskier-prep')
         this.minionEnabled = config.minion_enabled !== false; // default: true
         this.models = config.models || {}; // per-agent model overrides {main: {platform, model}, minion: {...}, master: {...}}
+        this.defaultMode = config.default_mode || null; // null = use global default
         this.isBuiltIn = config.isBuiltIn || false;
         this.filePath = config.filePath || null;
+        this.promptOverrides = config.prompt_overrides || {}; // per-agent prompt section overrides
+        this.agentRules = config.agent_rules || ''; // domain-specific rules
 
         // Runtime state
         this.activeContext = [];
@@ -175,12 +182,21 @@ export class Agent {
         if (this.personality) data.personality = this.personality;
         if (this.model) data.model = this.model;
         if (this.temperature !== 0.7) data.temperature = this.temperature;
-        if (this.focusFolders.length > 0) data.focus_folders = this.focusFolders;
+        if (this.focusFolders.length > 0) {
+            // Backward compat: readwrite entries saved as plain strings
+            data.focus_folders = this.focusFolders.map(f => {
+                if (f.access === 'readwrite') return f.path;
+                return { path: f.path, access: f.access };
+            });
+        }
         if (this.skills.length > 0) data.skills = this.skills;
         if (this.enabledTools.length > 0) data.enabled_tools = this.enabledTools;
         if (this.minion) data.minion = this.minion;
         if (this.minionEnabled === false) data.minion_enabled = false;
         if (Object.keys(this.models).length > 0) data.models = this.models;
+        if (this.defaultMode) data.default_mode = this.defaultMode;
+        if (Object.keys(this.promptOverrides).length > 0) data.prompt_overrides = this.promptOverrides;
+        if (this.agentRules) data.agent_rules = this.agentRules;
 
         // Only save non-default permissions
         const customPermissions = {};
@@ -213,24 +229,49 @@ export class Agent {
         const allowedFields = [
             'name', 'emoji', 'personality', 'model',
             'temperature', 'archetype', 'role', 'focus_folders', 'default_permissions', 'skills',
-            'enabled_tools', 'minion', 'minion_enabled', 'models'
+            'enabled_tools', 'minion', 'minion_enabled', 'models', 'default_mode',
+            'prompt_overrides', 'agent_rules'
         ];
 
         for (const [key, value] of Object.entries(updates)) {
             if (allowedFields.includes(key)) {
                 if (key === 'focus_folders') {
-                    this.focusFolders = value;
+                    this.focusFolders = Agent._normalizeFocusFolders(value);
                 } else if (key === 'default_permissions') {
                     this.permissions = { ...DEFAULT_PERMISSIONS, ...value };
                 } else if (key === 'minion_enabled') {
                     this.minionEnabled = value;
                 } else if (key === 'enabled_tools') {
                     this.enabledTools = value;
+                } else if (key === 'default_mode') {
+                    this.defaultMode = value || null;
+                } else if (key === 'prompt_overrides') {
+                    this.promptOverrides = value || {};
+                } else if (key === 'agent_rules') {
+                    this.agentRules = value || '';
                 } else {
                     this[key] = value;
                 }
             }
         }
+    }
+
+    /**
+     * Normalize focusFolders from mixed formats to {path, access}[].
+     * Handles: string[], {path,access}[], and mixed arrays.
+     * @param {Array} input
+     * @returns {Array<{path: string, access: 'read'|'readwrite'}>}
+     */
+    static _normalizeFocusFolders(input) {
+        if (!input || !Array.isArray(input)) return [];
+        return input
+            .filter(f => f)
+            .map(f => {
+                if (typeof f === 'string') {
+                    return { path: f, access: 'readwrite' };
+                }
+                return { path: f.path || String(f), access: f.access || 'readwrite' };
+            });
     }
 
     /**

@@ -122,6 +122,10 @@ export class AgoraManager {
 
 ## Strefy agentowe
 > Ta sekcja zostanie uzupełniona przez agentów.
+
+## No-Go
+> Foldery wpisane tutaj są całkowicie niedostępne dla agentów i wykluczone z indeksowania.
+> Zarządzaj nimi w Agora → Mapa lub w Ustawieniach pluginu.
 `;
     }
 
@@ -722,6 +726,25 @@ agents:
     }
 
     /**
+     * Extract folder→description mappings from vault_map.md.
+     * Parses lines like: - **FolderName/** — description text
+     * @returns {Promise<Object<string, string>>} { 'Projekty': 'opis...', ... }
+     */
+    async getVaultMapDescriptions() {
+        const content = await this.readVaultMap();
+        if (!content) return {};
+
+        const descriptions = {};
+        const regex = /[-*]\s*\*\*([^*]+)\*\*\s*[—–-]\s*(.+)/g;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            const folder = match[1].replace(/\/+$/, '').replace(/\*\*/g, '').trim();
+            descriptions[folder] = match[2].trim();
+        }
+        return descriptions;
+    }
+
+    /**
      * Update a section of the vault map
      * @param {string} sectionName - Header name to update (e.g. "Strefy użytkownika")
      * @param {string} content - New content for the section
@@ -1281,29 +1304,38 @@ agents:
      * @param {Object} agent - Agent instance
      * @returns {Promise<string>}
      */
-    async buildPromptContext(agent) {
+    async buildPromptContext(agent, scope = {}) {
+        // Scope: configurable via obsek.agoraScope, passed from AgentManager
+        const showProfile = scope.profile !== false; // default: true
+        const showActivity = scope.activity !== false; // default: true
+        const showProjects = scope.projects !== false; // default: true
+
         const parts = [];
 
         // 1. Profile summary (~400 tokens)
-        const profile = await this.getProfileSummary(1500);
-        if (profile) {
-            parts.push('## Profil użytkownika');
-            parts.push(profile);
+        if (showProfile) {
+            const profile = await this.getProfileSummary(1500);
+            if (profile) {
+                parts.push('## Profil użytkownika');
+                parts.push(profile);
+            }
         }
 
         // 2. Recent activity (~200 tokens)
-        const activities = await this.readActivity(3);
-        if (activities.length > 0) {
-            parts.push('\n## Ostatnia aktywność');
-            for (const a of activities) {
-                let line = `- ${a.agent} (${a.date}): ${a.summary}`;
-                if (a.conclusions) line += ` → ${a.conclusions}`;
-                parts.push(line);
+        if (showActivity) {
+            const activities = await this.readActivity(3);
+            if (activities.length > 0) {
+                parts.push('\n## Ostatnia aktywność');
+                for (const a of activities) {
+                    let line = `- ${a.agent} (${a.date}): ${a.summary}`;
+                    if (a.conclusions) line += ` → ${a.conclusions}`;
+                    parts.push(line);
+                }
             }
         }
 
         // 3. Active projects for this agent (~100 tokens)
-        if (agent?.name) {
+        if (showProjects && agent?.name) {
             const projects = await this.listProjects(agent.name);
             const active = projects.filter(p => p.status === 'active');
             if (active.length > 0) {

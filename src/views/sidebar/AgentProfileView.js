@@ -9,13 +9,14 @@ import { getArchetypeList } from '../../agents/archetypes/Archetypes.js';
 import { PermissionSystem, PERMISSION_TYPES } from '../../core/PermissionSystem.js';
 import { DEFAULT_PERMISSIONS } from '../../agents/Agent.js';
 import { HiddenFileEditorModal } from '../AgentProfileModal.js';
-import { TOOL_GROUPS } from '../../core/PromptBuilder.js';
+import { TOOL_GROUPS, FACTORY_DEFAULTS, DECISION_TREE_GROUPS, DECISION_TREE_DEFAULTS } from '../../core/PromptBuilder.js';
 
 // Tab definitions
 const TABS = [
     { id: 'profile', label: 'Profil', icon: '👤' },
     { id: 'permissions', label: 'Uprawnienia', icon: '🔒' },
     { id: 'skills', label: 'Umiejętności', icon: '⚡' },
+    { id: 'prompt', label: 'Prompt', icon: '📝' },
     { id: 'memory', label: 'Pamięć', icon: '🧠', editOnly: true },
     { id: 'stats', label: 'Statystyki', icon: '📊', editOnly: true }
 ];
@@ -52,7 +53,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         minion: agent.minion || '',
         minion_enabled: agent.minionEnabled !== false,
         permissions: { ...agent.permissions },
-        models: JSON.parse(JSON.stringify(agent.models || {}))
+        models: JSON.parse(JSON.stringify(agent.models || {})),
+        default_mode: agent.defaultMode || '',
+        prompt_overrides: JSON.parse(JSON.stringify(agent.promptOverrides || {})),
+        agent_rules: agent.agentRules || ''
     } : {
         name: '',
         emoji: '🤖',
@@ -67,7 +71,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         minion: '',
         minion_enabled: true,
         permissions: { ...DEFAULT_PERMISSIONS, mcp: true },
-        models: {}
+        models: {},
+        default_mode: '',
+        prompt_overrides: {},
+        agent_rules: ''
     };
 
     // State
@@ -132,6 +139,7 @@ export function renderAgentProfileView(container, plugin, nav, params) {
             case 'profile': renderProfileTab(tabContent); break;
             case 'permissions': renderPermissionsTab(tabContent); break;
             case 'skills': renderSkillsTab(tabContent); break;
+            case 'prompt': renderPromptTab(tabContent); break;
             case 'memory': renderMemoryTab(tabContent); break;
             case 'stats': renderStatsTab(tabContent); break;
         }
@@ -267,16 +275,16 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                 .onChange(v => formData.temperature = v));
 
         new Setting(el)
-            .setName('Focus folders')
-            .setDesc('Foldery agenta (jeden per linia)')
-            .addTextArea(text => {
-                text.setPlaceholder('Projects/**\nNotes/**')
-                    .setValue(formData.focus_folders.join('\n'))
-                    .onChange(v => {
-                        formData.focus_folders = v.split('\n').map(f => f.trim()).filter(f => f.length > 0);
-                    });
-                text.inputEl.rows = 3;
-                text.inputEl.style.width = '100%';
+            .setName('Domyślny tryb pracy')
+            .setDesc('Tryb na starcie nowego chatu (puste = globalny)')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '— Globalny (domyślny) —');
+                dropdown.addOption('rozmowa', '💬 Rozmowa');
+                dropdown.addOption('planowanie', '📋 Planowanie');
+                dropdown.addOption('praca', '🔨 Praca');
+                dropdown.addOption('kreatywny', '✨ Kreatywny');
+                dropdown.setValue(formData.default_mode || '');
+                dropdown.onChange(v => formData.default_mode = v);
             });
 
         new Setting(el)
@@ -297,9 +305,9 @@ export function renderAgentProfileView(container, plugin, nav, params) {
 
         const presetButtons = presetSection.createDiv({ cls: 'permission-preset-buttons' });
         const presets = [
-            { id: 'safe', label: '🔒 Safe', perms: { read_notes: true, edit_notes: false, create_files: false, delete_files: false, access_outside_vault: false, execute_commands: false, thinking: true, mcp: false, yolo_mode: false } },
-            { id: 'standard', label: '⚖️ Standard', perms: { read_notes: true, edit_notes: true, create_files: true, delete_files: false, access_outside_vault: false, execute_commands: false, thinking: true, mcp: true, yolo_mode: false } },
-            { id: 'yolo', label: '🚀 Full', perms: { read_notes: true, edit_notes: true, create_files: true, delete_files: true, access_outside_vault: true, execute_commands: true, thinking: true, mcp: true, yolo_mode: true } }
+            { id: 'safe', label: '🔒 Safe', perms: { read_notes: true, edit_notes: false, create_files: false, delete_files: false, access_outside_vault: false, execute_commands: false, thinking: false, mcp: false, yolo_mode: false, memory: true, guidance_mode: false } },
+            { id: 'standard', label: '⚖️ Standard', perms: { read_notes: true, edit_notes: true, create_files: true, delete_files: false, access_outside_vault: false, execute_commands: false, thinking: false, mcp: true, yolo_mode: false, memory: true, guidance_mode: false } },
+            { id: 'yolo', label: '🚀 Full', perms: { read_notes: true, edit_notes: true, create_files: true, delete_files: true, access_outside_vault: false, execute_commands: false, thinking: false, mcp: true, yolo_mode: true, memory: true, guidance_mode: false } }
         ];
 
         for (const preset of presets) {
@@ -313,29 +321,59 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         // Detailed permissions
         el.createEl('h4', { text: 'Szczegółowe uprawnienia' });
 
-        const allPermissions = PermissionSystem.getAllPermissionTypes();
-        const hints = {
-            [PERMISSION_TYPES.READ_NOTES]: 'Czytanie notatek',
-            [PERMISSION_TYPES.EDIT_NOTES]: 'Modyfikacja notatek',
-            [PERMISSION_TYPES.CREATE_FILES]: 'Tworzenie plików',
-            [PERMISSION_TYPES.DELETE_FILES]: 'Usuwanie plików',
-            [PERMISSION_TYPES.ACCESS_OUTSIDE_VAULT]: 'Dostęp poza vaultem',
-            [PERMISSION_TYPES.EXECUTE_COMMANDS]: 'Komendy systemowe',
-            [PERMISSION_TYPES.THINKING]: 'Extended thinking',
-            [PERMISSION_TYPES.MCP]: 'Narzędzia MCP',
-            [PERMISSION_TYPES.YOLO_MODE]: 'Auto-approve'
-        };
+        // Active permissions (with toggles)
+        const activePerms = [
+            { key: PERMISSION_TYPES.READ_NOTES, hint: 'Czytanie notatek' },
+            { key: PERMISSION_TYPES.EDIT_NOTES, hint: 'Modyfikacja notatek' },
+            { key: PERMISSION_TYPES.CREATE_FILES, hint: 'Tworzenie plików' },
+            { key: PERMISSION_TYPES.DELETE_FILES, hint: 'Usuwanie plików' },
+            { key: PERMISSION_TYPES.MCP, hint: 'Narzędzia MCP (wyszukiwanie, zapis, delegacja)' },
+            { key: PERMISSION_TYPES.YOLO_MODE, hint: 'Automatyczne zatwierdzanie (bez pytania)' },
+            { key: 'memory', hint: 'Pamięć agenta (brain.md, sesje, narzędzia pamięci)' }
+        ];
 
-        for (const { key, label } of allPermissions) {
+        for (const { key, hint } of activePerms) {
+            const label = PermissionSystem.getPermissionDescription?.(key) || key;
             new Setting(el)
                 .setName(label)
-                .setDesc(hints[key] || '')
+                .setDesc(hint)
                 .addToggle(toggle => {
                     toggle
                         .setValue(formData.permissions[key] === true)
                         .onChange(value => { formData.permissions[key] = value; });
                 });
         }
+
+        // Disabled permissions (coming soon)
+        el.createEl('h4', { text: 'Planowane', cls: 'setting-item-heading' });
+        const comingSoon = [
+            { label: 'Dostęp poza vaultem', desc: 'Wkrótce' },
+            { label: 'Komendy systemowe', desc: 'Wkrótce' }
+        ];
+        for (const item of comingSoon) {
+            const s = new Setting(el).setName(item.label).setDesc(item.desc);
+            s.addToggle(toggle => { toggle.setValue(false).setDisabled(true); });
+        }
+
+        // Focus folders section
+        el.createEl('h4', { text: 'Dostęp do folderów' });
+
+        // Guidance mode toggle
+        new Setting(el)
+            .setName('Guidance mode')
+            .setDesc(formData.permissions.guidance_mode
+                ? 'Agent widzi cały vault (except No-Go). Focus folders to priorytety.'
+                : 'WHITELIST: agent widzi TYLKO focus folders. Reszta nie istnieje.')
+            .addToggle(toggle => {
+                toggle
+                    .setValue(formData.permissions.guidance_mode === true)
+                    .onChange(value => {
+                        formData.permissions.guidance_mode = value;
+                        renderActiveTab();
+                    });
+            });
+
+        renderFocusFoldersSection(el);
     }
 
     // ─── SKILLS TAB ───
@@ -474,6 +512,198 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                         .setValue(formData.minion_enabled)
                         .onChange(v => formData.minion_enabled = v);
                 });
+        }
+    }
+
+    // ─── PROMPT TAB (v2.1: per-agent prompt overrides + domain rules) ───
+
+    function renderPromptTab(el) {
+        el.createEl('p', {
+            text: 'Nadpisania sekcji promptu dla tego agenta. Pusty = używa globalnego z Settings.',
+            cls: 'setting-item-description'
+        });
+
+        const textareaStyle = 'width:100%; min-height:100px; font-family:monospace; font-size:0.82em; resize:vertical; margin-bottom:4px; padding:6px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary);';
+        const po = formData.prompt_overrides;
+
+        // Agent-specific domain rules (B3)
+        new Setting(el)
+            .setName('Reguły specjalne agenta')
+            .setDesc('Reguły domenowe wstrzykiwane do sekcji Uprawnień (np. "Grafiki w 16:9", "Pisz w 3. osobie").');
+
+        const rulesTextarea = el.createEl('textarea', { placeholder: 'np. Grafiki zawsze w formacie 16:9\nStyl pisania: formalny, 3. osoba' });
+        rulesTextarea.value = formData.agent_rules;
+        rulesTextarea.style.cssText = textareaStyle;
+        rulesTextarea.addEventListener('change', () => {
+            formData.agent_rules = rulesTextarea.value.trim();
+        });
+
+        // Textarea overrides (environment, minion, master, rules — NOT decision_tree)
+        const overrideDefs = [
+            { key: 'environment', label: 'Środowisko (B1)' },
+            { key: 'minion_guide', label: 'Instrukcja Miniona (C2)' },
+            { key: 'master_guide', label: 'Instrukcja Mastera (C3)' },
+            { key: 'rules', label: 'Zasady (C4)' },
+        ];
+
+        el.createEl('hr');
+        el.createEl('h4', { text: 'Nadpisania sekcji' });
+        el.createEl('p', {
+            text: 'Wpisz tekst aby nadpisać globalną sekcję TYLKO dla tego agenta. Wyczyść = globalny.',
+            cls: 'setting-item-description'
+        });
+
+        for (const def of overrideDefs) {
+            new Setting(el).setName(def.label);
+
+            const textarea = el.createEl('textarea', {
+                placeholder: `Pusty = globalny z Settings`
+            });
+            textarea.value = po[def.key] || '';
+            textarea.style.cssText = textareaStyle;
+            textarea.addEventListener('change', () => {
+                const val = textarea.value.trim();
+                if (val) {
+                    po[def.key] = val;
+                } else {
+                    delete po[def.key];
+                }
+            });
+
+            if (FACTORY_DEFAULTS[def.key]) {
+                const previewBtn = el.createEl('button', {
+                    text: 'Pokaż domyślny tekst',
+                    cls: 'clickable-icon'
+                });
+                previewBtn.style.cssText = 'font-size:0.78em; margin-bottom:8px; opacity:0.7;';
+                previewBtn.addEventListener('click', () => {
+                    if (textarea.value.trim() === '') {
+                        textarea.value = FACTORY_DEFAULTS[def.key];
+                    } else {
+                        new Notice('Pole nie jest puste. Wyczyść je najpierw.');
+                    }
+                });
+            }
+        }
+
+        // ── Drzewo decyzyjne — per-agent instrukcje ──
+        el.createEl('hr');
+        el.createEl('h4', { text: 'Drzewo decyzyjne — per-agent' });
+        el.createEl('p', {
+            text: 'Nadpisz instrukcje TYLKO dla tego agenta. Pusty = globalny. Checkbox wyłączony = ukryte.',
+            cls: 'setting-item-description'
+        });
+
+        if (!po.decisionTreeInstructions) po.decisionTreeInstructions = {};
+        const agentDT = po.decisionTreeInstructions;
+
+        const inputStyle = 'flex:1; font-family:monospace; font-size:0.82em; padding:3px 5px; border:1px solid var(--background-modifier-border); border-radius:3px; background:var(--background-primary);';
+        const rowStyle = 'display:flex; align-items:center; gap:5px; margin-bottom:3px; padding:1px 0;';
+
+        const sortedDTGroups = Object.entries(DECISION_TREE_GROUPS)
+            .sort(([, a], [, b]) => a.order - b.order);
+
+        for (const [groupId, groupDef] of sortedDTGroups) {
+            el.createEl('h5', { text: groupDef.label });
+
+            const groupInstructions = DECISION_TREE_DEFAULTS.filter(d => d.group === groupId);
+
+            for (const instr of groupInstructions) {
+                const agentVal = agentDT[instr.id];
+                const isDisabled = agentVal === false;
+                const hasOverride = typeof agentVal === 'string';
+
+                const row = el.createDiv();
+                row.style.cssText = rowStyle;
+
+                const cb = row.createEl('input', { type: 'checkbox' });
+                cb.checked = !isDisabled;
+                cb.style.cssText = 'flex-shrink:0; cursor:pointer;';
+
+                const input = row.createEl('input', { type: 'text' });
+                input.value = hasOverride ? agentVal : '';
+                input.placeholder = instr.text;
+                input.style.cssText = inputStyle;
+                input.disabled = isDisabled;
+                if (isDisabled) input.style.opacity = '0.4';
+
+                if (instr.tool) {
+                    const badge = row.createEl('span', { text: instr.tool });
+                    badge.style.cssText = 'font-size:0.65em; opacity:0.4; white-space:nowrap; font-family:monospace;';
+                }
+
+                const clearBtn = row.createEl('button', { text: '↺', cls: 'clickable-icon' });
+                clearBtn.title = 'Wyczyść (użyj globalny)';
+                clearBtn.style.cssText = 'flex-shrink:0; font-size:0.85em; padding:1px 4px;';
+
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        if (agentDT[instr.id] === false) delete agentDT[instr.id];
+                        input.disabled = false;
+                        input.style.opacity = '1';
+                    } else {
+                        agentDT[instr.id] = false;
+                        input.disabled = true;
+                        input.style.opacity = '0.4';
+                    }
+                });
+
+                input.addEventListener('change', () => {
+                    const val = input.value.trim();
+                    if (val) {
+                        agentDT[instr.id] = val;
+                    } else {
+                        delete agentDT[instr.id];
+                    }
+                });
+
+                clearBtn.addEventListener('click', () => {
+                    input.value = '';
+                    delete agentDT[instr.id];
+                    cb.checked = true;
+                    input.disabled = false;
+                    input.style.opacity = '1';
+                });
+            }
+
+            // Custom per-agent instructions
+            const customKeys = Object.keys(agentDT).filter(k =>
+                k.startsWith('custom_') && typeof agentDT[k] === 'object' && agentDT[k]?.group === groupId
+            );
+            for (const key of customKeys) {
+                const custom = agentDT[key];
+                const row = el.createDiv();
+                row.style.cssText = rowStyle;
+
+                const cb = row.createEl('input', { type: 'checkbox' });
+                cb.checked = true;
+                cb.style.cssText = 'flex-shrink:0;';
+
+                const input = row.createEl('input', { type: 'text' });
+                input.value = custom.text;
+                input.style.cssText = inputStyle;
+
+                const delBtn = row.createEl('button', { text: '✕', cls: 'clickable-icon' });
+                delBtn.title = 'Usuń';
+                delBtn.style.cssText = 'flex-shrink:0; font-size:0.85em; padding:1px 4px; color:var(--text-error);';
+
+                input.addEventListener('change', () => {
+                    custom.text = input.value.trim();
+                });
+
+                delBtn.addEventListener('click', () => {
+                    delete agentDT[key];
+                    row.remove();
+                });
+            }
+
+            const addBtn = el.createEl('button', { text: '+ Dodaj', cls: 'clickable-icon' });
+            addBtn.style.cssText = 'font-size:0.75em; margin-bottom:8px; opacity:0.6;';
+            addBtn.addEventListener('click', () => {
+                const customId = `custom_${groupId}_${Date.now()}`;
+                agentDT[customId] = { group: groupId, text: 'Nowa instrukcja', tool: null };
+                renderActiveTab(); // re-render
+            });
         }
     }
 
@@ -665,6 +895,136 @@ export function renderAgentProfileView(container, plugin, nav, params) {
         }
     }
 
+    // ========== FOCUS FOLDERS — WHITELIST AUTOCOMPLETE ==========
+
+    function renderFocusFoldersSection(el) {
+        const section = el.createDiv({ cls: 'focus-folder-section' });
+        section.createEl('div', { text: 'Focus folders (WHITELIST)', cls: 'setting-item-name' });
+        section.createEl('div', {
+            text: 'Agent widzi TYLKO te foldery. Puste = cały vault.',
+            cls: 'setting-item-description'
+        });
+
+        // Chip list
+        const chipContainer = section.createDiv({ cls: 'focus-folder-chips' });
+        renderFocusChips(chipContainer);
+
+        // Autocomplete input row
+        const inputRow = section.createDiv({ cls: 'focus-folder-input-row' });
+        const input = inputRow.createEl('input', {
+            type: 'text',
+            placeholder: 'Wpisz nazwę folderu...',
+            cls: 'focus-folder-input'
+        });
+        const addBtn = inputRow.createEl('button', { text: '+', cls: 'focus-folder-add-btn' });
+
+        // Suggestions dropdown
+        const dropdown = section.createDiv({ cls: 'focus-folder-dropdown' });
+        dropdown.style.display = 'none';
+
+        // Get all vault folders for autocomplete
+        const allFolders = getAllVaultFolders(plugin.app);
+
+        input.addEventListener('input', () => {
+            const query = input.value.trim().toLowerCase();
+            dropdown.empty();
+            if (!query) { dropdown.style.display = 'none'; return; }
+
+            const existing = formData.focus_folders.map(f =>
+                typeof f === 'string' ? f : f.path
+            );
+            const matches = allFolders
+                .filter(f => f.toLowerCase().includes(query) && !existing.includes(f))
+                .slice(0, 10);
+
+            if (matches.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            dropdown.style.display = 'block';
+            for (const folder of matches) {
+                const item = dropdown.createDiv({
+                    cls: 'focus-folder-suggestion',
+                    text: `📁 ${folder}`
+                });
+                item.addEventListener('click', () => {
+                    input.value = folder;
+                    dropdown.style.display = 'none';
+                    input.focus();
+                });
+            }
+        });
+
+        // Close dropdown on blur (delay for click)
+        input.addEventListener('blur', () => {
+            setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+        });
+
+        // Add manually typed folder/glob
+        addBtn.addEventListener('click', () => addManualFolder());
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addManualFolder();
+        });
+
+        function addManualFolder() {
+            const value = input.value.trim();
+            if (!value) return;
+            addFocusFolder(value);
+            input.value = '';
+            dropdown.style.display = 'none';
+        }
+
+        function addFocusFolder(path) {
+            const existing = formData.focus_folders.map(f =>
+                typeof f === 'string' ? f : f.path
+            );
+            if (existing.includes(path)) return;
+            formData.focus_folders.push({ path, access: 'readwrite' });
+            renderFocusChips(chipContainer);
+        }
+    }
+
+    function renderFocusChips(container) {
+        container.empty();
+        if (formData.focus_folders.length === 0) {
+            container.createEl('span', {
+                text: 'Brak ograniczeń — agent widzi cały vault',
+                cls: 'focus-folder-empty'
+            });
+            return;
+        }
+        for (let i = 0; i < formData.focus_folders.length; i++) {
+            const entry = formData.focus_folders[i];
+            const path = typeof entry === 'string' ? entry : entry.path;
+            const access = typeof entry === 'string' ? 'readwrite' : (entry.access || 'readwrite');
+
+            const chip = container.createDiv({ cls: 'focus-folder-chip' });
+            chip.createSpan({ text: `📁 ${path}`, cls: 'focus-folder-chip-name' });
+
+            // Access toggle (read ↔ readwrite)
+            const accessBtn = chip.createSpan({
+                text: access === 'read' ? '👁️' : '📝',
+                cls: 'focus-folder-chip-access'
+            });
+            accessBtn.title = access === 'read' ? 'Tylko odczyt — kliknij żeby zmienić' : 'Odczyt + zapis — kliknij żeby zmienić';
+            accessBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const newAccess = access === 'read' ? 'readwrite' : 'read';
+                formData.focus_folders[i] = { path, access: newAccess };
+                renderFocusChips(container);
+            });
+
+            // Remove button
+            const removeBtn = chip.createSpan({ text: '×', cls: 'focus-folder-chip-remove' });
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                formData.focus_folders.splice(i, 1);
+                renderFocusChips(container);
+            });
+        }
+    }
+
     // ========== HELPERS: Collapsible file sections ==========
 
     /**
@@ -772,7 +1132,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                     minion: formData.minion || undefined,
                     minion_enabled: formData.minion_enabled,
                     default_permissions: formData.permissions,
-                    models: Object.keys(formData.models).length > 0 ? formData.models : undefined
+                    models: Object.keys(formData.models).length > 0 ? formData.models : undefined,
+                    default_mode: formData.default_mode || undefined,
+                    prompt_overrides: Object.keys(formData.prompt_overrides).length > 0 ? formData.prompt_overrides : undefined,
+                    agent_rules: formData.agent_rules || undefined
                 });
                 new Notice(`Agent ${formData.emoji} ${formData.name} utworzony!`);
             } catch (error) {
@@ -794,7 +1157,10 @@ export function renderAgentProfileView(container, plugin, nav, params) {
                     minion: formData.minion || null,
                     minion_enabled: formData.minion_enabled,
                     default_permissions: formData.permissions,
-                    models: formData.models
+                    models: formData.models,
+                    default_mode: formData.default_mode || null,
+                    prompt_overrides: formData.prompt_overrides,
+                    agent_rules: formData.agent_rules || ''
                 };
                 if (!agent.isBuiltIn && formData.name !== agent.name) {
                     updates.name = formData.name;
@@ -936,6 +1302,26 @@ async function appendToFile(adapter, path, text) {
     } catch (e) {
         new Notice('Błąd zapisu: ' + e.message);
     }
+}
+
+/**
+ * Get all vault folders (non-hidden) for autocomplete.
+ * @param {import('obsidian').App} app
+ * @returns {string[]} Sorted list of folder paths
+ */
+function getAllVaultFolders(app) {
+    const folders = [];
+    function traverse(folder) {
+        for (const child of folder.children || []) {
+            if (child.children !== undefined) { // TFolder
+                if (child.name.startsWith('.')) continue;
+                folders.push(child.path);
+                traverse(child);
+            }
+        }
+    }
+    traverse(app.vault.getRoot());
+    return folders.sort();
 }
 
 /**

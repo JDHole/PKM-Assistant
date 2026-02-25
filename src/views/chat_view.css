@@ -52,10 +52,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  justify-content: space-between;
   padding: 6px 2px;
   border-left: 1px solid var(--background-modifier-border);
   background-color: var(--background-secondary);
+  position: relative;
+}
+
+.pkm-toolbar-top,
+.pkm-toolbar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .pkm-toolbar-btn {
@@ -85,6 +94,85 @@
   opacity: 0.3;
   cursor: default;
   pointer-events: none;
+}
+
+/* ===== MODE SELECTOR ===== */
+.pkm-mode-btn {
+  border: 1px solid var(--background-modifier-border);
+  font-size: 15px;
+}
+
+.pkm-mode-popover {
+  position: absolute;
+  right: 38px;
+  bottom: 6px;
+  width: 160px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+.pkm-mode-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-normal);
+  transition: background-color 0.1s ease;
+}
+
+.pkm-mode-popover-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.pkm-mode-popover-item.pkm-mode-active {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.pkm-mode-icon {
+  font-size: 15px;
+  width: 20px;
+  text-align: center;
+}
+
+.pkm-mode-label {
+  flex: 1;
+}
+
+.pkm-mode-popover-auto {
+  padding: 4px 10px;
+  margin-top: 2px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ===== MODE PROPOSAL (in-chat) ===== */
+.pkm-mode-proposal {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.pkm-mode-proposal-reason {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pkm-mode-proposal-btn {
+  font-size: 13px;
+  padding: 4px 12px;
 }
 
 /* ===== ARTIFACT PANEL (overlay) ===== */

@@ -8,6 +8,7 @@
  */
 import { streamToCompleteWithTools } from '../memory/streamHelper.js';
 import { log } from '../utils/Logger.js';
+import { filterToolsByMode } from './WorkMode.js';
 
 /** Max characters for tool results (truncate to save tokens) */
 const MAX_TOOL_RESULT_LENGTH = 3000;
@@ -23,6 +24,7 @@ export class MinionRunner {
         this.toolRegistry = toolRegistry;
         this.app = app;
         this.plugin = plugin;
+        this.mcpClient = plugin?.mcpClient || null;
     }
 
     /**
@@ -33,9 +35,11 @@ export class MinionRunner {
      * @param {Object} agent - Agent instance
      * @param {Object} minionConfig - Config from MinionLoader
      * @param {Object} minionModel - SmartChatModel instance
+     * @param {Object} [options] - Extra options
+     * @param {string} [options.workMode] - Current work mode (cascaded from parent)
      * @returns {Promise<{ context: string, toolsUsed: string[], duration: number }>}
      */
-    async runAutoPrep(userMessage, agent, minionConfig, minionModel) {
+    async runAutoPrep(userMessage, agent, minionConfig, minionModel, options = {}) {
         const startTime = Date.now();
         log.group('Minion', `Auto-prep: ${minionConfig.name} dla ${agent.name}`);
         log.debug('Minion', `User message: "${userMessage.slice(0, 100)}..."`);
@@ -73,7 +77,11 @@ export class MinionRunner {
             }
 
             const systemPrompt = await this._buildAutoPrepPrompt(agent, minionConfig, playbookContent, vaultMapContent, inboxContent);
-            const tools = this._getMinionTools(minionConfig.tools);
+            let tools = this._getMinionTools(minionConfig.tools);
+            // Filter by work mode (inherited from parent agent)
+            if (options.workMode) {
+                tools = filterToolsByMode(tools, options.workMode);
+            }
 
             const messages = [
                 { role: 'system', content: systemPrompt },
@@ -84,8 +92,11 @@ export class MinionRunner {
                 minionModel,
                 messages,
                 tools,
-                (toolCall) => this._executeTool(toolCall),
-                { maxIterations: minionConfig.max_iterations || 3 }
+                (toolCall) => this._executeTool(toolCall, agent.name),
+                {
+                    maxIterations: minionConfig.max_iterations || 3,
+                    minIterations: minionConfig.min_iterations || 1,
+                }
             );
 
             log.info('Minion', `Auto-prep DONE: ${result.toolsUsed?.length || 0} tools, ${(result.finalText || '').length} znaków`);
@@ -132,7 +143,11 @@ export class MinionRunner {
                     if (!toolNames.includes(t)) toolNames.push(t);
                 }
             }
-            const tools = this._getMinionTools(toolNames);
+            let tools = this._getMinionTools(toolNames);
+            // Filter by work mode (inherited from parent agent)
+            if (options.workMode) {
+                tools = filterToolsByMode(tools, options.workMode);
+            }
 
             const messages = [
                 { role: 'system', content: systemPrompt },
@@ -143,8 +158,11 @@ export class MinionRunner {
                 minionModel,
                 messages,
                 tools,
-                (toolCall) => this._executeTool(toolCall),
-                { maxIterations: minionConfig.max_iterations || 3 }
+                (toolCall) => this._executeTool(toolCall, agent.name),
+                {
+                    maxIterations: minionConfig.max_iterations || 3,
+                    minIterations: minionConfig.min_iterations || 1,
+                }
             );
 
             log.info('Minion', `Task DONE: ${response.toolsUsed?.length || 0} tools, ${(response.finalText || '').length} znaków`);
@@ -291,24 +309,35 @@ export class MinionRunner {
 
     /**
      * Execute a tool call from the minion.
+     * Routes through MCPClient for permission/whitelist checks when available.
      * @param {Object} toolCall - { id, name, arguments }
+     * @param {string} [agentName] - Agent name for permission context
      * @returns {Promise<string>} Tool result as string
      */
-    async _executeTool(toolCall) {
-        log.debug('Minion', `_executeTool: ${toolCall.name}`);
-        const tool = this.toolRegistry.getTool(toolCall.name);
-        if (!tool) return `Błąd: narzędzie "${toolCall.name}" nie istnieje`;
+    async _executeTool(toolCall, agentName) {
+        log.debug('Minion', `_executeTool: ${toolCall.name} (agent: ${agentName || 'brak'})`);
 
         try {
+            // Route through MCPClient for permission + whitelist enforcement
+            if (this.mcpClient && agentName) {
+                const result = await this.mcpClient.executeToolCall(toolCall, agentName);
+                const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+                if (resultStr.length > MAX_TOOL_RESULT_LENGTH) {
+                    return resultStr.substring(0, MAX_TOOL_RESULT_LENGTH) + '\n... (skrócono - za dużo danych)';
+                }
+                return resultStr;
+            }
+
+            // Fallback: direct execution (when MCPClient unavailable)
+            log.warn('Minion', `_executeTool fallback (brak MCPClient): ${toolCall.name}`);
+            const tool = this.toolRegistry.getTool(toolCall.name);
+            if (!tool) return `Błąd: narzędzie "${toolCall.name}" nie istnieje`;
+
             let args = toolCall.arguments;
             if (typeof args === 'string') {
                 args = JSON.parse(args);
             }
-
-            // Execute tool (passes plugin for tools that need it)
             const result = await tool.execute(args, this.app, this.plugin);
-
-            // Truncate large results to save tokens
             const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
             if (resultStr.length > MAX_TOOL_RESULT_LENGTH) {
                 return resultStr.substring(0, MAX_TOOL_RESULT_LENGTH) + '\n... (skrócono - za dużo danych)';

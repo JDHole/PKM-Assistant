@@ -20,6 +20,10 @@ export function createMinionTaskTool(app) {
                     type: 'string',
                     description: 'Konkretny opis zadania. Napisz CO ma znaleźć/zrobić, GDZIE szukać, w JAKIM formacie zwrócić wynik. Im precyzyjniej, tym lepszy wynik.'
                 },
+                minion: {
+                    type: 'string',
+                    description: 'Opcjonalnie: nazwa konkretnego miniona (np. "researcher", "reader"). Puste = domyślny minion agenta.'
+                },
                 extra_tools: {
                     type: 'array',
                     items: { type: 'string' },
@@ -40,15 +44,7 @@ export function createMinionTaskTool(app) {
                     return { success: false, error: 'Brak aktywnego agenta' };
                 }
 
-                // Check if agent has a minion assigned
-                if (!activeAgent.minion) {
-                    return {
-                        success: false,
-                        error: `Agent ${activeAgent.name} nie ma przypisanego miniona. Skonfiguruj pole "minion" w konfiguracji agenta.`
-                    };
-                }
-
-                // Check if minion is enabled
+                // Check if minion is enabled for this agent
                 if (activeAgent.minionEnabled === false) {
                     return {
                         success: false,
@@ -56,12 +52,21 @@ export function createMinionTaskTool(app) {
                     };
                 }
 
-                // Get minion config
-                const minionConfig = agentManager.minionLoader.getMinion(activeAgent.minion);
-                if (!minionConfig) {
+                // Resolve which minion to use: args.minion (explicit) > activeAgent.minion (default)
+                const requestedMinionName = args.minion || activeAgent.minion;
+                if (!requestedMinionName) {
                     return {
                         success: false,
-                        error: `Minion "${activeAgent.minion}" nie znaleziony. Dostępne: ${agentManager.minionLoader.getAllMinions().map(m => m.name).join(', ') || 'brak'}`
+                        error: `Agent ${activeAgent.name} nie ma przypisanego miniona. Skonfiguruj pole "minion" w profilu agenta lub podaj parametr minion.`
+                    };
+                }
+
+                const minionConfig = agentManager.minionLoader.getMinion(requestedMinionName);
+                if (!minionConfig) {
+                    const available = agentManager.minionLoader.getAllMinions().map(m => m.name).join(', ') || 'brak';
+                    return {
+                        success: false,
+                        error: `Minion "${requestedMinionName}" nie znaleziony. Dostępne: ${available}`
                     };
                 }
 
@@ -91,7 +96,7 @@ export function createMinionTaskTool(app) {
                     activeAgent,
                     minionConfig,
                     model,
-                    { extraTools: args.extra_tools }
+                    { extraTools: args.extra_tools, workMode: plugin.currentWorkMode }
                 );
 
                 return {

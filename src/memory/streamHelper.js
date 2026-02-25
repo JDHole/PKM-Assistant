@@ -55,13 +55,14 @@ export function streamToComplete(chatModel, messages) {
  */
 export async function streamToCompleteWithTools(chatModel, messages, tools, executeToolCall, options = {}) {
     const maxIterations = options.maxIterations || 3;
+    const minIterations = options.minIterations || 1;
     const toolsUsed = [];
     const toolCallDetails = [];
     let currentMessages = [...messages];
     const loopStart = Date.now();
     const totalUsage = { prompt_tokens: 0, completion_tokens: 0 };
 
-    log.group('StreamHelper', `streamToCompleteWithTools (max ${maxIterations} iteracji, ${tools.length} narzędzi)`);
+    log.group('StreamHelper', `streamToCompleteWithTools (min ${minIterations}, max ${maxIterations} iteracji, ${tools.length} narzędzi)`);
 
     for (let i = 0; i < maxIterations; i++) {
         log.debug('StreamHelper', `--- Iteracja ${i + 1}/${maxIterations} ---`);
@@ -92,8 +93,18 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
         const toolCalls = message?.tool_calls || [];
         const content = message?.content || '';
 
-        // No tool calls → return text response
+        // No tool calls → check if minIterations met, then return text response
         if (toolCalls.length === 0) {
+            if (i < minIterations - 1) {
+                // Nie osiągnięto min_iterations — wymuś kontynuację
+                log.debug('StreamHelper', `Iteracja ${i + 1}: brak tool calls, ale minIterations=${minIterations} — wymuszam kontynuację`);
+                currentMessages.push({ role: 'assistant', content: content || null });
+                currentMessages.push({
+                    role: 'user',
+                    content: 'Jeszcze nie skończyłeś. Użyj dostępnych narzędzi żeby zebrać więcej danych. Masz jeszcze budżet iteracji.'
+                });
+                continue;
+            }
             log.debug('StreamHelper', `Iteracja ${i + 1}: brak tool calls, zwracam tekst (${content.length} znaków)`);
             log.timing('StreamHelper', 'Cała pętla tool-calling', loopStart);
             log.groupEnd();
@@ -109,52 +120,49 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
             tool_calls: toolCalls
         });
 
-        // Execute each tool call and add results
+        // Execute tool calls in parallel (Promise.all preserves order)
         for (const tc of toolCalls) {
+            toolsUsed.push(tc.function?.name || tc.name);
+        }
+
+        const toolResults = await Promise.all(toolCalls.map(async (tc) => {
             const toolName = tc.function?.name || tc.name;
             const toolArgs = tc.function?.arguments || tc.arguments;
-            toolsUsed.push(toolName);
-
-            log.debug('StreamHelper', `Wykonuję tool: ${toolName}`);
-
+            log.debug('StreamHelper', `Wykonuję tool (parallel): ${toolName}`);
             try {
                 const result = await executeToolCall({
                     id: tc.id,
                     name: toolName,
                     arguments: toolArgs
                 });
-
                 const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
                 log.debug('StreamHelper', `Tool ${toolName} OK: ${resultStr.length} znaków`);
-
-                // Capture tool call details for transparency
                 let parsedArgs = toolArgs;
                 try { if (typeof toolArgs === 'string') parsedArgs = JSON.parse(toolArgs); } catch {}
-                toolCallDetails.push({
-                    name: toolName,
-                    args: parsedArgs,
-                    resultPreview: resultStr.slice(0, 500),
-                });
-
-                currentMessages.push({
-                    role: 'tool',
-                    tool_call_id: tc.id,
-                    content: resultStr
-                });
+                return { tc, toolName, parsedArgs, resultStr, isError: false };
             } catch (toolError) {
                 log.warn('StreamHelper', `Tool ${toolName} ERROR: ${toolError.message}`);
-                toolCallDetails.push({
-                    name: toolName,
-                    args: toolArgs,
-                    resultPreview: `Error: ${toolError.message}`,
-                    error: true,
-                });
-                currentMessages.push({
-                    role: 'tool',
-                    tool_call_id: tc.id,
-                    content: `Error: ${toolError.message || toolError}`
-                });
+                return {
+                    tc, toolName, parsedArgs: toolArgs,
+                    resultStr: `Error: ${toolError.message || toolError}`,
+                    isError: true, errorMsg: toolError.message,
+                };
             }
+        }));
+
+        // Add results to messages in order (OpenAI API requirement)
+        for (const r of toolResults) {
+            toolCallDetails.push({
+                name: r.toolName,
+                args: r.parsedArgs,
+                resultPreview: r.resultStr.slice(0, 500),
+                ...(r.isError && { error: true }),
+            });
+            currentMessages.push({
+                role: 'tool',
+                tool_call_id: r.tc.id,
+                content: r.resultStr
+            });
         }
     }
 

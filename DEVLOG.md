@@ -23,6 +23,223 @@
 
 ---
 
+## 2026-02-26 (sesja 45) - Delegacja v2 — Parallel + Multi-Minion + Decision Tree Overhaul
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Fundamenty pod pełny system delegacji w dół (minion) i w górę (master). Problem: Main model zjada 30M tokenów/mc vs Minion 2.6M — proporcja 12:1 zamiast docelowej 3:1.
+
+### Nowe możliwości
+- **Parallel tool execution** — minion i chat_view wykonują tool calls równolegle (Promise.all)
+- **Multi-minion** — `minion_task(task, minion:"researcher")` pozwala wybrać konkretnego miniona
+- **Min/max iterations** — konfigurowalny `min_iterations` w minion.md (wymusza kontynuację pracy)
+- **Decision Tree v2.1** — nowa grupa KOMUNIKACJA, DELEGACJA na górze drzewa, instrukcje minion/master rozproszone po kategoriach
+
+### Zmiany w istniejących plikach (8 plików)
+- `MinionLoader.js` — parsowanie `min_iterations` z frontmatter minion.md
+- `streamHelper.js` — parallel tool calls via Promise.all + minIterations nudge (wymuszenie kontynuacji gdy model chce skończyć za wcześnie)
+- `MinionRunner.js` — przekazanie minIterations do streamToCompleteWithTools w runAutoPrep + runTask
+- `MinionTaskTool.js` — nowy parametr `minion` w inputSchema, resolve: args.minion > activeAgent.minion, error z listą dostępnych
+- `AgentManager.js` — `minionList` (name+description) w `_buildBaseContext()` dla PromptBuilder
+- `PromptBuilder.js` — 7 zmian: nowe DECISION_TREE_GROUPS (8 grup, +delegacja order:0, +komunikacja order:6), nowe DECISION_TREE_DEFAULTS (~20 instrukcji), hideWhenMinion/hideWhenMaster filtering, _injectGroupDynamics z minionList+agentList, inbox fallback, skrócony minion_guide, zaktualizowany master_guide
+- `chat_view.js` — 3-fazowe parallel tool execution: Phase 1 (sync: create UI blocks), Phase 2 (parallel: Promise.all execute), Phase 3 (sync: render results)
+- `obsek_settings_tab.js` — bez zmian kodu (Prompt Builder czyta grupy dynamicznie)
+
+### Architektura delegacji
+- DELEGACJA (top of tree): ogólne info "masz miniona", "masz mastera" + lista dostępnych minionów
+- Instrukcje minion/master rozproszone po kategoriach (SZUKANIE: multi-source→minion, ARTEFAKTY: complex plan→master)
+- Master NIGDY nie szuka sam — dostaje przygotowany kontekst od Main+Minion
+- Instrukcje zamieniają się (nie dodają) gdy minion/master włączony/wyłączony
+- KOMUNIKACJA: wyciągnięta z DELEGACJA, osobna toggleable grupa (agent_delegate + agent_message)
+- Inbox notification fallback: jeśli KOMUNIKACJA nie istnieje, inbox na końcu drzewa
+
+### Kluczowe decyzje
+- Promise.all bezpieczny: MCPClient stateless, MinionRunner singleton bez shared state, ApprovalManager auto-approve dla minion/master
+- OpenAI API ordering: Promise.all zachowuje kolejność tablicy — tool results w messages w poprawnej kolejności
+- Stare instruction IDs (search_minion, deleg_minion itp.) cicho ignorowane — user overrides dla tych ID przestają działać
+
+### Build
+- 7.1MB, 0 błędów
+
+---
+
+## 2026-02-25 (sesja 44) - Prompt v2.1 + Decision Tree v2 + Prompt Builder
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Przebudowa systemu promptu — 3-warstwowy override, granularne drzewo decyzyjne, unified Prompt Builder panel.
+
+### Sesja 44 (główna) — Prompt v2.1 + Decision Tree v2
+- `PromptBuilder.js` — full rewrite: FACTORY_DEFAULTS, _resolveSection() 3-layer, build() z 4 blokami (A/B/★/C)
+- `Agent.js` — nowe pola: promptOverrides, agentRules (serialize, update, allowedFields)
+- `chat_view.js` — workMode + artifacts via context (nie append post-hoc)
+- `AgentManager.js` — promptDefaults z settings, agoraScope passing
+- `AgentProfileView.js` — nowy tab "Prompt" z per-agent overrides + DT instruction editor
+- `obsek_settings_tab.js` — 4 textarea + DT editor + Agora scope checkboxy
+- `AgoraManager.js` — scope parameter (profile/activity/projects)
+- Decision Tree v2: DECISION_TREE_GROUPS (7) + DECISION_TREE_DEFAULTS (24 instrukcji)
+- Każda instrukcja: {id, group, tool, text} — edytowalna, wyłączalna, tool-filtrowana
+
+### Sesja 44 (nadprogramowa) — Prompt Builder Panel
+- **Unified panel** zastępuje 5 osobnych komponentów (textarea, DT editor, Agora, Inspector, Preview)
+- **Agent selector** dropdown — podgląd promptu dowolnego agenta (nie tylko aktywnego)
+- **Wszystko toggleable** — usunięty required:true z identity/environment/rules
+- **Expand/collapse** z inline edytorami per section type (textarea / DT / Agora / read-only)
+- **Live token update** — total + per-category natychmiastowa aktualizacja
+- **Fix bug:** kategoria `behavior` nie miała labela → sekcje Tryb pracy/DT/Minion/Master niewidoczne (1099 "ghost tokens")
+- `AgentManager.js` — nowa metoda `getPromptInspectorDataForAgent(agentName)`, `_buildBaseContext(targetAgent)`
+- `PromptBuilder.js` — `getSections()` zwraca `content` + `editable`
+
+### Build
+- 7.1MB, 0 błędów
+
+---
+
+## 2026-02-25 (sesja 43) - Tryby Pracy Chatu (Work Modes)
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** System trybów pracy chatu — 4 tryby kontrolujące dostępne narzędzia MCP.
+
+### Nowe pliki
+- `src/core/WorkMode.js` — centralne definicje 4 trybów (rozmowa/planowanie/praca/kreatywny), MODE_TOOLS mapa, filterToolsByMode()
+- `src/mcp/SwitchModeTool.js` — MCP tool switch_mode (agent proponuje/auto-zmienia tryb)
+
+### Zmiany w istniejących plikach
+- `Agent.js` — nowe pole defaultMode (constructor, serialize, update, allowedFields)
+- `chat_view.js` — currentMode state, filterToolsByMode w send_message+continueWithToolResults, buildModePromptSection injection, toolbar TOP/BOTTOM split, mode popover, switch_mode detection, reset na new session/agent change, plugin.currentWorkMode sync
+- `MinionRunner.js` — options.workMode w runAutoPrep+runTask, filterToolsByMode cascade
+- `MinionTaskTool.js` — przekazanie plugin.currentWorkMode do runTask
+- `MasterTaskTool.js` — przekazanie plugin.currentWorkMode do runTask (minion context gather)
+- `PromptBuilder.js` — buildModePromptSection() export z behawioralnymi instrukcjami per tryb, import WorkMode
+- `chat_view.css` — toolbar justify-content:space-between, .pkm-toolbar-top/.pkm-toolbar-bottom, mode popover, mode proposal styles
+- `obsek_settings_tab.js` — globalDefaultMode dropdown + autoChangeMode dropdown + przycisk "Kopiuj" w Prompt Inspector modal
+- `AgentProfileView.js` — dropdown domyślnego trybu per agent w Profile tab + save handlers
+- `main.js` — import + rejestracja createSwitchModeTool (21. narzędzie)
+
+### Architektura trybów
+- 4 tryby: Rozmowa (💬, memory+delegacja), Planowanie (📋, read+analiza), Praca (🔨, wszystko), Kreatywny (✨, tworzenie bez kasowania)
+- Kaskada: Main → Master → Minion (ten sam tryb, te same ograniczenia narzędzi)
+- 3 niezależne warstwy: Tryb (jakie tools) → WHITELIST/No-Go (gdzie) → YOLO/Approval (czy pytać)
+- Auto-change: off/ask/on — agent może proponować zmianę trybu
+- Default mode: per-agent > global > 'rozmowa'
+
+### Kluczowe decyzje
+- Tryby filtrują narzędzia PRZED wysłaniem do modelu (agent nie wie że narzędzie istnieje)
+- praca = null (brak filtrowania), inne tryby = explicit whitelist
+- switch_mode dostępny w każdym trybie (żeby agent mógł zaproponować zmianę)
+- plugin.currentWorkMode — sync dla cross-component access (MinionTaskTool, MasterTaskTool)
+
+### Znane problemy
+- System prompt: sekcje Uprawnienia i Master nie aktualizują się z trybami — wymaga osobnej sesji naprawczej
+
+### Build
+- 7.1MB, 0 błędów, 21 MCP tools
+
+---
+
+## 2026-02-25 (sesja 42 kontynuacja) - Guidance Mode + No-Go Absolute + Autocomplete
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Testy z userem wykazaly potrzebe guidance mode, No-Go absolute fix, autocomplete wszedzie.
+
+### Zmiany
+
+**Guidance mode (nowy tryb dostepu):**
+- `AccessGuard.js` — guidance_mode bypass: agent widzi caly vault (except No-Go), focus folders to priorytety
+- `Agent.js` — `guidance_mode: false` w DEFAULT_PERMISSIONS (WHITELIST domyslny)
+- `AgentProfileView.js` — toggle guidance mode z dynamicznym opisem
+- `PromptBuilder.js` — "PRIORYTETOWE FOLDERY" (guidance) vs "WHITELIST" (strict)
+
+**No-Go absolute (CRITICAL FIX):**
+- `PermissionSystem.js` — No-Go check jako PIERWSZE sprawdzenie, PRZED YOLO bypass
+- `AgoraView.js` — **ROOT CAUSE FIX**: `_saveNoGoFolders()` nie wywolywalo `AccessGuard.setNoGoFolders()` w pamieci!
+  - Foldery byly zapisywane na dysk ale `AccessGuard._noGoFolders` zostawalo puste `[]`
+  - Efekt: filtr No-Go w `filterResults()` nigdy sie nie odpalal (`_noGoFolders.length === 0`)
+  - Fix: dodany import AccessGuard + wywolanie `setNoGoFolders(cleaned)` w `_saveNoGoFolders()`
+
+**PermissionsModal sync:**
+- `PermissionsModal.js` — przebudowane presety (Safe/Standard/Full), dodany memory toggle, guidance_mode toggle
+- Disabled "Wkrotce": dostep poza vaultem, komendy systemowe
+- Usuniete: thinking (niepotrzebne)
+
+**Autocomplete wszedzie:**
+- `AgoraView.js` — `renderFolderAutocompleteForm()` helper + `_getAllVaultFolders()` traverser
+- Autocomplete w: strefach uzytkownika/systemowych/agentowych, No-Go, agent whitelist
+- Zone assign buttons przywrocone na WSZYSTKICH 3 strefach
+
+### Kluczowe decyzje
+- WHITELIST = domyslny tryb (strict), guidance = opt-in
+- No-Go = absolutny blok, nawet YOLO + guidance nie widzi No-Go
+- Autocomplete = reusable helper, wszedzie gdzie user wybiera foldery
+
+### Przetestowane przez usera
+- WHITELIST: agent widzi TYLKO focus folders ✅
+- Guidance mode: agent widzi caly vault, focus folders jako priorytety ✅
+- YOLO: auto-approve ale No-Go nadal niewidoczne ✅
+- No-Go: calkowicie niewidoczne we wszystkich trybach ✅
+
+### Build
+- 7.1MB, 0 bledow
+
+---
+
+## 2026-02-25 (sesja 42) - 2.6 Part 2: Access Control — WHITELIST System
+
+**Cel:** Agent widzi TYLKO foldery z whitelist. Reszta vaulta NIE ISTNIEJE.
+
+### Nowe pliki
+- `src/core/AccessGuard.js` (~200 LOC) — centralna klasa whitelist, statyczne metody, zero stanu
+  - `checkAccess(agent, path, accessLevel)` — whitelist enforcement z read/write rozroznieniem
+  - `filterResults(agent, results)` — post-filter dla vault_list/vault_search
+  - `_checkPkmPath()` — .pkm-assistant/ handling (agent widzi swoj folder + shared areas)
+  - glob matching wzorowany na VaultZones.js
+
+### Zmiany w istniejacych plikach (11 plikow)
+
+**Data model:**
+- `Agent.js` — focusFolders z `string[]` na `{path, access}[]`, normalizacja, backward compat w serialize
+
+**Enforcement (3 warstwy):**
+- `PermissionSystem.js` — AccessGuard.checkAccess() po sprawdzeniu hasPermission, ZANIM approval modal
+- `MCPClient.js` — AccessGuard.filterResults() po vault_list/vault_search, denial memory (Map per sesja)
+- `MinionRunner.js` — SECURITY FIX: minion teraz route przez MCPClient zamiast direct tool.execute()
+
+**Denial system:**
+- `MCPClient.js` — _deniedActions Map, _isDenied(), _recordDenial(), clearDenials()
+  - Odmowa usera = rich error message po polsku z powodem + "NIE ponawiaj"
+  - Retry na odmowiona akcje = instant block bez modal
+- `ApprovalModal.js` — FULL REWRITE: polskie opisy, content preview (500 char), pole "Dlaczego nie?" (2-click deny)
+- `ApprovalManager.js` — structured return `{result: 'approve'|'deny', reason: string}` zamiast boolean
+
+**System prompt:**
+- `PromptBuilder.js` — sekcja WHITELIST w _buildEnvironment() z ikonami read/write + opisy z vault_map
+  - _buildPermissions(): "ODMOWA: NIE ponawiaj. Zapytaj usera."
+- `AgentManager.js` — przekazuje vaultMapDescriptions z AgoraManager do kontekstu
+- `AgoraManager.js` — nowa metoda getVaultMapDescriptions() parsuje vault_map.md
+
+**UI:**
+- `AgentProfileView.js` — textarea zastapione autocomplete + chipy
+  - Input z sugestiami folderow (traversuje vault, case-insensitive, max 10)
+  - Chipy z toggle read/write (ikony 👁️/📝) i przyciskiem × (usun)
+- `AgoraView.js` — Map tab: cross-reference "Dostep agentow (WHITELIST)" z folder badges
+  - Fix: folders.join(',') → folder badges z ikonami read/write (naprawia [object Object] bug)
+- `SidebarViews.css` — ~100 linii nowych stylow (chipy, autocomplete, dropdown, badges)
+- `AgentProfileModal.js` — compat fix: .join() na obiektach → .map(f => f.path).join()
+
+### Handoff
+- `HANDOFF_sesja43.md` — Tryby Pracy Chatu (planning/working/creative) do nastepnej sesji
+
+### Kluczowe decyzje
+- WHITELIST model (nie blacklist) — agent widzi TYLKO wpisane foldery
+- .pkm-assistant/ NIE jest w whitelist — memory tools obsluguja to osobno
+- Minion/Master dziedzicza te same ograniczenia co agent (ta sama sciezka MCPClient)
+- Post-filter dla embeddingu (vector math jest tani), pre-filter gdzie mozliwe
+- Denial memory per sesja (czysta przy zmianie agenta)
+- Backward compat: puste focusFolders = unrestricted (jak dotychczas)
+
+### Build
+- 7.1MB, 0 bledow, 3 successful builds w trakcie sesji
+
+---
+
 ## 2026-02-25 (sesja 41) — 2.6 Personalizacja Agenta Part 1: Archetyp → Rola + Memory tab
 
 **Sesja z:** Claude Code (Opus 4.6)
@@ -2589,3 +2806,5 @@ Model uzywany: Claude Sonnet 4 (via API)
 - Implementacja Faz 0+1+2 (Stream Helper + Brain Boot-up + Session Lifecycle) ~135 linii
 - Potem Faza 3 (Memory Extraction) ~450 linii - serce systemu
 - Potem Fazy 4-7 w dowolnej kolejnosci
+
+---

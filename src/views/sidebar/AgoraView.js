@@ -4,6 +4,7 @@
  * All tabs use inline forms for CRUD operations (no raw file editors).
  */
 import { Modal } from 'obsidian';
+import { AccessGuard } from '../../core/AccessGuard.js';
 
 const TABS = [
     { id: 'profile', label: '👤 Profil' },
@@ -746,6 +747,9 @@ async function renderMapTab(container, plugin, agora, refresh) {
         const map = await agora.readVaultMap();
         loading.remove();
 
+        // Zone sections that support "assign to agent" buttons
+        const ZONE_HEADERS = ['Strefy systemowe', 'Strefy użytkownika', 'Strefy agentowe'];
+
         // Parse sections from vault map
         const sections = (map || '').split(/^## /m).filter(s => s.trim());
         for (const sec of sections) {
@@ -754,6 +758,7 @@ async function renderMapTab(container, plugin, agora, refresh) {
             const body = lines.slice(1).join('\n').trim();
 
             if (header === 'Globalna Mapa Vaulta') continue;
+            if (header === 'No-Go') continue; // Rendered separately below
 
             const secDiv = container.createDiv({ cls: 'agora-map-section' });
             secDiv.createEl('h4', { text: header, cls: 'agora-profile-header' });
@@ -788,19 +793,72 @@ async function renderMapTab(container, plugin, agora, refresh) {
                 });
             }
 
-            // Add form for each section
-            renderAddForm(secDiv, async (val) => {
-                const line = `- ${val}`;
-                const cleanBody = body.replace(/^> .*$/gm, '').trim();
-                const newBody = cleanBody ? `${cleanBody}\n${line}` : line;
-                await agora.updateVaultMap(header, newBody);
-                refresh();
-            });
+            // Add form for each section (with folder autocomplete for zone sections)
+            if (ZONE_HEADERS.includes(header)) {
+                renderFolderAutocompleteForm(secDiv, plugin.app, [], async (val) => {
+                    const line = `- ${val}`;
+                    const cleanBody = body.replace(/^> .*$/gm, '').trim();
+                    const newBody = cleanBody ? `${cleanBody}\n${line}` : line;
+                    await agora.updateVaultMap(header, newBody);
+                    refresh();
+                }, 'Dodaj folder...');
+            } else {
+                renderAddForm(secDiv, async (val) => {
+                    const line = `- ${val}`;
+                    const cleanBody = body.replace(/^> .*$/gm, '').trim();
+                    const newBody = cleanBody ? `${cleanBody}\n${line}` : line;
+                    await agora.updateVaultMap(header, newBody);
+                    refresh();
+                });
+            }
+
+            // Zone-level "assign to agent" button
+            if (ZONE_HEADERS.includes(header) && items.length > 0) {
+                const zoneFolders = _extractZoneFolders(items);
+                if (zoneFolders.length > 0) {
+                    _renderZoneAssignButton(secDiv, zoneFolders, plugin, refresh);
+                }
+            }
         }
 
-        // Agent focus folders section
+        // ── No-Go zone ──
+        const noGoSettings = plugin.env?.settings?.obsek?.no_go_folders || [];
+        const noGoDiv = container.createDiv({ cls: 'agora-map-section agora-nogo-section' });
+        noGoDiv.createEl('h4', { text: '🚫 No-Go (prywatne)', cls: 'agora-profile-header' });
+        noGoDiv.createEl('p', {
+            text: 'Foldery całkowicie niedostępne dla agentów i wykluczone z indeksowania.',
+            cls: 'setting-item-description'
+        });
+
+        const noGoItems = noGoDiv.createDiv({ cls: 'agora-profile-items' });
+        if (noGoSettings.length === 0) {
+            noGoItems.createEl('p', { text: '(brak — dodaj foldery z prywatnymi danymi)', cls: 'sidebar-empty-text agora-empty-hint' });
+        }
+        for (let i = 0; i < noGoSettings.length; i++) {
+            const folder = noGoSettings[i];
+            renderEditableItem(noGoItems, `🚫 ${folder}`, {
+                onSave: async (newVal) => {
+                    const clean = newVal.replace(/^🚫\s*/, '').trim();
+                    noGoSettings[i] = clean;
+                    await _saveNoGoFolders(plugin, noGoSettings);
+                    refresh();
+                },
+                onDelete: async () => {
+                    noGoSettings.splice(i, 1);
+                    await _saveNoGoFolders(plugin, noGoSettings);
+                    refresh();
+                }
+            });
+        }
+        renderFolderAutocompleteForm(noGoDiv, plugin.app, noGoSettings, async (val) => {
+            noGoSettings.push(val);
+            await _saveNoGoFolders(plugin, noGoSettings);
+            refresh();
+        }, 'Dodaj folder No-Go...');
+
+        // ── Agent WHITELIST cross-reference ──
         const agentZonesDiv = container.createDiv({ cls: 'agora-map-section' });
-        agentZonesDiv.createEl('h4', { text: '📁 Focus Folders agentów', cls: 'agora-profile-header' });
+        agentZonesDiv.createEl('h4', { text: '📁 Dostęp agentów (WHITELIST)', cls: 'agora-profile-header' });
 
         const allAgents = plugin.agentManager?.getAgentListForUI() || [];
         for (const agentInfo of allAgents) {
@@ -815,37 +873,104 @@ async function renderMapTab(container, plugin, agora, refresh) {
             });
 
             if (folders.length === 0) {
-                agentRow.createSpan({ text: '(brak)', cls: 'sidebar-empty-text' });
+                agentRow.createSpan({ text: '(cały vault)', cls: 'sidebar-empty-text' });
             } else {
-                agentRow.createSpan({
-                    text: folders.join(', '),
-                    cls: 'agora-agent-zone-folders'
-                });
+                const folderList = agentRow.createSpan({ cls: 'agora-agent-zone-folders' });
+                for (const f of folders) {
+                    const path = typeof f === 'string' ? f : f.path;
+                    const access = typeof f === 'string' ? 'readwrite' : (f.access || 'readwrite');
+                    const icon = access === 'read' ? '👁️' : '📝';
+                    folderList.createSpan({
+                        text: `${icon} ${path}`,
+                        cls: 'agora-folder-badge'
+                    });
+                }
             }
 
-            // Add folder form
-            const addFolderForm = agentRow.createDiv({ cls: 'agora-add-form agora-add-form-inline' });
-            const folderInput = addFolderForm.createEl('input', {
-                cls: 'agora-add-input',
-                attr: { type: 'text', placeholder: 'Dodaj folder...' }
-            });
-            const addFolderBtn = addFolderForm.createEl('button', { cls: 'agora-add-btn', text: '+' });
-
-            const doAddFolder = async () => {
-                const val = folderInput.value.trim();
-                if (!val) return;
-                const newFolders = [...(agent.focusFolders || []), val];
+            // Add folder form with autocomplete
+            const existingPaths = (agent.focusFolders || []).map(f =>
+                typeof f === 'string' ? f : f.path
+            );
+            renderFolderAutocompleteForm(agentRow, plugin.app, existingPaths, async (val) => {
+                const newFolders = [...(agent.focusFolders || []), { path: val, access: 'readwrite' }];
                 await plugin.agentManager.updateAgent(agentInfo.name, { focus_folders: newFolders });
                 refresh();
-            };
-            addFolderBtn.addEventListener('click', doAddFolder);
-            folderInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') doAddFolder();
-            });
+            }, 'Dodaj folder...');
         }
     } catch (e) {
         loading.textContent = `Błąd: ${e.message}`;
     }
+}
+
+/**
+ * Extract top-level folder paths from vault map section items.
+ * Parses: "- **FolderName/** — description" → "FolderName"
+ * Also handles plain: "- FolderName" → "FolderName"
+ */
+function _extractZoneFolders(items) {
+    const folders = [];
+    for (const item of items) {
+        // Skip indented items (subfolders)
+        if (item.startsWith('  ')) continue;
+        // Bold format: - **Name/** — desc
+        const boldMatch = item.match(/^\*\*([^*]+)\*\*/);
+        if (boldMatch) {
+            folders.push(boldMatch[1].replace(/\/+$/, '').trim());
+            continue;
+        }
+        // Plain format: just a path
+        const plain = item.replace(/^- /, '').split(/\s*[—–-]\s*/)[0].trim();
+        if (plain && !plain.startsWith('>') && !plain.startsWith('#')) {
+            folders.push(plain.replace(/\/+$/, ''));
+        }
+    }
+    return folders;
+}
+
+/**
+ * Render "Daj agentowi dostęp do strefy" button for a zone section.
+ */
+function _renderZoneAssignButton(secDiv, zoneFolders, plugin, refresh) {
+    const allAgents = plugin.agentManager?.getAgentListForUI() || [];
+    if (allAgents.length === 0) return;
+
+    const row = secDiv.createDiv({ cls: 'agora-zone-assign' });
+    const select = row.createEl('select', { cls: 'agora-zone-select' });
+    for (const a of allAgents) {
+        select.createEl('option', { text: `${a.emoji} ${a.name}`, value: a.name });
+    }
+    const btn = row.createEl('button', { text: 'Daj dostęp do strefy', cls: 'agora-zone-assign-btn', attr: { title: 'Dodaje wszystkie foldery z tej strefy do focus folders wybranego agenta' } });
+    btn.addEventListener('click', async () => {
+        const agentName = select.value;
+        const agent = plugin.agentManager.getAgent(agentName);
+        if (!agent) return;
+
+        const existing = (agent.focusFolders || []).map(f =>
+            typeof f === 'string' ? f : f.path
+        );
+        const toAdd = zoneFolders.filter(f => !existing.includes(f));
+        if (toAdd.length === 0) { btn.textContent = 'Już ma!'; return; }
+
+        const newFolders = [
+            ...(agent.focusFolders || []),
+            ...toAdd.map(p => ({ path: p, access: 'readwrite' }))
+        ];
+        await plugin.agentManager.updateAgent(agentName, { focus_folders: newFolders });
+        btn.textContent = `+${toAdd.length} folderów`;
+        setTimeout(() => { btn.textContent = 'Daj dostęp do strefy'; }, 1500);
+        refresh();
+    });
+}
+
+/**
+ * Save no-go folders to plugin settings.
+ */
+async function _saveNoGoFolders(plugin, folders) {
+    if (!plugin.env?.settings?.obsek) plugin.env.settings.obsek = {};
+    const cleaned = folders.filter(f => f.trim());
+    plugin.env.settings.obsek.no_go_folders = cleaned;
+    AccessGuard.setNoGoFolders(cleaned);
+    await plugin.env.save_settings();
 }
 
 // ─────────────────────────────────────────────
@@ -1003,6 +1128,88 @@ function renderAddForm(container, onAdd, placeholder = 'Dodaj...') {
         const val = input.value.trim();
         if (!val) return;
         await onAdd(val);
+    };
+    addBtn.addEventListener('click', doAdd);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doAdd();
+    });
+}
+
+/**
+ * Get all vault folders for autocomplete (recursive, skips hidden).
+ * @param {App} app - Obsidian App
+ * @returns {string[]} Sorted folder paths
+ */
+function _getAllVaultFolders(app) {
+    const folders = [];
+    function traverse(folder) {
+        for (const child of folder.children || []) {
+            if (child.children !== undefined) {
+                if (child.name.startsWith('.')) continue;
+                folders.push(child.path);
+                traverse(child);
+            }
+        }
+    }
+    traverse(app.vault.getRoot());
+    return folders.sort();
+}
+
+/**
+ * Render folder input with autocomplete dropdown.
+ * @param {HTMLElement} container
+ * @param {App} app - Obsidian App (for folder list)
+ * @param {string[]} exclude - Existing paths to exclude from suggestions
+ * @param {Function} onAdd - async (folderPath) => void
+ * @param {string} [placeholder='Dodaj folder...']
+ */
+function renderFolderAutocompleteForm(container, app, exclude, onAdd, placeholder = 'Dodaj folder...') {
+    const wrapper = container.createDiv({ cls: 'agora-add-form' });
+    const inputRow = wrapper.createDiv({ cls: 'agora-autocomplete-row' });
+    const input = inputRow.createEl('input', {
+        cls: 'agora-add-input',
+        attr: { type: 'text', placeholder }
+    });
+    const addBtn = inputRow.createEl('button', { cls: 'agora-add-btn', text: '+' });
+
+    const dropdown = wrapper.createDiv({ cls: 'focus-folder-dropdown' });
+    dropdown.style.display = 'none';
+
+    const allFolders = _getAllVaultFolders(app);
+
+    input.addEventListener('input', () => {
+        const query = input.value.trim().toLowerCase();
+        dropdown.empty();
+        if (!query) { dropdown.style.display = 'none'; return; }
+
+        const excludeLower = (exclude || []).map(e => (typeof e === 'string' ? e : '').toLowerCase());
+        const matches = allFolders
+            .filter(f => f.toLowerCase().includes(query) && !excludeLower.includes(f.toLowerCase()))
+            .slice(0, 10);
+
+        if (matches.length === 0) { dropdown.style.display = 'none'; return; }
+
+        dropdown.style.display = 'block';
+        for (const folder of matches) {
+            const item = dropdown.createDiv({ cls: 'focus-folder-suggestion', text: `📁 ${folder}` });
+            item.addEventListener('click', () => {
+                input.value = folder;
+                dropdown.style.display = 'none';
+                input.focus();
+            });
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+    });
+
+    const doAdd = async () => {
+        const val = input.value.trim();
+        if (!val) return;
+        await onAdd(val);
+        input.value = '';
+        dropdown.style.display = 'none';
     };
     addBtn.addEventListener('click', doAdd);
     input.addEventListener('keydown', (e) => {

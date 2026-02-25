@@ -80,7 +80,8 @@ export function createMasterTaskTool(app) {
                                     contextTask,
                                     activeAgent,
                                     minionConfig || {},
-                                    model
+                                    model,
+                                    { workMode: plugin.currentWorkMode }
                                 );
 
                                 if (prepResult?.result) {

@@ -1,7 +1,7 @@
 # PKM Assistant (Obsek) - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-25 (sesja 41)
+> Ostatnia aktualizacja: 2026-02-25 (sesja 44)
 
 ---
 
@@ -361,10 +361,73 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Settings: sekcja "Role Agentow" z lista rol + Role Creator (RoleEditorModal) (sesja 41)
 - [x] Role Creator: pelny formularz (nazwa, emoji, archetyp, opis, zasady, personality, skills, foldery, temp, permissions) (sesja 41)
 - [x] Build: 7.0MB, wersja 1.0.9 (sesja 41)
+- [x] **Sesja 42: 2.6 Part 2 — Access Control / WHITELIST System** ✅
+- [x] AccessGuard.js — centralna klasa whitelist (checkAccess, filterResults, glob matching) (sesja 42)
+- [x] Agent.js — focusFolders upgrade: string[] → {path, access}[] z normalizacja (sesja 42)
+- [x] PermissionSystem.js — AccessGuard wpieta po hasPermission check (sesja 42)
+- [x] MCPClient.js — post-filtering vault_list/search + denial memory (sesja 42)
+- [x] MinionRunner.js — SECURITY FIX: route przez MCPClient zamiast direct execute (sesja 42)
+- [x] ApprovalModal.js — full rewrite: polskie opisy, content preview, 2-click deny z powodem (sesja 42)
+- [x] ApprovalManager.js — structured return {result, reason} zamiast boolean (sesja 42)
+- [x] PromptBuilder.js — sekcja WHITELIST z ikonami + vault_map opisy z Agory (sesja 42)
+- [x] AgentProfileView.js — autocomplete folder picker z chipami i togglem read/write (sesja 42)
+- [x] AgoraView.js — cross-reference "Dostep agentow" z folder badges (sesja 42)
+- [x] Compat fixes: AgoraManager.getVaultMapDescriptions(), AgentManager context, deprecated modal (sesja 42)
+- [x] **Sesja 42 kontynuacja: Guidance mode + No-Go absolute + Autocomplete wszedzie** ✅
+- [x] Guidance mode: nowy tryb dostepu — agent widzi caly vault (except No-Go), focus folders to priorytety (sesja 42k)
+- [x] WHITELIST domyslny, guidance mode = opt-in toggle w uprawnieniach (sesja 42k)
+- [x] No-Go ABSOLUTE: foldery No-Go niewidoczne nawet z YOLO + guidance mode (sesja 42k)
+- [x] PermissionSystem.js — No-Go check PRZED YOLO bypass (sesja 42k)
+- [x] PermissionsModal.js — sync z AgentProfileView (presety, memory, guidance_mode, disabled "Wkrotce") (sesja 42k)
+- [x] AgoraView.js — autocomplete folder picker we WSZYSTKICH strefach + No-Go + agent whitelist (sesja 42k)
+- [x] AgoraView.js — BUG FIX: _saveNoGoFolders() nie aktualizowalo AccessGuard w pamieci (sesja 42k)
+- [x] PromptBuilder.js — "PRIORYTETOWE FOLDERY" (guidance) vs "WHITELIST" (strict) (sesja 42k)
+- [x] Zone assign buttons na wszystkich 3 strefach (systemowe, uzytkownika, agentowe) (sesja 42k)
+- [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 42k)
+- [x] **Sesja 43: Tryby Pracy Chatu (Work Modes)** ✅
+- [x] WorkMode.js — 4 tryby: Rozmowa (💬), Planowanie (📋), Praca (🔨), Kreatywny (✨) (sesja 43)
+- [x] Kazdy tryb kontroluje jakie MCP tools sa dostepne dla agenta (sesja 43)
+- [x] Tryb kaskaduje: Main → Master → Minion (te same ograniczenia) (sesja 43)
+- [x] 3 niezalezne warstwy: Tryb (tools exist) → WHITELIST (where) → YOLO (ask permission) (sesja 43)
+- [x] SwitchModeTool.js — MCP tool switch_mode, agent moze proponowac/auto-zmieniac tryb (sesja 43)
+- [x] Auto-change: off (wylaczony) / ask (propozycja+przycisk) / on (natychmiast) (sesja 43)
+- [x] Domyslny tryb: per-agent (defaultMode) > globalny (globalDefaultMode) > 'rozmowa' (sesja 43)
+- [x] Toolbar: reorganizacja TOP (ogolne) / BOTTOM (chat actions), mode popover z 4 trybami (sesja 43)
+- [x] PromptBuilder: buildModePromptSection() — instrukcje zachowania per tryb (sesja 43)
+- [x] AgentProfileView: dropdown domyslnego trybu per agent (sesja 43)
+- [x] Settings: globalDefaultMode + autoChangeMode (sesja 43)
+- [x] Prompt Inspector: przycisk "Kopiuj" w modalu podgladu promptu (sesja 43)
+- [x] MCP narzedzia: 21 total (20 + switch_mode) (sesja 43)
+- [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 43)
+- [x] **Sesja 44: Prompt v2.1 + Decision Tree v2 + Prompt Builder** ✅
+- [x] PromptBuilder rewrite: 3-warstwowy override (factory < global < per-agent) (sesja 44)
+- [x] Decision Tree v2: 24 instrukcji x 7 grup, granularna edycja, dynamiczne filtrowanie narzedzi (sesja 44)
+- [x] Agent.js: nowe pola promptOverrides + agentRules, serialize/update (sesja 44)
+- [x] AgentProfileView: nowy tab "Prompt" z per-agent overrides i DT instruction editor (sesja 44)
+- [x] Settings: 4 textarea (environment/minion/master/rules) + DT editor + Agora scope checkboxy (sesja 44)
+- [x] chat_view.js: workMode + artifacts przekazywane via context (nie append po fakcie) (sesja 44)
+- [x] AgoraManager: scope parameter (profile/activity/projects) konfigurowalny (sesja 44)
+- [x] **Prompt Builder panel** — unified panel zastepujacy 5 osobnych komponentow (sesja 44)
+- [x] Agent selector dropdown — podglad promptu DOWOLNEGO agenta (nie tylko aktywnego) (sesja 44)
+- [x] Wszystkie sekcje toggleable (usuniety required:true z identity/environment/rules) (sesja 44)
+- [x] Expand/collapse z inline edytorami (textarea, DT editor, Agora checkboxy, read-only preview) (sesja 44)
+- [x] Live token update — tokeny total + per-category aktualizuja sie natychmiast po toggle (sesja 44)
+- [x] Fix bug: kategoria behavior (Tryb pracy, Drzewo decyzyjne, Minion, Master) niewidoczna w inspektorze (sesja 44)
+- [x] AgentManager: getPromptInspectorDataForAgent(agentName) — podglad dowolnego agenta (sesja 44)
+- [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 44)
+- [x] **Sesja 45: Delegacja v2 — Parallel + Multi-Minion + Decision Tree Overhaul** ✅
+- [x] Parallel tool execution: Promise.all w streamHelper.js (minion) i chat_view.js (main chat) (sesja 45)
+- [x] Multi-minion: parametr `minion` w minion_task, resolve args.minion > activeAgent.minion (sesja 45)
+- [x] Min iterations: min_iterations w minion.md frontmatter, nudge wymuszajacy kontynuacje (sesja 45)
+- [x] Decision Tree v2.1: 8 grup (+DELEGACJA order:0, +KOMUNIKACJA order:6), instrukcje minion/master rozproszone (sesja 45)
+- [x] minionList w kontekscie AgentManager dla PromptBuilder dynamic inject (sesja 45)
+- [x] 3-fazowe parallel tool calls w chat_view: create UI → execute → render (sesja 45)
+- [x] KOMUNIKACJA: osobna toggleable grupa DT (agent_delegate + agent_message) (sesja 45)
+- [x] minion_guide i master_guide zaktualizowane (krotsze, multi-minion, master nie szuka sam) (sesja 45)
+- [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 45)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
-- [ ] Strefy vaulta (VaultZones - konfiguracja jest w .pkm-assistant/config.yaml)
 - [ ] Workflow parser i loader
 
 ## Nastepne kroki (pelny plan w PLAN_v2.md)
@@ -372,11 +435,17 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 > **PLAN_v2.md** zastapil stary PLAN.md (ktory zostal zbyt pomieszany sesjami/sprintami).
 > Nowy plan: CZESC 1 (zrobione ~170 checkboxow) + CZESC 2 (do v1.0 ~95 checkboxow) + CZESC 3 (post v1.0)
 
-- Postep: **~220/300 checkboxow (~73%)**
+- Postep: **~240/300 checkboxow (~80%)**
 - Wersja: 1.0.9
 - **Kluczowy wniosek (sesja 28):** Kod gotowy w ~90%. Problem jest w PROMPTACH.
 - **Sesja 40:** 2.5 Prompt Transparency ZROBIONE — TokenTracker, SubAgentBlock, toggles, Backstage MCP redesign.
 - **Sesja 41:** 2.6 Part 1 ZROBIONE — Archetyp→Rola system, RoleLoader, Role Creator w Settings, Memory tab redesign.
+- **Sesja 42:** 2.6 Part 2 ZROBIONE — WHITELIST access control, denial system, autocomplete UI, security fix.
+- **Sesja 42k:** Guidance mode, No-Go absolute fix, autocomplete wszedzie, PermissionsModal sync.
+- **Sesja 43:** Tryby Pracy Chatu ZROBIONE — 4 tryby, kaskada, switch_mode tool, toolbar UI.
+- **Sesja 44:** Prompt v2.1 + Decision Tree v2 + Prompt Builder panel ZROBIONE.
+- **Sesja 45:** Delegacja v2 ZROBIONE — parallel tools, multi-minion, min_iterations, DT overhaul, KOMUNIKACJA.
+- **DO ZROBIENIA:** Dopracowac PromptBuilder (minion/master inject moze byc bledny), Minion/Master Creator+Manager. Szczegoly w HANDOFF_sesja45.md.
 
 ### Kolejnosc do v1.0 (z PLAN_v2.md):
 1. ~~2.1 Stabilizacja~~ ✅
@@ -385,8 +454,10 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 4. ~~2.4 Oczko~~ ✅ (sesja 39)
 5. ~~2.5 Prompt Transparency~~ ✅ (sesja 40)
 6. ~~2.6 Personalizacja Part 1~~ ✅ (sesja 41) — Archetyp→Rola, RoleLoader, Role Creator, Memory tab
-7. **2.6 Part 2: Access Control** — focus folders enforcement, permission denial loop, vault visibility
-8. 2.7 MasterRunner + 2.8 Skille v2
+7. ~~2.6 Part 2: Access Control~~ ✅ (sesja 42) — WHITELIST, denial, approval, autocomplete, minion security
+8. ~~Tryby Pracy Chatu~~ ✅ (sesja 43) — 4 modes, cascade, switch_mode, toolbar UI
+9. ~~Delegacja v2~~ ✅ (sesja 45) — parallel tools, multi-minion, DT overhaul
+10. 2.7 MasterRunner + Minion/Master Creator + 2.8 Skille v2
 9. 2.9 Pamiec fix + 2.10 UX Chatu + 2.11 Warstwa Wizualna
 10. 2.12-2.13 Inline + Sidebar fixy
 11. 2.14 Dokumentacja + Onboarding

@@ -2,6 +2,7 @@
  * PermissionSystem
  * Central system for managing agent permissions and access control
  */
+import { AccessGuard } from './AccessGuard.js';
 
 /**
  * Permission types enum
@@ -61,7 +62,13 @@ export class PermissionSystem {
      * @returns {{allowed: boolean, reason: string, requiresApproval: boolean}}
      */
     checkPermission(agent, action, targetPath = null) {
-        // YOLO mode bypasses all checks
+        // No-Go check — ABSOLUTE, even YOLO cannot bypass
+        if (targetPath && AccessGuard._isNoGo(targetPath)) {
+            this.logAccess(agent, action, targetPath, false, 'No-Go zone');
+            return { allowed: false, reason: 'Strefa No-Go: folder całkowicie niedostępny', requiresApproval: false };
+        }
+
+        // YOLO mode bypasses all other checks (but No-Go above still blocks)
         if (agent.hasPermission(PERMISSION_TYPES.YOLO_MODE)) {
             this.logAccess(agent, action, targetPath, true, 'YOLO mode enabled');
             return { allowed: true, reason: 'YOLO mode', requiresApproval: false };
@@ -85,6 +92,20 @@ export class PermissionSystem {
                 reason: `Brak uprawnienia: ${requiredPermission}`,
                 requiresApproval: false
             };
+        }
+
+        // Check whitelist (focusFolders) — if agent has them, only whitelisted paths allowed
+        if (targetPath) {
+            const accessLevel = (action === 'vault.write' || action === 'vault.delete') ? 'write' : 'read';
+            const accessResult = AccessGuard.checkAccess(agent, targetPath, accessLevel);
+            if (!accessResult.allowed) {
+                this.logAccess(agent, action, targetPath, false, accessResult.reason);
+                return {
+                    allowed: false,
+                    reason: accessResult.reason,
+                    requiresApproval: false
+                };
+            }
         }
 
         // Check vault zones (if configured)
@@ -189,7 +210,9 @@ export class PermissionSystem {
             [PERMISSION_TYPES.EXECUTE_COMMANDS]: 'Wykonywanie komend',
             [PERMISSION_TYPES.THINKING]: 'Extended thinking (Claude)',
             [PERMISSION_TYPES.MCP]: 'Narzędzia MCP',
-            [PERMISSION_TYPES.YOLO_MODE]: 'YOLO mode (auto-approve wszystko)'
+            [PERMISSION_TYPES.YOLO_MODE]: 'YOLO mode (auto-approve wszystko)',
+            'memory': 'Pamięć agenta',
+            'guidance_mode': 'Guidance mode'
         };
         return descriptions[permission] || permission;
     }

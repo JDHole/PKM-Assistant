@@ -19,6 +19,8 @@ import { openPermissionsModal } from './PermissionsModal.js';
 import { createModelForRole, clearModelCache } from '../utils/modelResolver.js';
 import { TokenTracker } from '../utils/TokenTracker.js';
 import { countTokens } from '../utils/tokenCounter.js';
+import { filterToolsByMode, DEFAULT_MODE, getModeInfo, getAllModes } from '../core/WorkMode.js';
+// buildModePromptSection no longer needed here — workMode passed via context to PromptBuilder
 
 /**
  * ChatView - Main chat interface for Obsek
@@ -45,6 +47,10 @@ export class ChatView extends SmartItemView {
 
         // Session timeout tracking (detect return after long inactivity)
         this.lastMessageTimestamp = null;
+
+        // Work mode (Tryby Pracy) — persists within session, resets on new session
+        this.currentMode = this._getDefaultMode();
+        if (this.plugin) this.plugin.currentWorkMode = this.currentMode;
 
         // Token usage tracking (per-session, per-role)
         this.tokenTracker = new TokenTracker();
@@ -220,6 +226,11 @@ export class ChatView extends SmartItemView {
         // Best-effort save on browser/Obsidian unload (additional safety net)
         this.handleBeforeUnloadBound = () => { this.handleSaveSession(); };
         window.addEventListener('beforeunload', this.handleBeforeUnloadBound);
+
+        // Listen for work mode changes (from SwitchModeTool auto-change=on)
+        this.plugin?.events?.on('work-mode-change', (data) => {
+            if (data?.mode) this._applyModeChange(data.mode);
+        });
 
         // Add welcome message if no messages
         if (this.rollingWindow.messages.length === 0) {
@@ -572,18 +583,22 @@ export class ChatView extends SmartItemView {
 
     /**
      * Render the right toolbar with icon buttons.
+     * Layout: TOP (general) / BOTTOM (chat-specific actions).
      */
     _renderToolbar() {
         if (!this.toolbar) return;
         this.toolbar.empty();
 
+        // ── TOP: general actions ──
+        const topGroup = this.toolbar.createDiv({ cls: 'pkm-toolbar-top' });
+
         // Artifact button
-        const artifactBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Artefakty sesji' } });
+        const artifactBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Artefakty sesji' } });
         artifactBtn.textContent = '📦';
         artifactBtn.addEventListener('click', () => this._toggleArtifactPanel());
 
         // Skills toggle
-        const skillsBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Skille' } });
+        const skillsBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Skille' } });
         skillsBtn.textContent = '⚡';
         skillsBtn.addEventListener('click', () => {
             if (this.skillButtonsBar) {
@@ -594,7 +609,7 @@ export class ChatView extends SmartItemView {
         });
 
         // Oczko (active note awareness) toggle
-        const oczkoBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Oczko — kontekst otwartej notatki' } });
+        const oczkoBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Oczko — kontekst otwartej notatki' } });
         oczkoBtn.textContent = '👁️';
         if (this.env?.settings?.obsek?.enableOczko !== false) {
             oczkoBtn.classList.add('active');
@@ -608,9 +623,74 @@ export class ChatView extends SmartItemView {
             log.debug('Chat', `Oczko toggled: ${newValue}`);
         });
 
-        // Modes (future placeholder)
-        const modesBtn = this.toolbar.createDiv({ cls: 'pkm-toolbar-btn pkm-toolbar-btn-disabled', attr: { 'aria-label': 'Tryby (wkrótce)' } });
-        modesBtn.textContent = '⚙️';
+        // ── BOTTOM: chat-specific actions ──
+        const bottomGroup = this.toolbar.createDiv({ cls: 'pkm-toolbar-bottom' });
+
+        // Mode selector button (shows active mode icon)
+        const modeInfo = getModeInfo(this.currentMode);
+        this._modeBtn = bottomGroup.createDiv({
+            cls: 'pkm-toolbar-btn pkm-mode-btn',
+            attr: { 'aria-label': `Tryb: ${modeInfo?.label || 'Praca'}` }
+        });
+        this._modeBtn.textContent = modeInfo?.icon || '🔨';
+        this._modeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._toggleModePopover();
+        });
+    }
+
+    /**
+     * Toggle the mode selector popover.
+     */
+    _toggleModePopover() {
+        // Close if already open
+        if (this._modePopover) {
+            this._modePopover.remove();
+            this._modePopover = null;
+            return;
+        }
+
+        const modes = getAllModes();
+
+        const popover = document.createElement('div');
+        popover.className = 'pkm-mode-popover';
+
+        for (const mode of modes) {
+            const item = document.createElement('div');
+            item.className = 'pkm-mode-popover-item';
+            if (mode.id === this.currentMode) {
+                item.classList.add('pkm-mode-active');
+            }
+            item.innerHTML = `<span class="pkm-mode-icon">${mode.icon}</span><span class="pkm-mode-label">${mode.label}</span>`;
+            item.addEventListener('click', () => {
+                this._applyModeChange(mode.id);
+                popover.remove();
+                this._modePopover = null;
+            });
+            popover.appendChild(item);
+        }
+
+        // Auto-change indicator
+        const autoChange = this.env?.settings?.obsek?.autoChangeMode || 'ask';
+        const autoLabels = { off: 'Auto: wył.', ask: 'Auto: pytaj', on: 'Auto: tak' };
+        const autoDiv = document.createElement('div');
+        autoDiv.className = 'pkm-mode-popover-auto';
+        autoDiv.textContent = autoLabels[autoChange] || autoLabels.ask;
+        popover.appendChild(autoDiv);
+
+        // Position popover above the mode button
+        this.toolbar.appendChild(popover);
+        this._modePopover = popover;
+
+        // Close on outside click
+        const closeHandler = (e) => {
+            if (!popover.contains(e.target) && !this._modeBtn.contains(e.target)) {
+                popover.remove();
+                this._modePopover = null;
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
     }
 
     /**
@@ -907,6 +987,17 @@ export class ChatView extends SmartItemView {
         return defaults[platform] || '';
     }
 
+    /**
+     * Get default work mode for current agent.
+     * Priority: agent.defaultMode > globalDefaultMode > DEFAULT_MODE ('rozmowa')
+     */
+    _getDefaultMode() {
+        const agent = this.plugin?.agentManager?.getActiveAgent();
+        return agent?.defaultMode
+            || this.env?.settings?.obsek?.globalDefaultMode
+            || DEFAULT_MODE;
+    }
+
     async send_message() {
         const text = this.input_area.value.trim();
         if (!text || this.is_generating) return;
@@ -969,12 +1060,20 @@ export class ChatView extends SmartItemView {
             const t1 = Date.now();
             const platform = this.env?.settings?.smart_chat_model?.platform || '';
             const isLocalModel = (platform === 'ollama' || platform === 'lm_studio');
-            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({ isLocalModel });
+            // Pass workMode + artifacts via context → PromptBuilder handles them in build()
+            const basePrompt = await agentManager.getActiveSystemPromptWithMemory({
+                isLocalModel,
+                workMode: this.currentMode,
+                artifacts: {
+                    todos: this.plugin._chatTodoStore,
+                    plans: this.plugin._planStore,
+                },
+            });
             this.rollingWindow.setSystemPrompt(basePrompt);
             log.timing('Chat', `System prompt build (${basePrompt.length} znaków, local=${isLocalModel})`, t1);
         }
 
-        // Oczko: inject active note context (if enabled)
+        // Oczko: inject active note context (if enabled) — still dynamic per-message
         const oczkoEnabled = this.env?.settings?.obsek?.enableOczko !== false;
         if (oczkoEnabled) {
             try {
@@ -987,13 +1086,6 @@ export class ChatView extends SmartItemView {
             } catch (e) {
                 log.warn('Chat', 'Oczko injection failed:', e);
             }
-        }
-
-        // Inject artifact summary into system prompt (so agent always knows what exists)
-        const artifactCtx = this._buildArtifactContext();
-        if (artifactCtx) {
-            const currentPrompt = this.rollingWindow.baseSystemPrompt || '';
-            this.rollingWindow.setSystemPrompt(`${currentPrompt}\n\n${artifactCtx}`);
         }
 
         // RAG: Retrieve relevant context before preparing request
@@ -1042,7 +1134,8 @@ export class ChatView extends SmartItemView {
                                 });
                             }
                             const prepResult = await this._minionRunner.runAutoPrep(
-                                text, activeAgent, minionConfig, prepModel
+                                text, activeAgent, minionConfig, prepModel,
+                                { workMode: this.currentMode }
                             );
                             log.timing('Chat', 'Minion auto-prep', t3);
                             // Track minion auto-prep tokens: prefer API, fallback to text estimate
@@ -1079,6 +1172,19 @@ export class ChatView extends SmartItemView {
         }
         // === END MINION AUTO-PREP ===
 
+        // === SNAPSHOT for "Pokaż prompt" in Settings ===
+        if (this.plugin) {
+            this.plugin._lastSentSnapshot = {
+                systemPrompt: this.rollingWindow.baseSystemPrompt,
+                conversationSummary: this.rollingWindow.conversationSummary || '',
+                lastUserMessage: text,
+                timestamp: Date.now(),
+                mode: this.currentMode,
+                agentName: activeAgent?.name || '',
+                agentEmoji: activeAgent?.emoji || '',
+            };
+        }
+
         // Prepare request
         const messages = this.rollingWindow.getMessagesForAPI();
         log.debug('Chat', `Messages for API: ${messages.length} wiadomości`);
@@ -1092,7 +1198,21 @@ export class ChatView extends SmartItemView {
             if (enabled && enabled.length > 0) {
                 tools = tools.filter(t => enabled.includes(t.function?.name || t.name));
             }
-            log.debug('Chat', `Tools: ${tools.length} narzędzi (filtered: ${!!enabled?.length})`);
+            // Filter memory tools if agent has memory permission off
+            if (activeAgent.permissions?.memory === false) {
+                const memoryTools = ['memory_search', 'memory_update', 'memory_status'];
+                tools = tools.filter(t => !memoryTools.includes(t.function?.name || t.name));
+            }
+            // Filter by work mode (Layer 1: Tryby Pracy)
+            tools = filterToolsByMode(tools, this.currentMode);
+
+            // Remove switch_mode if autoChange is off
+            const autoChangeMode = this.env?.settings?.obsek?.autoChangeMode || 'ask';
+            if (autoChangeMode === 'off') {
+                tools = tools.filter(t => (t.function?.name || t.name) !== 'switch_mode');
+            }
+
+            log.debug('Chat', `Tools: ${tools.length} narzędzi (mode: ${this.currentMode}, filtered: ${!!enabled?.length})`);
         }
 
         try {
@@ -1257,13 +1377,11 @@ export class ChatView extends SmartItemView {
                 plan_action: '📋 Aktualizuję plan...',
             };
 
-            for (const toolCall of toolCalls) {
+            // ── PHASE 1: Create ALL pending UI blocks (sync) ──
+            const pendingEntries = toolCalls.map(toolCall => {
                 const isSubAgent = toolCall.name === 'minion_task' || toolCall.name === 'master_task';
-
-                // Show pending state: SubAgentBlock for minion/master, ToolCallDisplay for others
                 let toolDisplay;
                 if (isSubAgent) {
-                    // Sub-agents get their own pending block (no typing indicator — it would scroll past it)
                     this.hideTypingIndicator();
                     toolDisplay = createPendingSubAgentBlock(toolCall.name);
                 } else {
@@ -1277,96 +1395,103 @@ export class ChatView extends SmartItemView {
                 }
                 toolCallsContainer.appendChild(toolDisplay);
                 if (isSubAgent) toolDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                return { toolCall, toolDisplay, isSubAgent };
+            });
 
-                // Execute tool via MCPClient
-                let result;
+            // ── PHASE 2: Execute ALL tool calls in parallel ──
+            const executionResults = await Promise.all(pendingEntries.map(async ({ toolCall }) => {
                 try {
-                    log.debug('Chat', `Wykonuję tool: ${toolCall.name}`, toolCall.arguments);
-                    result = await this.plugin.mcpClient.executeToolCall(toolCall, agentName);
-
-                    // For minion/master: replace pending with full SubAgentBlock
-                    if (isSubAgent && result?.success) {
-                        const taskQuery = typeof toolCall.arguments === 'string'
-                            ? (() => { try { return JSON.parse(toolCall.arguments).task; } catch { return toolCall.arguments; } })()
-                            : toolCall.arguments?.task || '';
-                        const role = toolCall.name === 'minion_task' ? 'minion' : 'master';
-
-                        // Track sub-agent tokens: prefer API data, fallback to text estimate
-                        const subInput = result.usage?.prompt_tokens || countTokens(taskQuery);
-                        const subOutput = result.usage?.completion_tokens || countTokens(typeof result.result === 'string' ? result.result : '');
-                        if (subInput > 0 || subOutput > 0) {
-                            this.tokenTracker.record(role, subInput, subOutput);
-                            this._updateTokenPanel();
-                        }
-
-                        const fullBlock = createSubAgentBlock({
-                            type: toolCall.name,
-                            query: taskQuery,
-                            response: typeof result.result === 'string' ? result.result : '',
-                            toolsUsed: result.tools_used || [],
-                            toolCallDetails: result.tool_call_details || [],
-                            duration: result.duration_ms || 0,
-                            usage: result.usage,
-                        });
-                        toolDisplay.replaceWith(fullBlock);
-                        fullBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    } else if (isSubAgent && !result?.success) {
-                        // Error for sub-agent
-                        const errorBlock = createSubAgentBlock({
-                            type: toolCall.name,
-                            query: typeof toolCall.arguments === 'string' ? toolCall.arguments : toolCall.arguments?.task || '',
-                            response: `Błąd: ${result?.error || 'Nieznany błąd'}`,
-                            duration: 0,
-                        });
-                        toolDisplay.replaceWith(errorBlock);
-                        errorBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    } else {
-                        // Regular tool: update display with result
-                        const updatedDisplay = createToolCallDisplay({
-                            name: toolCall.name,
-                            input: toolCall.arguments,
-                            output: result,
-                            status: result.isError ? 'error' : 'success',
-                            error: result.error
-                        });
-                        toolDisplay.replaceWith(updatedDisplay);
-                    }
-
-                    // Render interactive widgets for special result types
-                    if (result?.type === 'todo_list') {
-                        const existingWidget = toolCallsContainer.querySelector(`[data-todo-id="${result.id}"]`);
-                        const todoWidget = createChatTodoList(result, this._buildTodoCallbacks());
-                        if (existingWidget) {
-                            existingWidget.replaceWith(todoWidget);
-                        } else {
-                            toolCallsContainer.appendChild(todoWidget);
-                        }
-                    }
-
-                    if (result?.type === 'plan_artifact') {
-                        const existingWidget = toolCallsContainer.querySelector(`[data-plan-id="${result.id}"]`);
-                        const planCallbacks = this._buildPlanCallbacks();
-                        const planWidget = createPlanArtifact(result, planCallbacks);
-                        if (existingWidget) {
-                            existingWidget.replaceWith(planWidget);
-                        } else {
-                            toolCallsContainer.appendChild(planWidget);
-                        }
-                    }
+                    log.debug('Chat', `Wykonuję tool (parallel): ${toolCall.name}`, toolCall.arguments);
+                    const result = await this.plugin.mcpClient.executeToolCall(toolCall, agentName);
+                    return { result, error: null };
                 } catch (err) {
-                    result = { isError: true, error: err.message };
+                    return { result: { isError: true, error: err.message }, error: err };
+                }
+            }));
+
+            // ── PHASE 3: Update UI and collect results (sync, in order) ──
+            for (let ti = 0; ti < pendingEntries.length; ti++) {
+                const { toolCall, toolDisplay, isSubAgent } = pendingEntries[ti];
+                const { result, error } = executionResults[ti];
+
+                if (error) {
+                    // Execution error
                     if (isSubAgent) {
                         toolDisplay.replaceWith(createSubAgentBlock({
                             type: toolCall.name,
-                            response: `Błąd: ${err.message}`,
+                            response: `Błąd: ${error.message}`,
                         }));
                     } else {
                         toolDisplay.replaceWith(createToolCallDisplay({
                             name: toolCall.name,
                             input: toolCall.arguments,
                             status: 'error',
-                            error: err.message
+                            error: error.message
                         }));
+                    }
+                } else if (isSubAgent && result?.success) {
+                    const taskQuery = typeof toolCall.arguments === 'string'
+                        ? (() => { try { return JSON.parse(toolCall.arguments).task; } catch { return toolCall.arguments; } })()
+                        : toolCall.arguments?.task || '';
+                    const role = toolCall.name === 'minion_task' ? 'minion' : 'master';
+
+                    const subInput = result.usage?.prompt_tokens || countTokens(taskQuery);
+                    const subOutput = result.usage?.completion_tokens || countTokens(typeof result.result === 'string' ? result.result : '');
+                    if (subInput > 0 || subOutput > 0) {
+                        this.tokenTracker.record(role, subInput, subOutput);
+                        this._updateTokenPanel();
+                    }
+
+                    const fullBlock = createSubAgentBlock({
+                        type: toolCall.name,
+                        query: taskQuery,
+                        response: typeof result.result === 'string' ? result.result : '',
+                        toolsUsed: result.tools_used || [],
+                        toolCallDetails: result.tool_call_details || [],
+                        duration: result.duration_ms || 0,
+                        usage: result.usage,
+                    });
+                    toolDisplay.replaceWith(fullBlock);
+                    fullBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else if (isSubAgent && !result?.success) {
+                    const errorBlock = createSubAgentBlock({
+                        type: toolCall.name,
+                        query: typeof toolCall.arguments === 'string' ? toolCall.arguments : toolCall.arguments?.task || '',
+                        response: `Błąd: ${result?.error || 'Nieznany błąd'}`,
+                        duration: 0,
+                    });
+                    toolDisplay.replaceWith(errorBlock);
+                    errorBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    const updatedDisplay = createToolCallDisplay({
+                        name: toolCall.name,
+                        input: toolCall.arguments,
+                        output: result,
+                        status: result.isError ? 'error' : 'success',
+                        error: result.error
+                    });
+                    toolDisplay.replaceWith(updatedDisplay);
+                }
+
+                // Render interactive widgets
+                if (result?.type === 'todo_list') {
+                    const existingWidget = toolCallsContainer.querySelector(`[data-todo-id="${result.id}"]`);
+                    const todoWidget = createChatTodoList(result, this._buildTodoCallbacks());
+                    if (existingWidget) {
+                        existingWidget.replaceWith(todoWidget);
+                    } else {
+                        toolCallsContainer.appendChild(todoWidget);
+                    }
+                }
+
+                if (result?.type === 'plan_artifact') {
+                    const existingWidget = toolCallsContainer.querySelector(`[data-plan-id="${result.id}"]`);
+                    const planCallbacks = this._buildPlanCallbacks();
+                    const planWidget = createPlanArtifact(result, planCallbacks);
+                    if (existingWidget) {
+                        existingWidget.replaceWith(planWidget);
+                    } else {
+                        toolCallsContainer.appendChild(planWidget);
                     }
                 }
 
@@ -1376,6 +1501,18 @@ export class ChatView extends SmartItemView {
                         const parsed = typeof result === 'object' ? result : JSON.parse(JSON.stringify(result));
                         if (parsed.delegation === true) {
                             this._pendingDelegation = parsed;
+                        }
+                    } catch {}
+                }
+
+                // Detect switch_mode result
+                if (toolCall.name === 'switch_mode') {
+                    try {
+                        const parsed = typeof result === 'object' ? result : JSON.parse(JSON.stringify(result));
+                        if (parsed.success) {
+                            this._applyModeChange(parsed.mode);
+                        } else if (parsed.proposal) {
+                            this._pendingModeChange = parsed;
                         }
                     } catch {}
                 }
@@ -1390,13 +1527,10 @@ export class ChatView extends SmartItemView {
                     if (writePath.includes('/minions/')) {
                         await this.plugin?.agentManager?.reloadMinions();
                     }
-                    // Playbook/vault_map: no cache to invalidate (read from disk each auto-prep),
-                    // but mark that next auto-prep should re-read them
                     if (writePath.includes('playbook.md') || writePath.includes('vault_map.md')) {
                         this._playbookDirty = true;
                     }
 
-                    // Render quick link to created/edited file
                     if (!result?.isError && writePath) {
                         const linkDiv = document.createElement('div');
                         linkDiv.addClass('pkm-vault-link');
@@ -1476,6 +1610,12 @@ export class ChatView extends SmartItemView {
             if (this._pendingDelegation) {
                 this._renderDelegationButton(this.current_message_container, this._pendingDelegation);
                 this._pendingDelegation = null;
+            }
+
+            // Render mode change proposal if pending (auto-change=ask)
+            if (this._pendingModeChange) {
+                this._renderModeChangeButton(this.current_message_container, this._pendingModeChange);
+                this._pendingModeChange = null;
             }
         }
 
@@ -1565,6 +1705,47 @@ export class ChatView extends SmartItemView {
     }
 
     /**
+     * Apply a mode change (immediate or confirmed).
+     * @param {string} newMode - Mode id to switch to
+     */
+    _applyModeChange(newMode) {
+        const info = getModeInfo(newMode);
+        if (!info) return;
+        this.currentMode = newMode;
+        // Sync to plugin for cross-component access (e.g. MinionTaskTool)
+        if (this.plugin) this.plugin.currentWorkMode = newMode;
+        // Update toolbar mode button if it exists
+        if (this._modeBtn) {
+            this._modeBtn.textContent = info.icon;
+            this._modeBtn.setAttribute('aria-label', `Tryb: ${info.label}`);
+        }
+        new Notice(`Tryb: ${info.icon} ${info.label}`);
+        log.info('Chat', `Mode changed → ${newMode}`);
+    }
+
+    /**
+     * Render mode change proposal button (auto-change=ask).
+     * @param {HTMLElement} container
+     * @param {Object} data - { mode, label, icon, reason }
+     */
+    _renderModeChangeButton(container, data) {
+        const div = container.createDiv({ cls: 'pkm-mode-proposal' });
+        div.createEl('p', {
+            text: data.reason || `Proponuję zmianę trybu na ${data.icon} ${data.label}`,
+            cls: 'pkm-mode-proposal-reason'
+        });
+        const btn = div.createEl('button', {
+            text: `Przełącz na ${data.icon} ${data.label}`,
+            cls: 'pkm-mode-proposal-btn mod-cta'
+        });
+        btn.addEventListener('click', () => {
+            btn.disabled = true;
+            btn.textContent = 'Zmieniono!';
+            this._applyModeChange(data.mode);
+        });
+    }
+
+    /**
      * Continue conversation after tool execution
      */
     async continueWithToolResults() {
@@ -1580,6 +1761,20 @@ export class ChatView extends SmartItemView {
         const activeAgent = this.plugin?.agentManager?.getActiveAgent();
         if (activeAgent?.permissions?.mcp && this.plugin?.toolRegistry) {
             tools = this.plugin.toolRegistry.getToolDefinitions();
+            // Apply same filters as send_message
+            const enabled = activeAgent.enabledTools;
+            if (enabled && enabled.length > 0) {
+                tools = tools.filter(t => enabled.includes(t.function?.name || t.name));
+            }
+            if (activeAgent.permissions?.memory === false) {
+                const memoryTools = ['memory_search', 'memory_update', 'memory_status'];
+                tools = tools.filter(t => !memoryTools.includes(t.function?.name || t.name));
+            }
+            tools = filterToolsByMode(tools, this.currentMode);
+            const autoChangeMode = this.env?.settings?.obsek?.autoChangeMode || 'ask';
+            if (autoChangeMode === 'off') {
+                tools = tools.filter(t => (t.function?.name || t.name) !== 'switch_mode');
+            }
         }
 
         try {
@@ -1950,6 +2145,9 @@ export class ChatView extends SmartItemView {
 
         this.rollingWindow = this._createRollingWindow();
         this.tokenTracker.clear();
+        // Reset work mode to default on new session
+        this.currentMode = this._getDefaultMode();
+        this._applyModeChange(this.currentMode);
         this.render_messages();
         this.add_welcome_message();
         this.updateTokenCounter();
@@ -2195,6 +2393,9 @@ export class ChatView extends SmartItemView {
         if (switched) {
             this.updatePermissionsBadge();
             this.renderSkillButtons();
+            // Reset work mode to new agent's default
+            this.currentMode = this._getDefaultMode();
+            this._applyModeChange(this.currentMode);
             // Re-render welcome if no messages
             if (this.rollingWindow.messages.length === 0) {
                 this.messages_container.empty();
