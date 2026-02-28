@@ -83,6 +83,13 @@ export class MinionRunner {
                 tools = filterToolsByMode(tools, options.workMode);
             }
 
+            // Graceful exit: if mode filtering removed all tools, skip auto-prep
+            if (tools.length === 0) {
+                log.info('Minion', `Auto-prep: pominięty — brak narzędzi w trybie "${options.workMode}"`);
+                log.groupEnd();
+                return { context: '', toolsUsed: [], duration: Date.now() - startTime };
+            }
+
             const messages = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userMessage }
@@ -149,6 +156,20 @@ export class MinionRunner {
                 tools = filterToolsByMode(tools, options.workMode);
             }
 
+            // Graceful exit: if mode filtering removed all tools, return error
+            if (tools.length === 0) {
+                const mode = options.workMode || 'nieznany';
+                log.warn('Minion', `Task: brak narzędzi w trybie "${mode}" — nie mogę wykonać zadania`);
+                log.groupEnd();
+                return {
+                    result: `Nie mogę wykonać zadania — w trybie "${mode}" minion nie ma dostępnych narzędzi. Zmień tryb na "praca" żeby delegować zadania.`,
+                    toolsUsed: [],
+                    toolCallDetails: [],
+                    duration: Date.now() - startTime,
+                    usage: null,
+                };
+            }
+
             const messages = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: taskPrompt }
@@ -194,7 +215,7 @@ export class MinionRunner {
     async _buildAutoPrepPrompt(agent, minionConfig, playbookContent = '', vaultMapContent = '', inboxContent = '') {
         const parts = [];
 
-        parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name} ${agent.emoji}.`);
+        parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name}.`);
         parts.push(`Rola: ${minionConfig.description}`);
         parts.push('');
 
@@ -274,7 +295,7 @@ export class MinionRunner {
     _buildTaskPrompt(agent, minionConfig) {
         const parts = [];
 
-        parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name} ${agent.emoji}.`);
+        parts.push(`Jesteś minion "${minionConfig.name}" pracujący dla agenta ${agent.name}.`);
         parts.push(`Agent deleguje Ci zadanie. Wykonaj je dokładnie i zwróć wynik.`);
         parts.push('');
         parts.push('ZASADY:');

@@ -5,6 +5,8 @@ import { log } from '../utils/Logger.js';
 import { getArchetypeList } from '../agents/archetypes/Archetypes.js';
 import { buildModePromptSection, FACTORY_DEFAULTS, DECISION_TREE_GROUPS, DECISION_TREE_DEFAULTS } from '../core/PromptBuilder.js';
 import { getTokenCount } from '../utils/tokenCounter.js';
+import { WEB_SEARCH_PROVIDERS, PROVIDER_SIGNUP_URLS } from '../core/WebSearchProvider.js';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 /**
  * ObsekSettingsTab - Settings for PKM Assistant
@@ -60,6 +62,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
     async render_global_settings(container) {
         if (!container) return;
         container.empty();
+        container.classList.add('cs-root');
 
         if (!this.env) {
             container.createEl('p', { text: 'Ładowanie środowiska...' });
@@ -83,7 +86,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         // ══════════════════════════════════════════
         // SEKCJA 1: DOSTAWCY AI
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: '🔑 Dostawcy AI' });
+        const h2Providers = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Providers.innerHTML = `${UiIcons.key(18)} Dostawcy AI`;
         container.createEl('p', {
             text: 'Wpisz klucze API do platform, z których chcesz korzystać. Klucze są bezpiecznie przechowywane lokalnie.',
             cls: 'setting-item-description'
@@ -107,10 +111,11 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         for (const prov of providers) {
             const keyField = `${prov.id}_api_key`;
             const hasKey = !!settings[keyField];
-            const statusDot = hasKey ? '🟢' : '⚪';
+            const statusDot = hasKey ? UiIcons.dotGreen(12) : UiIcons.dotGray(12);
 
-            new Setting(container)
-                .setName(`${statusDot} ${prov.name}`)
+            const provSetting = new Setting(container);
+            provSetting.nameEl.innerHTML = `${statusDot} ${prov.name}`;
+            provSetting
                 .setDesc(hasKey ? `Klucz: ${maskKey(settings[keyField])}` : 'Brak klucza')
                 .addText(text => {
                     text
@@ -145,10 +150,11 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         for (const prov of localProviders) {
             const hostValue = settings[prov.settingKey] || '';
             const hasHost = !!hostValue;
-            const statusDot = hasHost ? '🟢' : '⚪';
+            const statusDot = hasHost ? UiIcons.dotGreen(12) : UiIcons.dotGray(12);
 
-            new Setting(container)
-                .setName(`${statusDot} ${prov.name}`)
+            const localSetting = new Setting(container);
+            localSetting.nameEl.innerHTML = `${statusDot} ${prov.name}`;
+            localSetting
                 .setDesc(hasHost ? `Serwer: ${hostValue}` : 'Nie skonfigurowany')
                 .addText(text => {
                     text
@@ -165,7 +171,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         // ══════════════════════════════════════════
         // SEKCJA 2: MODELE
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: '🤖 Modele' });
+        const h2Models = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Models.innerHTML = `${UiIcons.robot(18)} Modele`;
         container.createEl('p', {
             text: 'Wybierz modele do różnych zadań. Każdy model może używać innego dostawcy.',
             cls: 'setting-item-description'
@@ -352,7 +359,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         // ══════════════════════════════════════════
         // SEKCJA: NO-GO (prywatne foldery)
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: '🚫 No-Go — foldery prywatne' });
+        const h2NoGo = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2NoGo.innerHTML = `${UiIcons.noEntry(18)} No-Go &mdash; foldery prywatne`;
         container.createEl('p', {
             text: 'Foldery całkowicie niedostępne dla agentów i wykluczone z indeksowania. Jeden folder na linię.',
             cls: 'setting-item-description'
@@ -381,7 +389,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         // ══════════════════════════════════════════
         // SEKCJA 3: PAMIĘĆ
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: '🧠 Pamięć' });
+        const h2Memory = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Memory.innerHTML = `${UiIcons.brain(18)} Pamięć`;
 
         new Setting(container)
             .setName('Pamięć w prompcie')
@@ -435,11 +444,23 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('Próg sumaryzacji')
-            .setDesc('Kompresuj przy tym % limitu kontekstu')
+            .setName('Próg skracania narzędzi (Faza 1)')
+            .setDesc('Skracaj stare wyniki narzędzi gdy kontekst przekroczy ten % — darmowe, bez API call')
             .addSlider(slider => slider
                 .setLimits(0.5, 0.9, 0.05)
-                .setValue(obsek.summarizationThreshold || 0.7)
+                .setValue(obsek.toolTrimThreshold || 0.7)
+                .setDynamicTooltip()
+                .onChange(async (value) => {
+                    obsek.toolTrimThreshold = value;
+                    await this.save_settings();
+                }));
+
+        new Setting(container)
+            .setName('Próg sumaryzacji (Faza 2)')
+            .setDesc('Pełna kompresja kontekstu gdy przekroczy ten % — wymaga API call')
+            .addSlider(slider => slider
+                .setLimits(0.7, 1.0, 0.05)
+                .setValue(obsek.summarizationThreshold || 0.9)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
                     obsek.summarizationThreshold = value;
@@ -472,7 +493,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                 }));
 
         new Setting(container)
-            .setName('🐛 Tryb debugowania')
+            .setName('Tryb debugowania')
             .setDesc('Pokazuje WSZYSTKO w konsoli (Ctrl+Shift+I): ładowanie, tool calle, modele, streaming, pamięć. Wyłącz po debugowaniu.')
             .addToggle(toggle => toggle
                 .setValue(obsek.debugMode ?? false)
@@ -482,47 +503,128 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                     await this.save_settings();
                 }));
 
-        // ══════════════════════════════════════════
-        // SEKCJA 4: RAG
-        // ══════════════════════════════════════════
-        container.createEl('h2', { text: '🔍 RAG (wyszukiwanie kontekstu)' });
-
         new Setting(container)
-            .setName('Włącz RAG')
-            .setDesc('Wyszukiwanie semantyczne w poprzednich sesjach')
-            .addToggle(toggle => toggle
-                .setValue(obsek.enableRAG !== false)
-                .onChange(async (value) => {
-                    obsek.enableRAG = value;
-                    await this.save_settings();
-                }));
-
-        new Setting(container)
-            .setName('Próg podobieństwa')
-            .setDesc('Minimalne podobieństwo wyników (0.5 = luźne, 0.9 = ściśle)')
-            .addSlider(slider => slider
-                .setLimits(0.5, 0.9, 0.05)
-                .setValue(obsek.ragSimilarityThreshold || 0.7)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    obsek.ragSimilarityThreshold = value;
-                    await this.save_settings();
-                }));
-
-        new Setting(container)
-            .setName('Max wyników RAG')
-            .setDesc('Ile wyników wyszukiwania dołączyć do kontekstu')
+            .setName('Zachowaj ostatnich sesji po L1')
+            .setDesc('Ile sesji nie kasować po konsolidacji do L1 (safety net)')
             .addText(text => {
                 text
                     .setPlaceholder('5')
-                    .setValue(String(obsek.ragMaxResults || 5))
+                    .setValue(String(obsek.keepRecentSessions !== undefined ? obsek.keepRecentSessions : 5))
                     .onChange(async (value) => {
-                        obsek.ragMaxResults = parseInt(value) || 5;
+                        obsek.keepRecentSessions = parseInt(value) || 5;
                         await this.save_settings();
                     });
                 text.inputEl.type = 'number';
                 text.inputEl.style.width = '80px';
             });
+
+        new Setting(container)
+            .setName('Próg L3')
+            .setDesc('Ile L2 potrzeba do stworzenia mega-podsumowania L3')
+            .addText(text => {
+                text
+                    .setPlaceholder('10')
+                    .setValue(String(obsek.l3Threshold !== undefined ? obsek.l3Threshold : 10))
+                    .onChange(async (value) => {
+                        obsek.l3Threshold = parseInt(value) || 10;
+                        await this.save_settings();
+                    });
+                text.inputEl.type = 'number';
+                text.inputEl.style.width = '80px';
+            });
+
+        // ══════════════════════════════════════════
+        // SEKCJA 3.5: WEB SEARCH
+        // ══════════════════════════════════════════
+        const h2Web = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Web.innerHTML = `${UiIcons.globe(18)} Web Search`;
+        container.createEl('p', {
+            text: 'Pozwól agentom szukać informacji w internecie. Domyślnie Jina AI — działa od razu, za darmo, bez rejestracji.',
+            cls: 'setting-item-description'
+        });
+
+        if (!obsek.webSearch) obsek.webSearch = {};
+        const ws = obsek.webSearch;
+
+        new Setting(container)
+            .setName('Włącz Web Search')
+            .setDesc('Agent może szukać w internecie (narzędzie web_search)')
+            .addToggle(toggle => toggle
+                .setValue(ws.enabled !== false)
+                .onChange(async (value) => {
+                    ws.enabled = value;
+                    await this.save_settings();
+                    // Re-render to show/hide provider settings
+                    this.render();
+                }));
+
+        if (ws.enabled !== false) {
+            new Setting(container)
+                .setName('Provider')
+                .setDesc('Dostawca wyszukiwania. Jina AI działa bez klucza API.')
+                .addDropdown(dd => {
+                    for (const [id, info] of Object.entries(WEB_SEARCH_PROVIDERS)) {
+                        dd.addOption(id, info.label);
+                    }
+                    dd.setValue(ws.provider || 'jina');
+                    dd.onChange(async (value) => {
+                        ws.provider = value;
+                        await this.save_settings();
+                        this.render();
+                    });
+                });
+
+            const provider = WEB_SEARCH_PROVIDERS[ws.provider || 'jina'];
+
+            if (provider?.requiresKey || ws.apiKey) {
+                new Setting(container)
+                    .setName('Klucz API')
+                    .setDesc(`Klucz API dla ${provider?.label || ws.provider}`)
+                    .addText(text => {
+                        text
+                            .setPlaceholder('Wklej klucz API...')
+                            .setValue(ws.apiKey || '')
+                            .onChange(async (value) => {
+                                ws.apiKey = value.trim();
+                                await this.save_settings();
+                            });
+                        text.inputEl.type = 'password';
+                        text.inputEl.style.width = '300px';
+                    });
+            }
+
+            if (provider?.requiresUrl) {
+                new Setting(container)
+                    .setName('URL instancji SearXNG')
+                    .setDesc('Adres Twojej instancji SearXNG (np. http://localhost:8888)')
+                    .addText(text => {
+                        text
+                            .setPlaceholder('http://localhost:8888')
+                            .setValue(ws.instanceUrl || '')
+                            .onChange(async (value) => {
+                                ws.instanceUrl = value.trim();
+                                await this.save_settings();
+                            });
+                        text.inputEl.style.width = '300px';
+                    });
+            }
+
+            // Signup link
+            const signupUrl = PROVIDER_SIGNUP_URLS[ws.provider || 'jina'];
+            if (signupUrl) {
+                const linkSetting = new Setting(container)
+                    .setName('Załóż darmowe konto')
+                    .setDesc('Więcej zapytań i szybsze limity z darmowym kluczem API');
+                const linkBtn = linkSetting.controlEl.createEl('a', {
+                    text: `Otwórz ${provider?.label || ws.provider}`,
+                    href: signupUrl,
+                    cls: 'external-link'
+                });
+                linkBtn.style.cursor = 'pointer';
+            }
+        }
+
+        // RAG sekcja usunięta (v1.1.0) — memory_search i vault_search jako on-demand RAG
 
         // ══════════════════════════════════════════
         // SEKCJA 5: ROLE AGENTÓW
@@ -532,7 +634,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         // ══════════════════════════════════════════
         // SEKCJA 6: SYSTEM PROMPT
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: '📋 System Prompt' });
+        const h2Prompt = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Prompt.innerHTML = `${UiIcons.clipboard(18)} System Prompt`;
         container.createEl('p', {
             text: 'Edytuj sekcje system promptu i przeglądaj strukturę aktywnego agenta.',
             cls: 'setting-item-description'
@@ -557,10 +660,10 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             .setName('Domyślny tryb pracy')
             .setDesc('Tryb wybrany na starcie nowego chatu (gdy agent nie ma swojego)')
             .addDropdown(dropdown => {
-                dropdown.addOption('rozmowa', '💬 Rozmowa');
-                dropdown.addOption('planowanie', '📋 Planowanie');
-                dropdown.addOption('praca', '🔨 Praca');
-                dropdown.addOption('kreatywny', '✨ Kreatywny');
+                dropdown.addOption('rozmowa', 'Rozmowa');
+                dropdown.addOption('planowanie', 'Planowanie');
+                dropdown.addOption('praca', 'Praca');
+                dropdown.addOption('kreatywny', 'Kreatywny');
                 dropdown.setValue(obsek.globalDefaultMode || 'rozmowa');
                 dropdown.onChange(async (value) => {
                     obsek.globalDefaultMode = value;
@@ -587,9 +690,42 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         this._renderPromptBuilder(builderEl);
 
         // ══════════════════════════════════════════
+        // SEKCJA: CRYSTAL SOUL (motyw)
+        // ══════════════════════════════════════════
+        const h2Crystal = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Crystal.innerHTML = `${UiIcons.diamond(18)} Crystal Soul`;
+        container.createEl('p', {
+            text: 'Personalizacja wyglądu pluginu. Edytuj .pkm-assistant/theme.css żeby zmienić kolory, rozmiary i animacje.',
+            cls: 'setting-item-description'
+        });
+
+        new Setting(container)
+            .setName('Generuj plik motywu')
+            .setDesc('Tworzy .pkm-assistant/theme.css z domyślnymi zmiennymi do edycji')
+            .addButton(btn => btn
+                .setButtonText('Generuj')
+                .onClick(async () => {
+                    const path = await this.plugin.generateCrystalSoulTemplate();
+                    new Notice(`Crystal Soul template: ${path}`);
+                })
+            );
+
+        new Setting(container)
+            .setName('Przeładuj motyw')
+            .setDesc('Odczytuje theme.css ponownie bez restartu pluginu')
+            .addButton(btn => btn
+                .setButtonText('Przeładuj')
+                .onClick(async () => {
+                    await this.plugin._loadCrystalSoulTheme();
+                    new Notice('Crystal Soul theme przeładowany');
+                })
+            );
+
+        // ══════════════════════════════════════════
         // SEKCJA 7: INFORMACJE
         // ══════════════════════════════════════════
-        container.createEl('h2', { text: 'ℹ️ Informacje' });
+        const h2Info = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Info.innerHTML = `${UiIcons.info(18)} Informacje`;
 
         const infoDiv = container.createDiv({ cls: 'setting-item' });
         infoDiv.style.display = 'flex';
@@ -622,7 +758,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
      * Render Role Creator section — list custom roles, add/edit/delete.
      */
     async _renderRoleCreator(container) {
-        container.createEl('h2', { text: '🎭 Role Agentów' });
+        const h2Roles = container.createEl('h2', { cls: 'cs-settings-section' });
+        h2Roles.innerHTML = `${UiIcons.mask(18)} Role Agentów`;
         container.createEl('p', {
             text: 'Role definiują specjalizację agenta: osobowość, zachowanie, narzędzia, uprawnienia. Wbudowane role można edytować tworząc kopię.',
             cls: 'setting-item-description'
@@ -646,7 +783,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
             container.createEl('h3', { text: 'Wbudowane role' });
             for (const role of builtIn) {
                 const s = new Setting(container)
-                    .setName(`${role.emoji} ${role.name}`)
+                    .setName(role.name)
                     .setDesc(role.description || '');
                 s.addExtraButton(btn => {
                     btn.setIcon('copy')
@@ -677,7 +814,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         } else {
             for (const role of custom) {
                 const s = new Setting(container)
-                    .setName(`${role.emoji} ${role.name}`)
+                    .setName(role.name)
                     .setDesc(role.description || '');
                 s.addExtraButton(btn => {
                     btn.setIcon('pencil')
@@ -838,7 +975,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
         agentSelect.style.cssText = 'padding:4px 8px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-primary);';
         for (const agent of agents) {
             const opt = agentSelect.createEl('option', {
-                text: `${agent.emoji} ${agent.name}`,
+                text: agent.name,
                 value: agent.name,
             });
             if (agent.name === selectedAgentName) opt.selected = true;
@@ -854,10 +991,10 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
 
         // ── Categories ──
         const categories = {
-            core:     '🔵 Rdzeń',
-            behavior: '🟢 Zachowanie',
-            rules:    '🟡 Zasady',
-            context:  '🟣 Kontekst dynamiczny',
+            core:     `${UiIcons.dotBlue(10)} Rdzeń`,
+            behavior: `${UiIcons.dotGreen(10)} Zachowanie`,
+            rules:    `${UiIcons.dotYellow(10)} Zasady`,
+            context:  `${UiIcons.dotPurple(10)} Kontekst dynamiczny`,
         };
 
         // State
@@ -907,7 +1044,8 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                     // Category header
                     const catHeader = groupEl.createDiv();
                     catHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-weight:600;';
-                    catHeader.createEl('span', { text: catLabel });
+                    const catLabelSpan = catHeader.createEl('span');
+                    catLabelSpan.innerHTML = catLabel;
                     const catTokenEl = catHeader.createEl('span', { text: '0 tok', cls: 'setting-item-description' });
                     catTokenEls.set(catKey, catTokenEl);
 
@@ -1017,7 +1155,7 @@ export class ObsekSettingsTab extends SmartPluginSettingsTab {
                         }
 
                         const modal = new Modal(this.app);
-                        modal.titleEl.setText(`System Prompt — ${agent.emoji} ${agent.name}`);
+                        modal.titleEl.setText(`System Prompt — ${agent.name}`);
 
                         const copyBtn = modal.titleEl.createEl('button', {
                             text: 'Kopiuj',
@@ -1424,7 +1562,6 @@ class RoleEditorModal extends Modal {
         this.form = {
             id: roleData?.id || '',
             name: roleData?.name || '',
-            emoji: roleData?.emoji || '🤖',
             archetype: roleData?.archetype || 'specialist',
             description: roleData?.description || '',
             behavior_rules: (roleData?.behavior_rules || []).join('\n'),
@@ -1446,23 +1583,15 @@ class RoleEditorModal extends Modal {
         contentEl.addClass('role-editor-modal');
 
         contentEl.createEl('h2', {
-            text: this.isNew ? 'Nowa rola agenta' : `Edytuj: ${this.form.emoji} ${this.form.name}`
+            text: this.isNew ? 'Nowa rola agenta' : `Edytuj: ${this.form.name}`
         });
 
         const archetypes = getArchetypeList();
 
-        // ── Name + Emoji row ──
-        const nameRow = contentEl.createDiv({ attr: { style: 'display:flex; gap:10px; margin-bottom:12px;' } });
-
-        const emojiDiv = nameRow.createDiv({ attr: { style: 'flex:0 0 60px;' } });
-        emojiDiv.createEl('label', { text: 'Emoji', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
-        const emojiInput = emojiDiv.createEl('input', { type: 'text', value: this.form.emoji });
-        emojiInput.style.cssText = 'width:50px; text-align:center; font-size:1.2em; padding:4px;';
-        emojiInput.addEventListener('input', () => { this.form.emoji = emojiInput.value; });
-
-        const nameDiv = nameRow.createDiv({ attr: { style: 'flex:1;' } });
-        nameDiv.createEl('label', { text: 'Nazwa roli', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
-        const nameInput = nameDiv.createEl('input', { type: 'text', value: this.form.name, placeholder: 'np. Pisarz Kreatywny' });
+        // ── Name row ──
+        const nameRow = contentEl.createDiv({ attr: { style: 'margin-bottom:12px;' } });
+        nameRow.createEl('label', { text: 'Nazwa roli', cls: 'setting-item-description', attr: { style: 'display:block; margin-bottom:2px;' } });
+        const nameInput = nameRow.createEl('input', { type: 'text', value: this.form.name, placeholder: 'np. Pisarz Kreatywny' });
         nameInput.style.cssText = 'width:100%; padding:6px 8px;';
         nameInput.addEventListener('input', () => { this.form.name = nameInput.value; });
 
@@ -1472,7 +1601,7 @@ class RoleEditorModal extends Modal {
             .setDesc('Klasa agenta — definiuje filozofię pracy')
             .addDropdown(dd => {
                 for (const a of archetypes) {
-                    dd.addOption(a.id, `${a.emoji} ${a.name}`);
+                    dd.addOption(a.id, a.name);
                 }
                 dd.setValue(this.form.archetype);
                 dd.onChange(v => { this.form.archetype = v; });
@@ -1579,7 +1708,6 @@ class RoleEditorModal extends Modal {
         const roleData = {
             id: this.form.id || undefined, // RoleLoader will slugify name if empty
             name: this.form.name.trim(),
-            emoji: this.form.emoji.trim() || '🤖',
             archetype: this.form.archetype,
             description: this.form.description.trim(),
             behavior_rules: this.form.behavior_rules
@@ -1606,7 +1734,7 @@ class RoleEditorModal extends Modal {
 
         try {
             await this.roleLoader.saveRole(roleData);
-            new Notice(`Zapisano rolę: ${roleData.emoji} ${roleData.name}`);
+            new Notice(`Zapisano rolę: ${roleData.name}`);
             this.close();
             this.onSaved?.();
         } catch (e) {

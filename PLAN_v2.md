@@ -272,8 +272,8 @@
 ### 2.1.2 Drobne fixy
 - [ ] Wywalenie SC "What's New" ghost (jesli zostalo po sesji 30)
 - [ ] Testowanie streaming na min. 3 platformach (DeepSeek, Ollama, OpenRouter)
-- [ ] Testowanie tool calling dziala poprawnie
-- [ ] Testowanie minion/master wywolania dzialaja
+- [x] Testowanie tool calling dziala poprawnie ✅ sesja 46 (parallel tool execution, 400 fix)
+- [x] Testowanie minion/master wywolania dzialaja ✅ sesja 46 (2x minion parallel + master, full pipeline E2E)
 - [ ] Testowanie: nowa sesja + ladowanie starej sesji + komunikator + artefakty
 
 ### 2.1.3 Daily use
@@ -342,7 +342,7 @@
 
 ### 2.3.2 Testy promptow
 - [x] Test: agent NIE probuje narzedzi ktorych nie ma (po dodaniu uprawnien do promptu) ✅ sesja 38 fix "NIE MASZ NARZEDZI" + tools:0
-- [ ] Test: agent poprawnie deleguje do miniona/mastera
+- [x] Test: agent poprawnie deleguje do miniona/mastera ✅ sesja 46 (Reasoner → 2x minion parallel → master, pełny pipeline)
 - [x] Test: agent uzywa skilli bez koniecznosci wywolywania skill_list ✅ sesja 44 DT instrukcja "Znasz swoje skille" + _injectGroupDynamics() lista nazw
 - [ ] Test na DeepSeek, Ollama, OpenRouter — rozne modele, ten sam prompt
 
@@ -449,15 +449,15 @@
 > **Odniesienie:** Checkpoint punkt 5 (master nieodkryty potencjal)
 
 ### 2.7.1 Fundament
-- [ ] master.md per agent: instrukcje specyficzne dla domeny Mastera (jak minion.md)
-- [ ] MasterLoader (wzor: MinionLoader): ladowanie, cache, walidacja, hot-reload
-- [ ] MasterRunner z tool-calling loop (streamToCompleteWithTools)
-- [ ] Przerobienie master_task na pelny runner (nie jednorazowe wywolanie)
+- [x] master.md per agent: instrukcje specyficzne dla domeny Mastera (jak minion.md) ✅ sesja 46 MasterLoader + .pkm-assistant/masters/
+- [x] MasterLoader (wzor: MinionLoader): ladowanie, cache, walidacja, hot-reload ✅ sesja 46
+- [x] MasterRunner z tool-calling loop (streamToCompleteWithTools) ✅ sesja 46
+- [x] Przerobienie master_task na pelny runner (nie jednorazowe wywolanie) ✅ sesja 46 MasterTaskTool rewrite (3-phase flow)
 
 ### 2.7.2 Narzedzia Mastera
-- [ ] Master dostaje narzedzia: plan_action, chat_todo, vault_write, vault_read, memory_search
+- [x] Master dostaje narzedzia: plan_action, chat_todo, vault_write, vault_read, memory_search ✅ sesja 46 (default: plan_action, chat_todo, vault_write)
 - [ ] Per-agent konfiguracja narzedzi Mastera w UI
-- [ ] Master wie ktory agent go wywolal, zna playbook, zna kontekst
+- [x] Master wie ktory agent go wywolal, zna playbook, zna kontekst ✅ sesja 46 MasterTaskTool passes agent + minion context
 
 ### 2.7.3 UI
 - [ ] Typing indicator: "Master analizuje..."
@@ -465,30 +465,79 @@
 
 ---
 
-## 2.8 SKILLE v2
+## 2.8 SKILLE v2 ✅ (sesja 48)
 
 > **Cel:** System skilli ktory naprawde dziala — nie tylko guziki w UI.
 > **Wymaga:** 2.6 (personalizacja agenta — per-agent skille)
-> **Szacunek:** 2-3 sesje
+> **Szacunek:** 2-3 sesje → **ZROBIONE w 1 sesji (3 fazy A+B+C)**
 > **Odniesienie:** Checkpoint punkt 4 (system zjebany na kilku poziomach)
 
 ### 2.8.1 Per-agent skille (punkt 4b)
-- [ ] Globalna biblioteka skilli (jak teraz) + per-agent kopia z modyfikacjami
-- [ ] Przy dodawaniu skilla do agenta: otwarcie edytora i zapis wersji agenta
-- [ ] Agent ma SWOJA wersje skilla (np. Lexie ma "write-article" z innym stylem niz Jaskier)
+- [x] Globalna biblioteka skilli (jak teraz) + per-agent overrides (prompt_append, model) ✅ sesja 48 resolveSkillConfig()
+- [x] Przy dodawaniu skilla do agenta: SkillEditorModal w trybie "override" ✅ sesja 48
+- [x] Agent ma SWOJA wersje skilla (per-agent overrides w _skills[].overrides) ✅ sesja 48
 
 ### 2.8.2 Kreator skilli (punkt 4a)
-- [ ] Kreator skilli w UI: formularz z polami frontmatter + edytor tresci
-- [ ] Alternatywa: Jaskier prowadzi przez tworzenie skilla rozmowa
-- [ ] Edycja istniejacego skilla z Backstage (nie tylko podglad)
+- [x] Kreator skilli w UI: SkillEditorModal z 13 polami + grid tools picker ✅ sesja 48
+- [x] Alternatywa: Jaskier prowadzi przez tworzenie skilla rozmowa (istniejacy skill create-agent) ✅
+- [x] Edycja istniejacego skilla z Backstage (przycisk "Edytuj" → SkillEditorModal) ✅ sesja 48
 
 ### 2.8.3 Pytania uzupelniajace (punkt 4f)
-- [ ] Skill moze definiowac "zapytaj usera o: X, Y, Z zanim zaczniesz"
-- [ ] Formularz pytan wstepnych przed uruchomieniem skilla
+- [x] Skill moze definiowac pre-questions w frontmatter (array of {key, question, default, options?}) ✅ sesja 48
+- [x] Formularz pytan wstepnych: overlay nad inputem z polami + substituteVariables() ✅ sesja 48
 
 ### 2.8.4 UI skilli (punkt 4e)
-- [ ] Redesign: z plaskiego rzedu buttonow na grid/pasek z ikonami
-- [ ] Kategorie skilli, scroll, skaluje sie na dziesiątki skilli
+- [x] Ikony per skill (skill.icon), tooltip z opisem, klik → prompt w inputcie (nie auto-send) ✅ sesja 48
+- [x] Kategorie skilli, tagi, filtrowanie po tagach w skill_list ✅ sesja 48
+
+---
+
+## 2.8.5 INPUT CHATU v2 — WEB SEARCH + @ MENTIONS + ZALACZNIKI
+
+> **Cel:** Chat ma pelne mozliwosci: szukanie w necie, dolaczanie notatek przez @, wrzucanie plikow/obrazkow, agent pyta usera i CZEKA na odpowiedz.
+> **Wymaga:** 2.8 (Skills v2 — gotowe)
+> **Szacunek:** 4-5 sesji
+> **Odniesienie:** Brakujace core features, standard w AI chatach 2026
+
+### 2.8.5a Web Search Tool ✅ sesja 49
+- [x] WebSearchTool.js — narzedzie MCP (query → wyniki)
+- [x] WebSearchProvider.js — multi-provider (Jina default, Tavily, Brave, Serper, SearXNG)
+- [x] Jina AI jako domyslny (dziala bez klucza API, za darmo)
+- [x] Ustawienia: wybor providera, klucz API, link do zalozenia konta
+- [x] PermissionSystem: web.search wymaga approval (nie popup — w przyszlosci inline via ask_user)
+- [x] YOLO mode: szuka bez pytania
+- [x] Renderowanie wynikow: tytuly + linki + fragmenty (ToolCallDisplay)
+- [x] Instrukcja w Decision Tree (grupa: szukanie)
+- [x] Rejestracja w ToolRegistry, WorkMode, ACTION_TYPE_MAP, TOOL_GROUPS
+
+### 2.8.5b ask_user Tool ✅ sesja 49
+- [x] AskUserTool.js — narzedzie MCP (agent pyta usera, czeka na odpowiedz)
+- [x] Inline question block w chacie (opcje do klikniecia + pole wlasnej odpowiedzi)
+- [x] YOLO mode: auto-wybor pierwszej opcji
+- [x] Instrukcja w Decision Tree
+- [x] Rejestracja w ToolRegistry, WorkMode
+
+### 2.8.5c @ Mentions ✅ sesja 49
+- [x] MentionAutocomplete.js — dropdown autocomplete na @ w textarea
+- [x] @notatka — fuzzy search po plikach vaultu, dolaczenie tresci przy wysylce
+- [x] @folder: — fuzzy search po folderach, dolaczenie tresci plikow (max 5)
+- [x] Sprawdzenie AccessGuard (No-Go = zablokowane)
+- [x] CSS dropdown (kategorie, hover, selected)
+- [x] Nawigacja klawiatura (strzalki, Enter/Tab, Escape)
+
+### 2.8.5d Zalaczniki (pliki + obrazki + PDF) ✅ sesja 49
+- [x] AttachmentManager.js — zarzadzanie pendingAttachments
+- [x] Przycisk 📎 obok send button (file picker)
+- [x] Drag & drop plikow na chat area
+- [x] Ctrl+V paste obrazka z clipboard
+- [x] Chipy zalacznikow (nazwa + typ + rozmiar + miniatura + X)
+- [x] Obsluga obrazkow: base64 → vision content blocks (image_url)
+- [x] Obsluga tekstu: (md/txt/js/json/csv itp.) → plain text w kontekscie
+- [x] Obsluga PDF: pdf.js (Obsidian built-in) → ekstrakcja tekstu
+- [x] Modyfikacja RollingWindow: content jako string LUB tablica content blocks
+- [x] Adaptery juz obsluguja multimodal (OpenAI/DeepSeek: pass-through, Anthropic: konwersja, Ollama: text+images)
+- [x] Renderowanie w chacie: miniatura obrazka (klik = fullscreen), chip pliku
+- [x] CSS: chipy, 📎 button, drag overlay, miniaturki, fullscreen overlay
 
 ---
 
@@ -507,59 +556,54 @@
 
 ---
 
-## 2.10 UX CHATU — PROFESJONALNY WYGLAD
+## 2.10 UX CHATU — PROFESJONALNY WYGLAD ✅ (Visual Overhaul sesja 52-55)
 
-> **Cel:** Chat wyglada profesjonalnie, nie jak "zrobione przez AI".
-> **Wymaga:** 2.5 (prompt transparency), 2.7 (masterrunner — zeby bylo co pokazywac)
-> **Szacunek:** 3-4 sesje
-> **Odniesienie:** Checkpoint punkt 11, punkt 15
+> **DONE via Visual Overhaul** — PLAN_VISUAL_OVERHAUL_IMPL.md (fazy 0-8)
 
 ### 2.10.1 Transparentnosc minion/master (punkt 11a)
-- [ ] Osobne bloki w chacie dla akcji miniona (co czytal, jakie toole uzywal, co zwrocil)
-- [ ] Osobne bloki w chacie dla akcji mastera (co dostal, co odpowiedzial)
-- [ ] Styl jak ThinkingBlock (zwijalne, z tytulami)
+- [x] Osobne bloki w chacie dla akcji miniona (cs-action-row, SubAgentBlock)
+- [x] Osobne bloki w chacie dla akcji mastera (cs-action-row, SubAgentBlock)
+- [x] Styl jak ThinkingBlock (zwijalne, z tytulami, crystal status markers)
 
 ### 2.10.2 Redesign chatu (punkt 11b)
-- [ ] Odejscie od dymkow → styl Claude Code (czyste przedzielenie, profesjonalny layout)
-- [ ] Kazda akcja agenta jako czesc flow (nie osobna wiadomosc)
-- [ ] Tool calle, odpowiedzi, thinking — ladny, spojny styl
+- [x] Odejscie od dymkow → styl Claude Code (cs-message--user/agent, angular, crystal markers)
+- [x] Kazda akcja agenta jako czesc flow (cs-action-row wewnatrz cs-message--agent)
+- [x] Tool calle, odpowiedzi, thinking — spojny styl (ToolCallDisplay, ThinkingBlock)
 
 ### 2.10.3 Token counter (punkt 11d)
-- [ ] Dokladny: brany z API response `usage` field (nie szacowany)
-- [ ] Podzial: input tokens, output tokens, cached tokens
-- [ ] Podzial per model: Main / Minion / Master osobno
-- [ ] Koszt wywolania w dolarach
+- [x] Dokladny: brany z API response `usage` field
+- [x] Podzial: input tokens, output tokens
+- [x] Podzial per model: Main / Minion / Master osobno
+- [ ] Koszt wywolania w dolarach (TODO — wymaga cennika per model)
 
 ### 2.10.4 Animacje i polish
-- [ ] Typing effect z kursorem przy generowaniu odpowiedzi
-- [ ] Responsywny design dla wszystkich elementow chatu
+- [x] Typing effect — "Krystalizuje..." z crystal pulse animation
+- [x] cs-message-enter, cs-crystal-pulse, cs-send-pulse, cs-breathe animacje
+- [ ] Pelna responsywnosc (TODO — Faza 8 polish)
 
 ---
 
-## 2.11 WARSTWA WIZUALNA — TOZSAMOSC PRODUKTU
+## 2.11 WARSTWA WIZUALNA — TOZSAMOSC PRODUKTU ✅ (Visual Overhaul sesja 47-55)
 
-> **Cel:** Plugin ma spojny, profesjonalny wyglad — nie generyczny "AI look".
-> **Wymaga:** 2.10 (chat redesign gotowy)
-> **Szacunek:** 2-3 sesje
-> **Odniesienie:** Checkpoint punkt 15 (warstwa wizualna)
+> **DONE via Crystal Soul Design System** + Visual Overhaul
 
 ### 2.11.1 Design system
-- [ ] Paleta kolorow, typografia, ikony, spacing — ustalone RAZ
-- [ ] Styl: minimalistyczny jak Claude Code, ALE z naszym humorem i osobowoscia
+- [x] Paleta kolorow (ColorPalette.js, 62 kolory, 8 rodzin)
+- [x] Typografia, ikony (UiIcons.js ~55 ikon), spacing — ustalone
+- [x] Styl: angular Crystal Soul (border-radius: 2px, shard-style, crystal markers)
 
 ### 2.11.2 Per-agent theming (punkt 15b)
-- [ ] CSS variables per agent: --agent-primary, --agent-bg, --agent-accent
-- [ ] Przelaczenie agenta = zmiana "skory" interfejsu (subtelne akcenty, tla)
-- [ ] Kolory agenta z konfiguracji juz sa — teraz musza wplywac na UI
+- [x] CSS variables per agent: --cs-agent-color-rgb (hexToRgbTriplet)
+- [x] Przelaczenie agenta = zmiana kolorow (taby, input, skilbar, wiadomosci)
+- [x] Kolory agenta z deriveColor()/pickColor() wplywaja na caly UI
 
 ### 2.11.3 Dark/Light mode (punkt 15e)
-- [ ] Upewnic sie ze KAZDY nasz element wyglada dobrze w obu trybach
-- [ ] Respektowanie body.theme-dark / body.theme-light z Obsidiana
+- [x] Bazowe overrides (.theme-light .cs-root, --cs-fg-rgb)
+- [ ] Pelny audit wszystkich elementow (TODO — Faza 8)
 
 ### 2.11.4 CSS injection (punkt 15d)
-- [ ] Setting "Custom CSS": textarea lub wskazanie pliku w vaultcie
-- [ ] Agent moze napisac CSS, user go wkleja/wlaczy
-- [ ] Pliki w .pkm-assistant/themes/ ladowane automatycznie
+- [ ] Setting "Custom CSS" (TODO — nice-to-have, niska priorytet)
+- [ ] Pliki w .pkm-assistant/themes/ (TODO — nice-to-have)
 
 ---
 

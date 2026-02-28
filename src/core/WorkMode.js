@@ -11,6 +11,8 @@
  * 3 warstwy niezależne: Tryb → Whitelist/No-Go → YOLO/Approval.
  */
 
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+
 // ═══════════════════════════════════════════
 // MODE DEFINITIONS
 // ═══════════════════════════════════════════
@@ -19,25 +21,25 @@ export const MODES = {
     rozmowa: {
         id: 'rozmowa',
         label: 'Rozmowa',
-        icon: '💬',
+        icon: UiIcons.chat(16),
         description: 'Rozmowa bez dostępu do vault',
     },
     planowanie: {
         id: 'planowanie',
         label: 'Planowanie',
-        icon: '📋',
+        icon: UiIcons.clipboard(16),
         description: 'Analiza i planowanie — bez edycji',
     },
     praca: {
         id: 'praca',
         label: 'Praca',
-        icon: '🔨',
+        icon: UiIcons.hammer(16),
         description: 'Pełna moc — wszystkie narzędzia',
     },
     kreatywny: {
         id: 'kreatywny',
         label: 'Kreatywny',
-        icon: '✨',
+        icon: UiIcons.sparkle(16),
         description: 'Tworzenie treści — bez kasowania',
     },
 };
@@ -60,6 +62,8 @@ export const MODE_TOOLS = {
         'minion_task',
         'master_task',
         'switch_mode',
+        'web_search',
+        'ask_user',
     ],
     planowanie: [
         'vault_read',
@@ -74,6 +78,8 @@ export const MODE_TOOLS = {
         'plan_action',
         'switch_mode',
         'agora_read',
+        'web_search',
+        'ask_user',
     ],
     praca: null, // all tools
     kreatywny: [
@@ -86,6 +92,8 @@ export const MODE_TOOLS = {
         'master_task',
         'chat_todo',
         'switch_mode',
+        'web_search',
+        'ask_user',
     ],
 };
 

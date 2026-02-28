@@ -51,11 +51,13 @@ export function streamToComplete(chatModel, messages) {
  * @param {Function} executeToolCall - async ({ id, name, arguments }) => string (result)
  * @param {Object} [options]
  * @param {number} [options.maxIterations=3] - Max tool-calling rounds
+ * @param {number} [options.modelTimeout=60000] - Timeout per single model call (ms)
  * @returns {Promise<{ finalText: string, toolsUsed: string[], usage: { prompt_tokens: number, completion_tokens: number }|null }>}
  */
 export async function streamToCompleteWithTools(chatModel, messages, tools, executeToolCall, options = {}) {
     const maxIterations = options.maxIterations || 3;
     const minIterations = options.minIterations || 1;
+    const modelTimeout = options.modelTimeout || 60000;
     const toolsUsed = [];
     const toolCallDetails = [];
     let currentMessages = [...messages];
@@ -68,17 +70,23 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
         log.debug('StreamHelper', `--- Iteracja ${i + 1}/${maxIterations} ---`);
         const iterStart = Date.now();
 
-        // Call model with tools
-        const response = await new Promise((resolve, reject) => {
-            chatModel.stream(
-                { messages: currentMessages, tools: tools.length > 0 ? tools : undefined },
-                {
-                    chunk: () => {},
-                    done: (resp) => resolve(resp),
-                    error: (err) => reject(err instanceof Error ? err : new Error(String(err)))
-                }
-            );
-        });
+        // Call model with tools (with timeout safety net)
+        const response = await Promise.race([
+            new Promise((resolve, reject) => {
+                chatModel.stream(
+                    { messages: currentMessages, tools: tools.length > 0 ? tools : undefined },
+                    {
+                        chunk: () => {},
+                        done: (resp) => resolve(resp),
+                        error: (err) => reject(err instanceof Error ? err : new Error(String(err)))
+                    }
+                );
+            }),
+            new Promise((_, reject) => setTimeout(() =>
+                reject(new Error(`Model timeout (${modelTimeout / 1000}s) — stream nigdy nie zwrócił done()`)),
+                modelTimeout
+            ))
+        ]);
 
         log.timing('StreamHelper', `Iteracja ${i + 1} model call`, iterStart);
 
@@ -90,8 +98,12 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
 
         // Extract tool calls and content from response
         const message = response?.choices?.[0]?.message;
-        const toolCalls = message?.tool_calls || [];
+        const rawToolCalls = message?.tool_calls || [];
         const content = message?.content || '';
+
+        // Split concatenated tool calls (DeepSeek Reasoner bug: "minion_taskminion_task" → 2x "minion_task")
+        const knownToolNames = tools.map(t => t.function?.name).filter(Boolean);
+        const toolCalls = _splitConcatenatedToolCalls(rawToolCalls, knownToolNames);
 
         // No tool calls → check if minIterations met, then return text response
         if (toolCalls.length === 0) {
@@ -175,16 +187,22 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
     });
 
     try {
-        const finalResponse = await new Promise((resolve, reject) => {
-            chatModel.stream(
-                { messages: currentMessages }, // no tools → model must respond with text
-                {
-                    chunk: () => {},
-                    done: (resp) => resolve(resp),
-                    error: (err) => reject(err instanceof Error ? err : new Error(String(err)))
-                }
-            );
-        });
+        const finalResponse = await Promise.race([
+            new Promise((resolve, reject) => {
+                chatModel.stream(
+                    { messages: currentMessages }, // no tools → model must respond with text
+                    {
+                        chunk: () => {},
+                        done: (resp) => resolve(resp),
+                        error: (err) => reject(err instanceof Error ? err : new Error(String(err)))
+                    }
+                );
+            }),
+            new Promise((_, reject) => setTimeout(() =>
+                reject(new Error(`Final model timeout (${modelTimeout / 1000}s) — stream nigdy nie zwrócił done()`)),
+                modelTimeout
+            ))
+        ]);
 
         let finalText = finalResponse?.choices?.[0]?.message?.content || '';
 
@@ -206,4 +224,78 @@ export async function streamToCompleteWithTools(chatModel, messages, tools, exec
         log.groupEnd();
         return { finalText: '(Minion: osiągnięto limit iteracji narzędzi)', toolsUsed, toolCallDetails, usage: totalUsage };
     }
+}
+
+// ─── DeepSeek concatenation fix helpers ───
+
+/**
+ * Split concatenated tool calls from DeepSeek Reasoner bug.
+ * e.g. one call named "minion_taskminion_taskminion_task" with 3 JSONs glued
+ * → 3 separate tool calls with proper names and arguments.
+ * @param {Array} toolCalls - Raw tool_calls from OpenAI response
+ * @param {string[]} knownNames - Known tool names from tools definitions
+ * @returns {Array} Processed tool calls (same format as input)
+ */
+function _splitConcatenatedToolCalls(toolCalls, knownNames) {
+    if (!toolCalls || toolCalls.length === 0) return toolCalls;
+
+    const result = [];
+    const sortedNames = [...knownNames].sort((a, b) => b.length - a.length);
+
+    for (const tc of toolCalls) {
+        const name = tc.function?.name || tc.name;
+
+        // If name is a known tool, pass through
+        if (knownNames.includes(name)) {
+            result.push(tc);
+            continue;
+        }
+
+        // Try to decompose into multiple known names
+        const decomposed = _decomposeToolName(name, sortedNames);
+        if (!decomposed || decomposed.length < 2) {
+            result.push(tc); // can't split, pass through
+            continue;
+        }
+
+        log.warn('StreamHelper', `DeepSeek concat fix: "${name}" → ${decomposed.map(n => `"${n}"`).join(' + ')}`);
+
+        // Split arguments
+        const argsStr = tc.function?.arguments || tc.arguments || '{}';
+        const rawArgs = typeof argsStr === 'string' ? argsStr : JSON.stringify(argsStr);
+        const splitArgs = _splitConcatenatedJSON(rawArgs);
+
+        for (let i = 0; i < decomposed.length; i++) {
+            result.push({
+                id: i === 0 ? (tc.id || `call_${Date.now()}`) : `${tc.id || 'call'}_split${i}`,
+                function: { name: decomposed[i], arguments: splitArgs[i] || '{}' }
+            });
+        }
+    }
+
+    return result;
+}
+
+/** Decompose "tool1tool2tool3" into ["tool1", "tool2", "tool3"] using backtracking */
+function _decomposeToolName(str, sortedNames) {
+    if (str.length === 0) return [];
+    for (const name of sortedNames) {
+        if (str.startsWith(name)) {
+            const rest = _decomposeToolName(str.slice(name.length), sortedNames);
+            if (rest !== null) return [name, ...rest];
+        }
+    }
+    return null;
+}
+
+/** Split '{"a":1}{"b":2}' into ['{"a":1}', '{"b":2}'] */
+function _splitConcatenatedJSON(str) {
+    if (!str || typeof str !== 'string') return [str];
+    const parts = [];
+    let depth = 0, start = 0;
+    for (let i = 0; i < str.length; i++) {
+        if (str[i] === '{') depth++;
+        if (str[i] === '}') { depth--; if (depth === 0) { parts.push(str.slice(start, i + 1)); start = i + 1; } }
+    }
+    return parts.length > 0 ? parts : [str];
 }

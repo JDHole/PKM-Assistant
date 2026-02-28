@@ -1,61 +1,75 @@
 
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+
 /**
- * Creates a collapsible thinking/reasoning block for the chat UI.
- * Shows AI's chain of thought (DeepSeek Reasoner, Anthropic extended thinking, OpenAI o-series).
+ * Creates a Crystal Soul .cs-action-row for AI thinking/reasoning.
+ * Expandable: header (brain icon + "Myślenie" + time + status + arrow) → body (reasoning text).
  * @param {string} thinkingText - The reasoning content
- * @param {boolean} isStreaming - Whether still accumulating (shows animated indicator)
+ * @param {boolean} isStreaming - Whether still accumulating
+ * @param {number|null} startTime - Timestamp when thinking started
  * @returns {HTMLElement}
  */
-export function createThinkingBlock(thinkingText, isStreaming = false) {
-    const container = document.createElement('div');
-    container.addClass('pkm-thinking-block');
-    if (isStreaming) container.addClass('streaming');
+export function createThinkingBlock(thinkingText, isStreaming = false, startTime = null) {
+    const row = document.createElement('div');
+    row.className = 'cs-action-row';
+    if (isStreaming) row.classList.add('streaming');
 
-    // Header (clickable to toggle)
-    const header = container.createDiv({ cls: 'pkm-thinking-header' });
-    header.createSpan({ cls: 'pkm-thinking-icon', text: '💭' });
-    header.createSpan({ cls: 'pkm-thinking-label', text: 'Myślenie...' });
+    // ── HEAD ──
+    const head = row.createDiv({ cls: 'cs-action-row__head' });
 
-    const toggle = document.createElement('button');
-    toggle.addClass('pkm-thinking-toggle');
-    toggle.textContent = '▼';
-    header.appendChild(toggle);
+    // Icon
+    const iconEl = head.createDiv({ cls: 'cs-action-row__icon' });
+    iconEl.innerHTML = UiIcons.brain(14);
 
-    // Body (collapsed by default)
-    const body = container.createDiv({ cls: 'pkm-thinking-body collapsed' });
-    const content = body.createDiv({ cls: 'pkm-thinking-content' });
+    // Label
+    head.createSpan({ cls: 'cs-action-row__label', text: isStreaming ? 'Myślenie...' : 'Myślenie' });
+
+    // Time
+    if (startTime) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        head.createSpan({ cls: 'cs-action-row__time', text: `${elapsed}s` });
+    }
+
+    // Status crystal
+    const statusCls = isStreaming ? 'cs-action-row__status--pending' : 'cs-action-row__status--done';
+    head.createDiv({ cls: `cs-action-row__status ${statusCls}` });
+
+    // Arrow
+    const arrow = head.createDiv({ cls: 'cs-action-row__arrow' });
+    arrow.innerHTML = UiIcons.chevronDown(12);
+
+    // ── BODY ──
+    const body = row.createDiv({ cls: 'cs-action-row__body' });
+    const content = body.createDiv({ cls: 'cs-action-row__content' });
     content.textContent = thinkingText || '';
 
-    // Toggle logic
-    header.addEventListener('click', () => {
-        const isCollapsed = body.classList.contains('collapsed');
-        if (isCollapsed) {
-            body.classList.remove('collapsed');
-            toggle.classList.add('expanded');
-            header.querySelector('.pkm-thinking-label').textContent = 'Myślenie';
-        } else {
-            body.classList.add('collapsed');
-            toggle.classList.remove('expanded');
-            header.querySelector('.pkm-thinking-label').textContent = 'Myślenie...';
-        }
+    // Toggle
+    head.addEventListener('click', () => {
+        row.classList.toggle('open');
     });
 
-    return container;
+    return row;
 }
 
 /**
  * Updates existing thinking block text content.
- * @param {HTMLElement} block - The thinking block element
+ * @param {HTMLElement} block - The .cs-action-row element
  * @param {string} text - New reasoning text
+ * @param {number|null} startTime - If provided, update elapsed time
  */
-export function updateThinkingBlock(block, text) {
-    const content = block?.querySelector('.pkm-thinking-content');
+export function updateThinkingBlock(block, text, startTime = null) {
+    const content = block?.querySelector('.cs-action-row__content');
     if (content) {
         content.textContent = text;
-        // Auto-scroll to bottom if body is expanded
-        const body = block.querySelector('.pkm-thinking-body');
-        if (body && !body.classList.contains('collapsed')) {
+        // Auto-scroll if expanded
+        if (block.classList.contains('open')) {
             content.scrollTop = content.scrollHeight;
+        }
+    }
+    if (startTime) {
+        const timeEl = block?.querySelector('.cs-action-row__time');
+        if (timeEl) {
+            timeEl.textContent = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
         }
     }
 }

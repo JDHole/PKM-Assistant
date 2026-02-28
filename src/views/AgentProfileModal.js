@@ -9,14 +9,17 @@ import { getArchetypeList, ARCHETYPE_DEFAULTS } from '../agents/archetypes/index
 import { PermissionSystem, PERMISSION_TYPES } from '../core/PermissionSystem.js';
 import { DEFAULT_PERMISSIONS } from '../agents/Agent.js';
 import agent_profile_styles from './AgentProfileModal.css' with { type: 'css' };
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+import { CrystalGenerator } from '../crystal-soul/CrystalGenerator.js';
+import { SvgHelper } from '../crystal-soul/SvgHelper.js';
 
 // Tab definitions
 const TABS = [
-    { id: 'profile', label: 'Profil', icon: '👤' },
-    { id: 'permissions', label: 'Uprawnienia', icon: '🔒' },
-    { id: 'skills', label: 'Umiejętności', icon: '⚡' },
-    { id: 'memory', label: 'Pamięć', icon: '🧠', editOnly: true },
-    { id: 'stats', label: 'Statystyki', icon: '📊', editOnly: true }
+    { id: 'profile', label: 'Profil', iconFn: () => UiIcons.user(14) },
+    { id: 'permissions', label: 'Uprawnienia', iconFn: () => UiIcons.lock(14) },
+    { id: 'skills', label: 'Umiejętności', iconFn: () => UiIcons.zap(14) },
+    { id: 'memory', label: 'Pamięć', iconFn: () => UiIcons.brain(14), editOnly: true },
+    { id: 'stats', label: 'Statystyki', iconFn: () => UiIcons.chart(14), editOnly: true }
 ];
 
 export class AgentProfileModal extends Modal {
@@ -38,7 +41,6 @@ export class AgentProfileModal extends Modal {
         if (agent) {
             this.formData = {
                 name: agent.name,
-                emoji: agent.emoji,
                 archetype: agent.archetype || '',
                 personality: agent.personality || '',
                 temperature: agent.temperature,
@@ -81,10 +83,12 @@ export class AgentProfileModal extends Modal {
         }
 
         // Header
-        const title = this.isCreateMode
-            ? '✨ Nowy Agent'
-            : `${this.formData.emoji} ${this.formData.name}`;
-        contentEl.createEl('h2', { text: title, cls: 'agent-profile-title' });
+        const h2 = contentEl.createEl('h2', { cls: 'agent-profile-title' });
+        if (this.isCreateMode) {
+            h2.innerHTML = `${UiIcons.sparkle(20)} Nowy Agent`;
+        } else {
+            h2.textContent = this.formData.name;
+        }
 
         // Tab bar
         this.renderTabBar(contentEl);
@@ -107,9 +111,9 @@ export class AgentProfileModal extends Modal {
             if (tab.editOnly && this.isCreateMode) continue;
 
             const tabBtn = tabBar.createEl('button', {
-                cls: `agent-profile-tab ${this.activeTab === tab.id ? 'active' : ''}`,
-                text: `${tab.icon} ${tab.label}`
+                cls: `agent-profile-tab ${this.activeTab === tab.id ? 'active' : ''}`
             });
+            tabBtn.innerHTML = `${tab.iconFn()} ${tab.label}`;
             tabBtn.dataset.tab = tab.id;
             tabBtn.addEventListener('click', () => {
                 this.activeTab = tab.id;
@@ -160,17 +164,6 @@ export class AgentProfileModal extends Modal {
                 .setValue(this.formData.name)
                 .onChange(v => this.formData.name = v));
 
-        // Emoji
-        new Setting(container)
-            .setName('Emoji')
-            .setDesc('Ikona agenta')
-            .addText(text => {
-                text.setPlaceholder('🤖')
-                    .setValue(this.formData.emoji)
-                    .onChange(v => this.formData.emoji = v);
-                text.inputEl.style.width = '60px';
-            });
-
         // Archetype
         const archetypes = getArchetypeList();
         new Setting(container)
@@ -179,7 +172,7 @@ export class AgentProfileModal extends Modal {
             .addDropdown(dropdown => {
                 dropdown.addOption('', '— Bez archetypu —');
                 for (const arch of archetypes) {
-                    dropdown.addOption(arch.id, `${arch.emoji} ${arch.name} — ${arch.description}`);
+                    dropdown.addOption(arch.id, `${arch.name} — ${arch.description}`);
                 }
                 dropdown.setValue(this.formData.archetype || '');
                 dropdown.onChange(async (value) => {
@@ -266,16 +259,16 @@ export class AgentProfileModal extends Modal {
         const presetButtons = presetSection.createDiv({ cls: 'permission-preset-buttons' });
 
         const presets = [
-            { id: 'safe', label: '🔒 Safe Mode', cls: '' },
-            { id: 'standard', label: '⚖️ Standard', cls: '' },
-            { id: 'yolo', label: '🚀 Full', cls: 'mod-warning' }
+            { id: 'safe', labelHtml: `${UiIcons.lock(14)} Safe Mode`, cls: '' },
+            { id: 'standard', labelHtml: `${UiIcons.scales(14)} Standard`, cls: '' },
+            { id: 'yolo', labelHtml: `${UiIcons.rocket(14)} Full`, cls: 'mod-warning' }
         ];
 
         for (const preset of presets) {
             const btn = presetButtons.createEl('button', {
-                text: preset.label,
                 cls: preset.cls
             });
+            btn.innerHTML = preset.labelHtml;
             btn.addEventListener('click', () => {
                 this.applyPermissionPreset(preset.id);
                 this.renderActiveTab(); // Refresh toggles
@@ -327,7 +320,8 @@ export class AgentProfileModal extends Modal {
         const container = this.tabContent;
 
         // Skills section
-        container.createEl('h4', { text: '⚡ Skille' });
+        const h4Skills = container.createEl('h4');
+        h4Skills.innerHTML = `${UiIcons.zap(16)} Skille`;
         container.createEl('p', {
             text: 'Wybierz umiejętności dostępne dla agenta:',
             cls: 'setting-item-description'
@@ -361,7 +355,8 @@ export class AgentProfileModal extends Modal {
         }
 
         // Minion section
-        container.createEl('h4', { text: '🤖 Minion', cls: 'agent-profile-section-header' });
+        const h4Minion = container.createEl('h4', { cls: 'agent-profile-section-header' });
+        h4Minion.innerHTML = `${UiIcons.robot(16)} Minion`;
 
         const minionLoader = this.plugin.agentManager?.minionLoader;
         if (minionLoader) {
@@ -392,7 +387,7 @@ export class AgentProfileModal extends Modal {
         // Marketplace note
         const note = container.createDiv({ cls: 'agent-profile-note' });
         note.createEl('p', {
-            text: '💡 Więcej skilli i narzędzi będzie dostępnych w Marketplace (w przyszłości).'
+            text: 'Więcej skilli i narzędzi będzie dostępnych w Marketplace (w przyszłości).'
         });
     }
 
@@ -409,7 +404,8 @@ export class AgentProfileModal extends Modal {
         }
 
         // Brain.md preview
-        container.createEl('h4', { text: '🧠 Brain (długoterminowa pamięć)' });
+        const h4Brain = container.createEl('h4');
+        h4Brain.innerHTML = `${UiIcons.brain(16)} Brain (długoterminowa pamięć)`;
 
         try {
             const brain = await memory.getBrain();
@@ -424,7 +420,8 @@ export class AgentProfileModal extends Modal {
         }
 
         // Open brain button
-        const brainBtn = container.createEl('button', { text: '📝 Otwórz brain.md w edytorze', cls: 'agent-profile-action-btn' });
+        const brainBtn = container.createEl('button', { cls: 'agent-profile-action-btn' });
+        brainBtn.innerHTML = `${UiIcons.edit(14)} Otwórz brain.md w edytorze`;
         brainBtn.addEventListener('click', async () => {
             const safeName = this.agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
             const brainPath = `.pkm-assistant/agents/${safeName}/memory/brain.md`;
@@ -432,7 +429,8 @@ export class AgentProfileModal extends Modal {
         });
 
         // Sessions list
-        container.createEl('h4', { text: '💬 Sesje', cls: 'agent-profile-section-header' });
+        const h4Sessions = container.createEl('h4', { cls: 'agent-profile-section-header' });
+        h4Sessions.innerHTML = `${UiIcons.chat(16)} Sesje`;
 
         try {
             const sessionsPath = memory.paths.sessions;
@@ -446,7 +444,8 @@ export class AgentProfileModal extends Modal {
                 for (const filePath of sessionFiles.slice(0, 20)) { // Max 20 sessions shown
                     const fileName = filePath.split('/').pop().replace('.md', '');
                     const item = sessionList.createDiv({ cls: 'agent-profile-session-item' });
-                    item.createSpan({ text: `💬 ${fileName}` });
+                    const nameSpan = item.createSpan();
+                    nameSpan.innerHTML = `${UiIcons.chat(12)} ${fileName}`;
                     item.addEventListener('click', async () => {
                         await this._openHiddenFile(filePath, `sesja_${fileName}.md`);
                     });
@@ -491,7 +490,8 @@ export class AgentProfileModal extends Modal {
         const container = this.tabContent;
         if (!this.agent) return;
 
-        container.createEl('h4', { text: '📊 Statystyki' });
+        const h4Stats = container.createEl('h4');
+        h4Stats.innerHTML = `${UiIcons.chart(16)} Statystyki`;
 
         const stats = await this.plugin.agentManager?.getAgentStats(this.agent.name);
         if (!stats) {
@@ -520,7 +520,8 @@ export class AgentProfileModal extends Modal {
 
         // MCP tools list
         if (stats.hasMcp) {
-            container.createEl('h4', { text: '🔧 Dostępne narzędzia MCP', cls: 'agent-profile-section-header' });
+            const h4Tools = container.createEl('h4', { cls: 'agent-profile-section-header' });
+            h4Tools.innerHTML = `${UiIcons.wrench(16)} Dostępne narzędzia MCP`;
             const toolList = container.createDiv({ cls: 'agent-profile-tool-list' });
             const tools = [
                 'vault_read', 'vault_list', 'vault_write', 'vault_delete', 'vault_search',
@@ -556,7 +557,6 @@ export class AgentProfileModal extends Modal {
             try {
                 const config = {
                     name: this.formData.name,
-                    emoji: this.formData.emoji,
                     archetype: this.formData.archetype || undefined,
                     personality: this.formData.personality,
                     temperature: this.formData.temperature,
@@ -571,7 +571,7 @@ export class AgentProfileModal extends Modal {
                 };
 
                 await agentManager.createAgent(config);
-                new Notice(`Agent ${this.formData.emoji} ${this.formData.name} utworzony!`);
+                new Notice(`Agent ${this.formData.name} utworzony!`);
             } catch (error) {
                 new Notice('Błąd tworzenia agenta: ' + error.message);
                 return;
@@ -580,7 +580,6 @@ export class AgentProfileModal extends Modal {
             // Edit mode
             try {
                 const updates = {
-                    emoji: this.formData.emoji,
                     personality: this.formData.personality,
                     temperature: this.formData.temperature,
                     role: this.formData.role,
@@ -599,7 +598,7 @@ export class AgentProfileModal extends Modal {
                 }
 
                 await agentManager.updateAgent(this.agent.name, updates);
-                new Notice(`Agent ${this.formData.emoji} ${this.formData.name} zaktualizowany!`);
+                new Notice(`Agent ${this.formData.name} zaktualizowany!`);
             } catch (error) {
                 new Notice('Błąd zapisu: ' + error.message);
                 return;
@@ -618,51 +617,115 @@ export class AgentProfileModal extends Modal {
 
 /**
  * Modal editor for files in hidden folders (.pkm-assistant).
- * Shows a textarea with the file content and saves directly back via adapter.
+ * Crystal Soul styled — agent crystal header, shard editor, color accents.
+ * Options: { agentName, agentColor } for personalized display.
  */
 export class HiddenFileEditorModal extends Modal {
-    constructor(app, filePath, title, content) {
+    /**
+     * @param {App} app
+     * @param {string} filePath
+     * @param {string} title
+     * @param {string} content
+     * @param {Object} [opts] - { agentName, agentColor }
+     */
+    constructor(app, filePath, title, content, opts = {}) {
         super(app);
         this.filePath = filePath;
         this.title = title;
         this.originalContent = content;
+        this.agentName = opts.agentName || '';
+        this.agentColor = opts.agentColor || '';
     }
 
     onOpen() {
-        const { contentEl } = this;
+        const { contentEl, modalEl } = this;
         contentEl.empty();
-        contentEl.addClass('hidden-file-editor-modal');
 
-        // Title
-        contentEl.createEl('h3', { text: this.title });
+        // Adopt CSS (may not be adopted if AgentProfileModal wasn't opened first)
+        if (!document.adoptedStyleSheets.includes(agent_profile_styles)) {
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, agent_profile_styles];
+        }
 
-        // Path hint
-        contentEl.createEl('p', {
-            text: this.filePath,
-            cls: 'hidden-file-editor-path'
-        });
+        contentEl.addClass('cs-file-editor-modal');
 
-        // Textarea
-        this.textarea = contentEl.createEl('textarea', {
-            cls: 'hidden-file-editor-textarea'
+        // Force large modal — class + inline styles (Obsidian overrides)
+        if (modalEl) {
+            modalEl.addClass('cs-file-editor-modal-container');
+            modalEl.style.width = '85vw';
+            modalEl.style.maxWidth = '900px';
+            modalEl.style.height = '80vh';
+            modalEl.style.maxHeight = '80vh';
+        }
+
+        // Set agent color CSS variables
+        const agentColor = this.agentColor || '';
+        if (agentColor) {
+            const target = modalEl || contentEl;
+            target.style.setProperty('--cs-agent-color', agentColor);
+            const hex = agentColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            target.style.setProperty('--cs-agent-color-rgb', `${r},${g},${b}`);
+        }
+
+        // ── Crystal header with agent identity ──
+        const header = contentEl.createDiv({ cls: 'cs-file-editor__header' });
+
+        // Agent crystal + title row
+        const titleRow = header.createDiv({ cls: 'cs-file-editor__title-row' });
+        if (this.agentName) {
+            const crystalSvg = CrystalGenerator.generate(this.agentName, {
+                size: 28, color: this.agentColor || 'var(--interactive-accent)', glow: true
+            });
+            const crystalEl = SvgHelper.toElement(crystalSvg);
+            if (crystalEl) titleRow.appendChild(crystalEl);
+        }
+        const titleInfo = titleRow.createDiv({ cls: 'cs-file-editor__title-info' });
+        titleInfo.createEl('div', { text: this.title, cls: 'cs-file-editor__title' });
+        titleInfo.createEl('div', { text: this.filePath, cls: 'cs-file-editor__path' });
+
+        // Close X button top-right
+        const closeX = header.createEl('button', { cls: 'cs-file-editor__close-x' });
+        closeX.innerHTML = UiIcons.cross(14);
+        closeX.addEventListener('click', () => this.close());
+
+        // ── Editor shard ──
+        const editorShard = contentEl.createDiv({ cls: 'cs-file-editor__shard' });
+        this.textarea = editorShard.createEl('textarea', {
+            cls: 'cs-file-editor__textarea'
         });
         this.textarea.value = this.originalContent;
-        this.textarea.rows = 25;
+        this.textarea.spellcheck = false;
 
-        // Buttons
-        const buttons = contentEl.createDiv({ cls: 'hidden-file-editor-buttons' });
+        // ── Bottom bar ──
+        const bar = contentEl.createDiv({ cls: 'cs-file-editor__bar' });
 
-        const closeBtn = buttons.createEl('button', { text: 'Zamknij' });
+        // Character count + line count
+        const stats = bar.createEl('span', { cls: 'cs-file-editor__stats' });
+        const updateStats = () => {
+            const val = this.textarea.value;
+            const lines = val.split('\n').length;
+            stats.textContent = `${val.length} zn. · ${lines} linii`;
+        };
+        updateStats();
+        this.textarea.addEventListener('input', updateStats);
+
+        const actions = bar.createDiv({ cls: 'cs-file-editor__actions' });
+
+        const closeBtn = actions.createEl('button', { cls: 'cs-preset-btn' });
+        closeBtn.innerHTML = UiIcons.cross(12) + ' Zamknij';
         closeBtn.addEventListener('click', () => this.close());
 
-        const saveBtn = buttons.createEl('button', { text: 'Zapisz', cls: 'mod-cta' });
+        const saveBtn = actions.createEl('button', { cls: 'cs-preset-btn cs-preset-btn--agent' });
+        saveBtn.innerHTML = UiIcons.save(12) + ' Zapisz';
         saveBtn.addEventListener('click', async () => {
             try {
                 await this.app.vault.adapter.write(this.filePath, this.textarea.value);
                 new Notice('Zapisano!');
                 this.close();
             } catch (e) {
-                new Notice('Błąd zapisu: ' + e.message);
+                new Notice('Blad zapisu: ' + e.message);
             }
         });
     }

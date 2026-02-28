@@ -10,8 +10,8 @@ import { SidebarNav } from './sidebar/SidebarNav.js';
 import { renderHomeView } from './sidebar/HomeView.js';
 import { renderAgentProfileView } from './sidebar/AgentProfileView.js';
 import { renderCommunicatorView } from './sidebar/CommunicatorView.js';
-import { renderSkillsView, renderToolsView, renderMinionsView } from './sidebar/BackstageViews.js';
-import { renderSkillDetailView, renderMinionDetailView } from './sidebar/DetailViews.js';
+import { renderSkillsView, renderToolsView, renderMinionsView, renderMastersView } from './sidebar/BackstageViews.js';
+import { renderSkillDetailView, renderMinionDetailView, renderMasterDetailView } from './sidebar/DetailViews.js';
 import { renderAgoraView, renderAgoraProjectDetailView } from './sidebar/AgoraView.js';
 
 export const AGENT_SIDEBAR_VIEW_TYPE = 'pkm-agent-sidebar';
@@ -58,6 +58,8 @@ export class AgentSidebar extends ItemView {
         this.nav.register('minions', renderMinionsView);
         this.nav.register('skill-detail', renderSkillDetailView);
         this.nav.register('minion-detail', renderMinionDetailView);
+        this.nav.register('masters', renderMastersView);
+        this.nav.register('master-detail', renderMasterDetailView);
         this.nav.register('agora', renderAgoraView);
         this.nav.register('agora-project-detail', renderAgoraProjectDetailView);
 

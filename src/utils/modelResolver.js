@@ -44,7 +44,7 @@ function _detectPlatform(scSettings) {
  * @param {Object} plugin - Obsek plugin instance
  * @param {'main'|'minion'|'master'} role - Model role
  * @param {Object} [agent] - Agent instance (for per-agent overrides)
- * @param {Object} [minionConfig] - Minion config (for minion role - model field in minion.md)
+ * @param {Object} [delegateConfig] - Delegate config (minion or master) — checks .model field for override
  * @returns {Object|null} SmartChatModel instance or null
  */
 export function createModelForRole(plugin, role, agent = null, minionConfig = null) {
@@ -76,7 +76,8 @@ export function createModelForRole(plugin, role, agent = null, minionConfig = nu
             modelId = minionConfig?.model || obsek.minionModel || null;
             platform = platform || obsek.minionPlatform || null;
         } else if (role === 'master') {
-            modelId = obsek.masterModel || null;
+            // Master: check delegateConfig.model first (from master.md), then global
+            modelId = minionConfig?.model || obsek.masterModel || null;
             platform = platform || obsek.masterPlatform || null;
         }
     }
@@ -98,13 +99,18 @@ export function createModelForRole(plugin, role, agent = null, minionConfig = nu
         return null;
     }
 
-    // Cache check
+    // Cache check — skip for minion/master: they may run in parallel,
+    // and SmartChatModel.stream() is NOT safe for concurrent calls on same instance.
+    // Creating a fresh instance per call is cheap; the API call is what's expensive.
+    const skipCache = (role === 'minion' || role === 'master');
     const agentName = agent?.name || '_global';
     const cacheKey = `${agentName}:${role}:${platform}:${modelId.trim()}`;
-    const cached = _cache.get(cacheKey);
-    if (cached?.stream) {
-        log.debug('ModelResolver', `${role}: z CACHE → ${platform}/${modelId.trim()}`);
-        return cached;
+    if (!skipCache) {
+        const cached = _cache.get(cacheKey);
+        if (cached?.stream) {
+            log.debug('ModelResolver', `${role}: z CACHE → ${platform}/${modelId.trim()}`);
+            return cached;
+        }
     }
 
     // Create model
@@ -121,7 +127,7 @@ export function createModelForRole(plugin, role, agent = null, minionConfig = nu
             api_key: api_key,
             model_key: modelId.trim(),
         });
-        _cache.set(cacheKey, model);
+        if (!skipCache) _cache.set(cacheKey, model);
         log.model(role, platform, modelId.trim());
         return model;
     } catch (e) {

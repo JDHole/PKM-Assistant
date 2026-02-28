@@ -37,7 +37,7 @@ export function createAgentDelegateTool(app) {
                 // Validate recipient exists
                 const toAgent = agentManager.getAgent(args.to_agent);
                 if (!toAgent) {
-                    const available = agentManager.getAllAgents().map(a => `${a.emoji} ${a.name}`).join(', ');
+                    const available = agentManager.getAllAgents().map(a => a.name).join(', ');
                     return {
                         success: false,
                         error: `Agent "${args.to_agent}" nie istnieje. Dostępni agenci: ${available}`
@@ -69,12 +69,11 @@ export function createAgentDelegateTool(app) {
                     success: true,
                     delegation: true,
                     to_agent: args.to_agent,
-                    to_emoji: toAgent.emoji,
                     to_name: toAgent.name,
                     from_agent: fromName,
                     reason: args.reason || `${fromName} proponuje przekazanie rozmowy`,
                     context_summary: args.context_summary || '',
-                    message: `Proponuję przekazanie rozmowy do ${toAgent.emoji} ${toAgent.name}. Kliknij przycisk poniżej żeby przejść do tego agenta.`
+                    message: `Proponuję przekazanie rozmowy do ${toAgent.name}. Kliknij przycisk poniżej żeby przejść do tego agenta.`
                 };
             } catch (e) {
                 return { success: false, error: e.message };

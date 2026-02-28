@@ -1,7 +1,7 @@
 # PKM Assistant (Obsek) - Status Projektu
 
 > **Kopiuj ten plik do dowolnego czatu z AI** zeby dac kontekst o projekcie.
-> Ostatnia aktualizacja: 2026-02-25 (sesja 44)
+> Ostatnia aktualizacja: 2026-02-28 (sesja 62)
 
 ---
 
@@ -48,9 +48,9 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] Prompt ekstrakcji wymusza 3. osobe ("User ma..." nie "Mam...")
 - [x] Fuzzy dedup w _applyAppend() - wykrywa duplikaty po slowach kluczowych/liczbach
 - [x] Prompt instruuje AI zeby sprawdzal istniejacy brain przed dodaniem faktow
-- [x] Faza 4: Summarizer DZIALA - automatyczne podsumowanie rozmowy przy 70% limitu tokenow
+- [x] Faza 4: Summarizer DZIALA - dwufazowa kompresja: Faza 1 trim tool results (70%, darmowe) + Faza 2 sumaryzacja (90%, API call)
 - [x] Summarizer uzywa streamToComplete() (nie crashuje jak wczesniej)
-- [x] RollingWindow: rozdzielony baseSystemPrompt od conversationSummary (brak layer collision)
+- [x] RollingWindow: rozdzielony baseSystemPrompt od conversationSummary, tool definitions liczone w tokenach
 - [x] Faza 7: RAG polish - RAGRetriever uzywa AgentMemory natywnie (nie przez workaround)
 - [x] Faza 6: MCP tools pamieciowe - memory_update (zapamiętaj/zapomnij/czytaj brain) + memory_status (info o pamieci)
 - [x] Voice commands - system prompt agenta rozpoznaje komendy: "zapamiętaj", "zapomnij", "co o mnie wiesz", "pokaż pamięć"
@@ -425,6 +425,92 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 - [x] KOMUNIKACJA: osobna toggleable grupa DT (agent_delegate + agent_message) (sesja 45)
 - [x] minion_guide i master_guide zaktualizowane (krotsze, multi-minion, master nie szuka sam) (sesja 45)
 - [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 45)
+- [x] **Sesja 46: MasterRunner + MasterLoader + Multi-Delegate + Creator + Pipeline Debug** ✅
+- [x] MasterLoader.js: ladowanie masterow z .pkm-assistant/masters/, cache, walidacja, 2 startery (strateg, redaktor) (sesja 46)
+- [x] MasterRunner.js: pelna petla tool-calling dla mastera (streamToCompleteWithTools), work mode cascade (sesja 46)
+- [x] MinionMasterEditorModal.js: unified Creator/Editor dla minionow I masterow, tools picker, save/delete (sesja 46)
+- [x] Agent.js multi-delegate: minions[]/masters[] jako tablice obiektow, MAX_DELEGATES=20, active/inactive, per-delegate overrides (sesja 46)
+- [x] AgentManager.js: resolveMinionConfig + resolveMasterConfig z per-agent overrides (prompt_append, extra_tools, max_iterations) (sesja 46)
+- [x] MasterTaskTool.js: kompletny rewrite — 3-fazowy flow (minion gather → master analyze → return), MasterRunner integration (sesja 46)
+- [x] BackstageViews.js: Masters view z kartami, search, filter chips, przycisk "Nowy Master" (sesja 46)
+- [x] DetailViews.js: Master detail view z meta info, tools, agenty, prompt rendering, edit (sesja 46)
+- [x] Fix: parallel minion hang — modelResolver skip cache dla minion/master (SmartChatModel NOT concurrent-safe) (sesja 46)
+- [x] Fix: 400 Bad Request po parallel tools — chat_view zapisuje PARSOWANE toolCalls (nie raw z API) (sesja 46)
+- [x] Fix: safety timeout 60s w streamHelper — Promise.race na wszystkich model calls (sesja 46)
+- [x] **PELNY PIPELINE PRZETESTOWANY END-TO-END:** Auto-prep → Main (Reasoner) → 2x Minion (parallel) → Master (Sonnet 4.5) → Final response (sesja 46)
+- [x] Build: 7.1MB, wersja 1.0.9, 0 bledow (sesja 46)
+- [x] **Sesja 47: Crystal Soul Design System — warstwa wizualna pluginu** ✅
+- [x] Crystal Soul CSS variables: ~30 zmiennych `--cs-*` w styles.css mapujacych na Obsidian vars (dziala z kazdy themem) (sesja 47)
+- [x] Agent cards reskin: shard border-left, diamond indicator (rotate 45deg + glow) zamiast ● (sesja 47)
+- [x] Chat reskin: gradient accent na headerze, shard border na bubblach asystenta, diamond ::before na thinking/subagent (sesja 47)
+- [x] Sidebar reskin: diamond markers przed section titles, shard hover na kartach (sesja 47)
+- [x] Agent color system: Agent.crystalColor getter + deriveColor(name) hash → 8 presetow (amber/aqua/purple/blue/rose/emerald/slate/coral) (sesja 47)
+- [x] data-agent-color atrybut na kartach agentow (HomeView) + avatarach w chacie (chat_view, 4 miejsca) (sesja 47)
+- [x] Crystal toggles: diamond-shaped checkboxy na todo/plan items (sesja 47)
+- [x] Streaming shimmer: crystal shimmer animation zamiast standardowej (sesja 47)
+- [x] Theme customization: `.pkm-assistant/theme.css` ladowany przez _loadCrystalSoulTheme(), nadpisuje --cs-* (sesja 47)
+- [x] Settings: sekcja "Crystal Soul" z przyciskami Generuj/Przeladuj motyw (sesja 47)
+- [x] Fix: hardcoded rgba(255,255,255) → theme-aware vars, hardcoded #9b59b6 → color-mix (sesja 47)
+- [x] Inspiracja: HTML mockup "Design concept" (~2600 linii) — krysztaly, diamenty, shard estetyka (sesja 47)
+- [x] Build: 7.2MB, wersja 1.0.9, 0 bledow (sesja 47)
+- [x] **Sesja 48: Skills v2 — Pelna implementacja (3 fazy) + DeepSeek Concat Fix** ✅
+- [x] SkillLoader v2: SKILL.md format, saveSkill(), deleteSkill(), _slugify(), pliki pomocnicze awareness (sesja 48)
+- [x] SkillEditorModal.js: unified Creator/Editor skilli (13 pol, 3 tryby: create/edit/override) (sesja 48)
+- [x] SkillVariables.js: substituteVariables() — zamiana {{key}} na wartosci (sesja 48)
+- [x] Chat UI: klik skill → prompt w inputcie (nie auto-send), pre-questions overlay z formularzem (sesja 48)
+- [x] Per-agent skill overrides: Agent._normalizeSkillAssignments(), AgentManager.resolveSkillConfig() (sesja 48)
+- [x] SkillExecuteTool: resolve per-agent overrides (prompt_append, model) (sesja 48)
+- [x] PromptBuilder: rich skill descriptions w DT, auto-invoke instruction (sesja 48)
+- [x] SkillListTool: icon, tags, allowedTools, has_pre_questions, tag filter (sesja 48)
+- [x] BackstageViews: przycisk "+ Nowy Skill", DetailViews: pelny v2 podglad + SkillEditorModal (sesja 48)
+- [x] Fix: Agent.js skills setter (brak settera → "Cannot set property skills") (sesja 48)
+- [x] Fix: DeepSeek N-concat — rekurencyjny decompose tool names (backtracking), obsluguje dowolna liczbe sklejonych (sesja 48)
+- [x] Ochrona concat w 3 miejscach: MCPClient (main), streamHelper (minion/master), chat_view (safety net) (sesja 48)
+- [x] deep-topic-analysis: profesjonalny skill testowy (2 miniony parallel → user question → master → vault_write) (sesja 48)
+- [x] **PELNY PIPELINE SKILLS v2 PRZETESTOWANY E2E:** pre-questions → variable substitution → 2 miniony → master → raport (sesja 48)
+- [x] Build: 7.2MB, wersja 1.0.9, 0 bledow (sesja 48)
+
+**Visual Overhaul Fazy 2-5 (sesja 53-54):**
+- [x] ToolCallDisplay.js: TOOL_INFO z category zamiast emoji, getToolIcon() helper, SVG statusy/toggle/copy (sesja 53)
+- [x] ThinkingBlock.js: SVG icon + timing (elapsed seconds) + SVG chevron (sesja 53)
+- [x] SubAgentBlock.js: SVG icons, categories w TYPE_CONFIG, cs-breathing pending (sesja 53)
+- [x] ConnectorGenerator.js: male krysztaly + linie laczace akcje w chacie (sesja 53)
+- [x] SvgHelper.js: toElement(), crystalAvatar(), toolIcon() (sesja 53)
+- [x] chat_view.js: ~50 edycji — crystal avatary, kolorowane user bubbles, "Krystalizuje..." typing, SVG buttony (sesja 53)
+- [x] AgentProfileView.js: 51 emoji→SVG, crystal title, tabs z iconSeed/iconCat (sesja 53)
+- [x] HomeView.js: 22 emoji→SVG, crystal agent cards (sesja 53)
+- [x] BackstageViews.js: 32 emoji→SVG, TOOL_CATEGORIES z iconSeed (sesja 53)
+- [x] AgoraView.js: 42 emoji→SVG, crystal agent badges, SVG access legend (sesja 54)
+- [x] CommunicatorView.js: 14 emoji→SVG, crystal agent chips (sesja 54)
+- [x] Agent.js: deriveColor()→pickColor() (62 kolorow zamiast 8), CRYSTAL_PALETTE→ALL_COLORS (sesja 54)
+- [x] 5 modali + obsek_settings_tab + ApprovalModal + 7 innych: SVG headers/buttons (sesja 54)
+- [x] UiIcons.js: ~40+ semantycznych SVG (trash, edit, clipboard, send, eye, lock...) (sesja 54)
+- [x] styles.css: 4 nowe animacje + light theme overrides (sesja 54)
+- [x] WorkMode.js: mode icons SVG (sesja 54)
+- [x] Global sweep: ~20 plikow, zero emoji w DOM rendering (sesja 54)
+- [x] Build: 7.4MB, 0 bledow (sesja 54)
+- [ ] **ZNANY PROBLEM:** wiele buttonow uzywa abstrakcyjnych IconGenerator zamiast semantycznych UiIcons — potrzebna iteracja
+
+**Input Chatu v2 (sesja 49):**
+- [x] WebSearchTool + WebSearchProvider: multi-provider (Jina darmowy, Tavily, Brave, Serper, SearXNG) (sesja 49)
+- [x] AskUserTool: agent pyta usera inline w chacie, czeka na odpowiedz, YOLO auto-select (sesja 49)
+- [x] MentionAutocomplete: @notatka, @folder:, fuzzy search, nawigacja klawiatura (sesja 49)
+- [x] AttachmentManager: 📎 file picker, drag & drop, Ctrl+V paste, chipy, miniaturki (sesja 49)
+- [x] Multimodal: obrazki → base64 content blocks, tekst/PDF → text context, RollingWindow array support (sesja 49)
+- [x] Adaptery: OpenAI/DeepSeek pass-through, Anthropic konwersja, Ollama text+images (sesja 49)
+- [x] CSS: dropdown mentions, chipy, drag overlay, miniaturki, fullscreen overlay (sesja 49)
+- [x] Build: 7.3MB, wersja 1.0.9, 0 bledow (sesja 49)
+
+**Mentions v2 — inline @[Name] + bugfix (sesja 50):**
+- [x] Bug fix: mentions dzialaja bez zalacznikow (resolve PRZED clear w send_message) (sesja 50)
+- [x] Inline @[Name] w textarea zamiast chipow-only (sesja 50)
+- [x] Badge mention w babelce usera (pkm-mention-badge) z kontrastowym stylem (sesja 50)
+- [x] Enter/Tab nie wysyla wiadomosci gdy dropdown otwarty (stopImmediatePropagation) (sesja 50)
+- [x] Metadane mentions ukryte w UI (displayText vs apiContent separacja) (sesja 50)
+- [x] Decision Tree: instrukcja search_mention w grupie SZUKANIE (sesja 50)
+- [x] removeMention() usuwa @[Name] z textarea (sesja 50)
+- [x] CSS: badge kontrastowy w babelce usera (bialy tekst na accent tle) (sesja 50)
+- [x] Build: 7.3MB, 0 bledow (sesja 50)
 
 ## Co ISTNIEJE w kodzie ale NIE ZWERYFIKOWANE
 
@@ -435,17 +521,27 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 > **PLAN_v2.md** zastapil stary PLAN.md (ktory zostal zbyt pomieszany sesjami/sprintami).
 > Nowy plan: CZESC 1 (zrobione ~170 checkboxow) + CZESC 2 (do v1.0 ~95 checkboxow) + CZESC 3 (post v1.0)
 
-- Postep: **~240/300 checkboxow (~80%)**
+- Postep: **~290/320 checkboxow (~90%)**
 - Wersja: 1.0.9
 - **Kluczowy wniosek (sesja 28):** Kod gotowy w ~90%. Problem jest w PROMPTACH.
-- **Sesja 40:** 2.5 Prompt Transparency ZROBIONE — TokenTracker, SubAgentBlock, toggles, Backstage MCP redesign.
-- **Sesja 41:** 2.6 Part 1 ZROBIONE — Archetyp→Rola system, RoleLoader, Role Creator w Settings, Memory tab redesign.
-- **Sesja 42:** 2.6 Part 2 ZROBIONE — WHITELIST access control, denial system, autocomplete UI, security fix.
-- **Sesja 42k:** Guidance mode, No-Go absolute fix, autocomplete wszedzie, PermissionsModal sync.
-- **Sesja 43:** Tryby Pracy Chatu ZROBIONE — 4 tryby, kaskada, switch_mode tool, toolbar UI.
 - **Sesja 44:** Prompt v2.1 + Decision Tree v2 + Prompt Builder panel ZROBIONE.
 - **Sesja 45:** Delegacja v2 ZROBIONE — parallel tools, multi-minion, min_iterations, DT overhaul, KOMUNIKACJA.
-- **DO ZROBIENIA:** Dopracowac PromptBuilder (minion/master inject moze byc bledny), Minion/Master Creator+Manager. Szczegoly w HANDOFF_sesja45.md.
+- **Sesja 46:** MasterRunner+Loader+Creator ZROBIONE, multi-delegate arrays, pipeline debug (3 fixy), pelny E2E test.
+- **Sesja 47:** Crystal Soul Design System — CSS vars, agent colors, diamond markers, shard borders, theme customization.
+- **Sesja 48:** Skills v2 ZROBIONE — 3 fazy (fundament+overrides+polish), SkillEditorModal, pre-questions, per-agent overrides, DeepSeek N-concat fix, deep-topic-analysis skill E2E.
+- **Sesja 49:** Input Chatu v2 ZROBIONE — Web Search (Jina+4 providery), ask_user (inline pytanie w chacie), @ Mentions (autocomplete+resolve), Zalaczniki (📎+drag+paste+multimodal).
+- **Sesja 50:** Mentions v2 ZROBIONE — bug fix (resolve przed clear), inline @[Name] w textarea, badge w babelce, Enter fix, metadane ukryte, DT instrukcja.
+- **Sesja 51:** Pamiec fix 2.9 ZROBIONE — Plan 2.9 (5 sesji) zamkniety. Strukturalny Summarizer (8 sekcji jak Claude Code), dwutryb sumaryzacji (soft po tasku + hard emergency), compression blocks w chacie, SVG context circle, emergency task context (todos+plan), session path w summary, L3 consolidation, garbage detection, brain dedup, opcjonalna konsolidacja.
+- **Sesja 52:** Visual Overhaul Faza 1 — PLAN_VISUAL_OVERHAUL.md (mega-plan, 3 rundy feedbacku). Fundament: IconGenerator.js (proceduralne SVG ikony, 3 kategorie, 24 szablony), CrystalGenerator.js (8 ksztaltow krysztalow agentow), ColorPalette.js (62 kolory kamieni szlachetnych, 8 rodzin). CSS Crystal Soul v2 (hex zamiast HSL, color-mix warianty, nowe animacje). Crystal Soul Palette.html (demo wizualne z glow hover).
+- **Sesja 53-54:** Visual Overhaul Fazy 2-5 — migracja emoji→SVG w ~30 plikach. Faza 2: chat redesign (crystal avatary CrystalGenerator, ToolCallDisplay z categories+getToolIcon, ThinkingBlock+SubAgentBlock SVG+timing, ConnectorGenerator, typing "Krystalizuje..." z pulsujacym krystalem, ~50 edycji w chat_view.js). Faza 3: AgentProfileView (51 emoji→SVG, crystal title, tabs z iconSeed), HomeView (22 emoji→SVG, crystal cards), BackstageViews (32 emoji→SVG, TOOL_CATEGORIES). Faza 4: AgoraView (42 emoji→SVG, crystal badges), CommunicatorView (14 emoji→SVG), Agent.js (deriveColor→pickColor 62 kolorow), 5 modali. Faza 5: UiIcons.js (~40 semantycznych SVG), animacje (cs-send-pulse, cs-message-enter), global sweep (~20 plikow). **ZNANY PROBLEM:** wiele buttonow uzywa abstrakcyjnych IconGenerator zamiast semantycznych UiIcons — potrzebna iteracja #2.
+- **Sesja 56:** Visual Audit Chatu — bugfixy (crystal header flag, thinking order, connector dynamic, scroll cap), ToolCallDisplay przerobiony (formatToolOutput 22 case'y, polskie opisy zamiast JSON), SubAgentBlock (UiIcons robot/crown, nazwa agenta w labelu). Audyt 1.5-1.10 z PROMPT_VISUAL_AUDIT.md.
+- **Sesja 57:** Visual Audit: Agent Profile BLOK 6 — tab Przegląd przebudowany (hero card z opisem+kryształem, Crystal Soul palette picker 62 kolory, edytowalny opis agenta, daty utworzenia/aktywności, shardy Sesje/Skille/Miniony/Mastery/Model/L1/L2/Brain). Tab bar redesign (grid 4×2, shard-style). Nowe pola Agent.js: description, createdAt, color. AgentLoader whitelist fix. Error handling async tabs.
+- **Sesja 58:** Dwufazowa Kompresja Kontekstu (jak Claude Code) — Faza 1: darmowe skracanie starych tool results (próg 70%), Faza 2: pełna sumaryzacja (próg 90%, tylko jeśli Faza 1 nie wystarczyła). Tool definitions liczone w tokenach kontekstu. UI: trim bubble (styl user message, rozwijalne szczegóły). Nowy setting: toolTrimThreshold. Pliki: RollingWindow.js, chat_view.js/css, obsek_settings_tab.js.
+- **Sesja 59:** Visual Audit Chatu — ToolCallDisplay refactor. ask_user fix (YOLO bypass usunięty — zawsze czeka na usera). Crystal Soul redesign ask_user block. ToolCallDisplay pełna transparentność: nowy `formatToolInputDetail()` (pełne argumenty w rozwiniętym body), `formatToolOutput()` rozbudowany dla 24 narzędzi (polskie opisy, czytelne dane zamiast surowego JSON). Brakujące case'y w header: memory_update, memory_status, skill_list, agora_read/update/project. CSS: `.cs-action-row__pre` (monospace blok), `.cs-action-row__detail` (max-height 300px, scroll). Pliki: ToolCallDisplay.js, AskUserTool.js, chat_view.css.
+- **Sesja 60:** Visual Audit 1.11 (delegation/mode change buttons → shard-style). Fixy krytyczne: "undefined Praca/undefined [agent]" w przyciskach (data.icon/data.to_emoji nie istniały → getModeInfo + btn.innerHTML), usunięte mod-cta. SwitchModeTool fix — agent nie zatrzymywał się po propozycji → używał ask_user na własną rękę (duplikacja); naprawione przez: description narzędzia, message proposal "ZATRZYMAJ SIĘ", auto-kontynuacja po kliknięciu przycisku. switch_mode niewidoczny w profilu agenta (MCP tab) — naprawione: dodane do TOOL_GROUPS (mode:[]), DECISION_TREE_GROUPS (tryb), DECISION_TREE_DEFAULTS (2 instrukcje), MODE_BEHAVIORS zaktualizowane (konkretne wywołania switch_mode zamiast mglistego "zaproponuj"). Permissions przebudowane jako Crystal Soul popover (identyczny mechanizm jak mode popover): 3 presety, 8 diamond toggleów, auto-save bez przycisku "Zapisz".
+- **Sesja 61:** Playbook v2 Design — brainstorming architektura (system prompt = AGENT czyta, playbook = MINION czyta). PLAYBOOK_DRAFT.md: pełny draft 15 sekcji (~340 linii). Weryfikacja 24 MCP schematów. Auto-prep = dead code.
+- **Sesja 62:** Visual Audit: Playbook Builder + HiddenFileEditor + Ekipa tab + Detail Views. Playbook Builder UI w tabie Umiejętności (4 auto-sekcje z AUTO/EDYTOWANE badge, custom rules "Gdy X → Zrób Y", kompilacja). HiddenFileEditorModal Crystal Soul (CSS adoption fix, agent-color gradient header, styled textarea). Ekipa tab rewrite na sub-taby + shard grid (identyczny schemat jak Skills/MCP). Override forms Crystal Soul (skill + delegate). Detail Views Crystal Soul (3 widoki read-only, usunięte przyciski Edytuj). 7 plików zmienionych.
+- **DO ZROBIENIA:** Visual Audit kontynuacja (Bloki 2-12): Input Area, pozostałe taby profilu. System prompt triage/behavior. Skill Creator optymalizacja. Inline+Sidebar (2.12-13). Docs+Release.
 
 ### Kolejnosc do v1.0 (z PLAN_v2.md):
 1. ~~2.1 Stabilizacja~~ ✅
@@ -457,11 +553,15 @@ Cel: Zespol AI agentow w Obsidianie - kazdy z wlasna osobowoscia, pamiecia, skil
 7. ~~2.6 Part 2: Access Control~~ ✅ (sesja 42) — WHITELIST, denial, approval, autocomplete, minion security
 8. ~~Tryby Pracy Chatu~~ ✅ (sesja 43) — 4 modes, cascade, switch_mode, toolbar UI
 9. ~~Delegacja v2~~ ✅ (sesja 45) — parallel tools, multi-minion, DT overhaul
-10. 2.7 MasterRunner + Minion/Master Creator + 2.8 Skille v2
-9. 2.9 Pamiec fix + 2.10 UX Chatu + 2.11 Warstwa Wizualna
-10. 2.12-2.13 Inline + Sidebar fixy
-11. 2.14 Dokumentacja + Onboarding
-12. 2.15 Release v1.0
+10. ~~2.7 MasterRunner + Minion/Master Creator~~ ✅ (sesja 46) — MasterLoader, MasterRunner, multi-delegate, Creator
+11. ~~2.8 Skille v2~~ ✅ (sesja 48) — SkillEditor, per-agent overrides, pre-questions, auto-invoke, DeepSeek fix
+12. ~~2.11 Warstwa Wizualna~~ ✅ (sesja 47) — Crystal Soul Design System
+13. ~~2.8.5 Input Chatu v2~~ ✅ (sesja 49) — Web Search, ask_user, @ Mentions, Zalaczniki (multimodal)
+14. ~~2.9 Pamiec fix~~ ✅ (sesja 51) — Plan 2.9 zamkniety, strukturalny Summarizer, dwutryb, UI kompresji
+15. ~~Visual Overhaul~~ ✅ (sesja 52-55) — Crystal Soul v3 COMPLETE: chat redesign, input area, multi-agent tabs, slim bar, 8-tab profil (Ekipa), shard grid skills, CSS cleanup
+16. 2.12-2.13 Inline + Sidebar fixy
+15. 2.14 Dokumentacja + Onboarding
+16. 2.15 Release v1.0
 
 ## Wazne sciezki
 

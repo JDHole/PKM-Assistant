@@ -6,6 +6,7 @@
  */
 import { Modal, Notice } from 'obsidian';
 import komunikator_styles from './KomunikatorModal.css' with { type: 'css' };
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class KomunikatorModal extends Modal {
     /**
@@ -32,7 +33,8 @@ export class KomunikatorModal extends Modal {
         }
 
         // Title
-        contentEl.createEl('h3', { text: '💬 Komunikator', cls: 'komunikator-title' });
+        const h3 = contentEl.createEl('h3', { cls: 'komunikator-title' });
+        h3.innerHTML = `${UiIcons.chat(18)} Komunikator`;
 
         // Layout: left panel (agents) + right panel (inbox)
         this.layoutEl = contentEl.createDiv({ cls: 'komunikator-layout' });
@@ -101,7 +103,7 @@ export class KomunikatorModal extends Modal {
             });
 
             const info = item.createDiv({ cls: 'komunikator-agent-info' });
-            info.createSpan({ cls: 'komunikator-agent-emoji', text: agent.emoji });
+            // Crystal Soul uses SVG avatars — no emoji
             info.createSpan({ cls: 'komunikator-agent-name', text: agent.name });
 
             // Unread badge (user-unread count)
@@ -136,16 +138,16 @@ export class KomunikatorModal extends Modal {
         if (!komunikator) return;
 
         const agent = agentManager.getAgent(this.selectedAgent);
-        const agentLabel = agent ? `${agent.emoji} ${agent.name}` : this.selectedAgent;
+        const agentLabel = agent ? agent.name : this.selectedAgent;
 
         // Header
         const header = this.inboxPanelEl.createDiv({ cls: 'komunikator-inbox-header' });
         header.createEl('h4', { text: `Inbox: ${agentLabel}` });
 
         const markReadBtn = header.createEl('button', {
-            cls: 'komunikator-mark-read-btn',
-            text: '✓ Oznacz przeczytane'
+            cls: 'komunikator-mark-read-btn'
         });
+        markReadBtn.innerHTML = `${UiIcons.check(14)} Oznacz przeczytane`;
         markReadBtn.addEventListener('click', async () => {
             await komunikator.markAllAsUserRead(this.selectedAgent);
             agentManager._emit('communicator:message_read');
@@ -186,11 +188,11 @@ export class KomunikatorModal extends Modal {
         const statusDiv = header.createDiv({ cls: 'komunikator-msg-status' });
         const userDot = statusDiv.createDiv({
             cls: `komunikator-msg-status-dot ${userRead ? 'user-read' : 'user-unread'}`,
-            attr: { title: userRead ? '👤 Przeczytana' : '👤 Nowa' }
+            attr: { title: userRead ? 'Przeczytana' : 'Nowa' }
         });
         const aiDot = statusDiv.createDiv({
             cls: `komunikator-msg-status-dot ${aiRead ? 'ai-read' : 'ai-unread'}`,
-            attr: { title: aiRead ? '🤖 AI przeczytał' : '🤖 AI nie czytał' }
+            attr: { title: aiRead ? 'AI przeczytał' : 'AI nie czytał' }
         });
 
         header.createSpan({ cls: 'komunikator-msg-from', text: msg.from });
@@ -207,8 +209,14 @@ export class KomunikatorModal extends Modal {
 
         // Status labels at bottom of body
         const statusLabels = body.createDiv({ cls: 'komunikator-msg-status-labels' });
-        statusLabels.createSpan({ text: userRead ? '👤 Przeczytana' : '👤 Nowa' });
-        statusLabels.createSpan({ text: aiRead ? '🤖 AI przeczytał' : '🤖 AI nie czytał' });
+        const userLabel = statusLabels.createSpan();
+        userLabel.innerHTML = userRead
+            ? `${UiIcons.user(12)} Przeczytana`
+            : `${UiIcons.user(12)} Nowa`;
+        const aiLabel = statusLabels.createSpan();
+        aiLabel.innerHTML = aiRead
+            ? `${UiIcons.robot(12)} AI przeczytał`
+            : `${UiIcons.robot(12)} AI nie czytał`;
 
         // Toggle expand
         header.addEventListener('click', async () => {
@@ -253,9 +261,9 @@ export class KomunikatorModal extends Modal {
 
         // Send button
         const sendBtn = form.createEl('button', {
-            text: '📨 Wyślij',
             cls: 'komunikator-send-btn mod-cta'
         });
+        sendBtn.innerHTML = `${UiIcons.send(14)} Wyślij`;
 
         sendBtn.addEventListener('click', async () => {
             const subject = subjectInput.value.trim();

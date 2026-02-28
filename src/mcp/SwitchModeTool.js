@@ -21,6 +21,9 @@ export function createSwitchModeTool(app) {
             '',
             'Użyj gdy charakter zadania wymaga innego zestawu narzędzi.',
             'Podaj reason żeby użytkownik wiedział dlaczego proponujesz zmianę.',
+            '',
+            'WAŻNE: Po wywołaniu switch_mode ZAKOŃCZ TURĘ. NIE używaj ask_user ani innych narzędzi.',
+            'System sam pokaże użytkownikowi przycisk potwierdzenia lub zmieni tryb automatycznie.',
         ].join('\n'),
         inputSchema: {
             type: 'object',
@@ -61,8 +64,7 @@ export function createSwitchModeTool(app) {
                     success: true,
                     mode: modeInfo.id,
                     label: modeInfo.label,
-                    icon: modeInfo.icon,
-                    message: `Przełączono na tryb: ${modeInfo.icon} ${modeInfo.label}`,
+                    message: `Tryb zmieniony na: ${modeInfo.label}. Kontynuuj zadanie w nowym trybie.`,
                 };
             }
 
@@ -71,9 +73,8 @@ export function createSwitchModeTool(app) {
                 proposal: true,
                 mode: modeInfo.id,
                 label: modeInfo.label,
-                icon: modeInfo.icon,
                 reason: reason || '',
-                message: `Proponuję przełączenie na tryb: ${modeInfo.icon} ${modeInfo.label}${reason ? ` — ${reason}` : ''}`,
+                message: `PROPOZYCJA WYSŁANA. Użytkownik zobaczy przycisk potwierdzenia. ZATRZYMAJ SIĘ — NIE używaj ask_user ani żadnych innych narzędzi. Odpowiedz użytkownikowi i zakończ turę.`,
             };
         },
     };

@@ -4,7 +4,7 @@
  * Each minion is a minion.md file with YAML frontmatter + markdown instructions.
  * Pattern: same as SkillLoader (src/skills/SkillLoader.js)
  */
-import { parseFrontmatter } from '../utils/yamlParser.js';
+import { parseFrontmatter, stringifyYaml } from '../utils/yamlParser.js';
 
 const MINIONS_PATH = '.pkm-assistant/minions';
 
@@ -233,6 +233,121 @@ Jeśli brak danych: "Brak konfiguracji do pokazania."
 - Odpowiedź max 200 słów
 - Skanuj TYLKO .pkm-assistant/ (nie vault usera)
 - Fakty, zero interpretacji`
+    },
+    {
+        name: 'szukacz',
+        folder: 'szukacz',
+        content: `---
+name: szukacz
+description: Specjalista od przeszukiwania vaulta i pamięci
+tools:
+  - vault_search
+  - memory_search
+  - vault_read
+max_iterations: 3
+min_iterations: 1
+enabled: true
+---
+
+# Minion Szukacz
+
+## ROLA
+Jesteś minion-szukacz. Specjalizujesz się w ZNAJDOWANIU informacji.
+
+## PROCEDURA
+1. Przeczytaj zadanie
+2. Wyciągnij słowa kluczowe
+3. vault_search + memory_search
+4. Jeśli trafne wyniki - vault_read max 2 plików
+5. Zwróć zebrane dane w uporządkowanej formie
+
+## FORMAT ODPOWIEDZI
+
+### Znalezione notatki
+- [nazwa] (ścieżka) - 1 zdanie co jest w środku
+
+### Z pamięci
+- [kiedy] - co było omawiane (1 zdanie)
+
+### Podsumowanie
+1-2 zdania: co znalazłeś i co najważniejsze.
+
+## OGRANICZENIA
+- Max 3 wywołania narzędzi
+- Odpowiedź max 300 słów
+- Tylko fakty, zero analizy
+- Nie wymyślaj informacji`
+    },
+    {
+        name: 'czytelnik',
+        folder: 'czytelnik',
+        content: `---
+name: czytelnik
+description: Czyta i streszcza zawartość notatek
+tools:
+  - vault_read
+  - vault_search
+max_iterations: 2
+min_iterations: 1
+enabled: true
+---
+
+# Minion Czytelnik
+
+## ROLA
+Specjalizujesz się w CZYTANIU i STRESZCZANIU notatek.
+
+## PROCEDURA
+1. Dostaniesz ścieżkę lub temat
+2. vault_read (jeśli masz ścieżkę) lub vault_search (jeśli masz temat)
+3. Streszczenie: najważniejsze punkty, wnioski, cytaty
+
+## FORMAT ODPOWIEDZI
+- Tytuł notatki + ścieżka
+- 3-5 najważniejszych punktów
+- Kluczowe cytaty (jeśli są)
+
+## OGRANICZENIA
+- Max 2 rundy narzędzi
+- Streszczenie max 200 słów
+- Nie dodawaj własnych opinii`
+    },
+    {
+        name: 'notatnik',
+        folder: 'notatnik',
+        content: `---
+name: notatnik
+description: Tworzy i aktualizuje notatki w vaulcie
+tools:
+  - vault_write
+  - vault_read
+  - vault_search
+max_iterations: 3
+min_iterations: 1
+enabled: true
+---
+
+# Minion Notatnik
+
+## ROLA
+Specjalizujesz się w TWORZENIU i AKTUALIZACJI notatek.
+
+## PROCEDURA
+1. Przeczytaj zadanie (co napisać/zaktualizować)
+2. vault_search - sprawdź czy notatka istnieje
+3. vault_read - jeśli aktualizacja, przeczytaj obecną treść
+4. vault_write - zapisz nową lub zaktualizowaną notatkę
+
+## FORMAT NOTATKI
+- Tytuł jako # heading
+- Sekcje z ## headings
+- Listy punktowane
+- Tagi na końcu
+
+## OGRANICZENIA
+- Max 3 rundy narzędzi
+- Nie wymyślaj ścieżek — pytaj agenta
+- Przy aktualizacji: zachowaj istniejącą strukturę`
     }
 ];
 
@@ -340,33 +455,181 @@ export class MinionLoader {
      * Create starter minions if the minions folder is empty or doesn't exist
      * @returns {Promise<void>}
      */
+    /**
+     * Slugify name for folder names (Polish chars support)
+     * @param {string} name
+     * @returns {string}
+     */
+    _slugify(name) {
+        return name
+            .toLowerCase()
+            .replace(/[ąàáâã]/g, 'a').replace(/[ćč]/g, 'c')
+            .replace(/[ęèéêë]/g, 'e').replace(/[łl]/g, 'l')
+            .replace(/[ńñ]/g, 'n').replace(/[óòôõ]/g, 'o')
+            .replace(/[śš]/g, 's').replace(/[ź]/g, 'z').replace(/[żž]/g, 'z')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 50);
+    }
+
+    /**
+     * Save minion to disk (create or update).
+     * @param {Object} minionData - { name, description, model, tools, max_iterations, min_iterations, enabled, prompt }
+     * @returns {Promise<string>} File path
+     */
+    async saveMinion(minionData) {
+        const slug = this._slugify(minionData.name);
+        const folderPath = `${MINIONS_PATH}/${slug}`;
+        const filePath = `${folderPath}/minion.md`;
+
+        const frontmatter = {
+            name: minionData.name,
+            description: minionData.description,
+        };
+        if (minionData.model) frontmatter.model = minionData.model;
+        if (minionData.tools?.length > 0) frontmatter.tools = minionData.tools;
+        frontmatter.max_iterations = minionData.max_iterations || 3;
+        frontmatter.min_iterations = minionData.min_iterations || 1;
+        frontmatter.enabled = minionData.enabled !== false;
+
+        const yamlStr = stringifyYaml(frontmatter);
+        const content = `---\n${yamlStr}---\n\n${minionData.prompt || ''}`;
+
+        if (!await this.vault.adapter.exists(MINIONS_PATH)) {
+            await this.vault.adapter.mkdir(MINIONS_PATH);
+        }
+        if (!await this.vault.adapter.exists(folderPath)) {
+            await this.vault.adapter.mkdir(folderPath);
+        }
+        await this.vault.adapter.write(filePath, content);
+
+        // Update cache
+        this.cache.set(minionData.name, {
+            name: minionData.name,
+            description: minionData.description,
+            model: minionData.model || null,
+            tools: minionData.tools || ['vault_search', 'memory_search', 'vault_read'],
+            max_iterations: minionData.max_iterations || 3,
+            min_iterations: minionData.min_iterations || 1,
+            enabled: minionData.enabled !== false,
+            prompt: (minionData.prompt || '').trim(),
+            path: filePath
+        });
+
+        return filePath;
+    }
+
+    /**
+     * Delete minion from disk and cache.
+     * @param {string} minionName
+     * @returns {Promise<boolean>}
+     */
+    async deleteMinion(minionName) {
+        const config = this.cache.get(minionName);
+        if (!config) return false;
+
+        const slug = this._slugify(minionName);
+        const folderPath = `${MINIONS_PATH}/${slug}`;
+
+        try {
+            if (await this.vault.adapter.exists(folderPath)) {
+                const filePath = `${folderPath}/minion.md`;
+                if (await this.vault.adapter.exists(filePath)) {
+                    await this.vault.adapter.remove(filePath);
+                }
+                await this.vault.adapter.rmdir(folderPath, false);
+            }
+            this.cache.delete(minionName);
+            return true;
+        } catch (e) {
+            console.warn('[MinionLoader] Cannot delete:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Create a prep minion for an agent. Idempotent: skips if exists.
+     * @param {string} agentName - Agent name
+     * @param {string} [agentEmoji] - Agent emoji
+     * @returns {Promise<string>} Prep minion name
+     */
+    async createPrepMinion(agentName, agentEmoji = '') {
+        const slug = this._slugify(agentName);
+        const name = `${slug}-prep`;
+
+        // Idempotent: skip if exists
+        if (this.cache.has(name)) return name;
+
+        const prompt = `# Minion Prep — ${agentName} ${agentEmoji}
+
+## ROLA
+Jesteś minion przygotowujący kontekst dla agenta ${agentName}.
+Twoje zadanie: ZNAJDŹ informacje które pomogą agentowi odpowiedzieć LEPIEJ.
+
+## NARZĘDZIA
+- vault_search — szukaj notatek po słowach kluczowych
+- memory_search — sprawdź wcześniejsze rozmowy
+- vault_read — przeczytaj konkretną notatkę
+
+## PROCEDURA
+1. Przeczytaj pytanie usera
+2. Wyciągnij 2-3 słowa kluczowe
+3. vault_search + memory_search
+4. Jeśli trafne wyniki (max 2) — vault_read
+5. Zwróć zebrane dane
+
+## FORMAT ODPOWIEDZI
+### Notatki z vaulta
+- [nazwa] (ścieżka) - 1 zdanie opis
+
+### Z pamięci agenta
+- [kiedy] - co było omawiane (1 zdanie)
+
+### Podsumowanie
+1-2 zdania: co najważniejsze.
+
+## OGRANICZENIA
+- Max 3 wywołania narzędzi
+- Odpowiedź max 300 słów
+- Tylko fakty, zero analizy`;
+
+        await this.saveMinion({
+            name,
+            description: `Przygotowuje kontekst dla ${agentName} na start sesji`,
+            tools: ['vault_search', 'memory_search', 'vault_read'],
+            max_iterations: 3,
+            min_iterations: 1,
+            enabled: true,
+            prompt
+        });
+
+        return name;
+    }
+
     async ensureStarterMinions() {
         try {
-            const exists = await this.vault.adapter.exists(MINIONS_PATH);
-
-            if (exists) {
-                const listed = await this.vault.adapter.list(MINIONS_PATH);
-                if (listed?.folders?.length > 0) {
-                    return; // minions already exist
-                }
-            }
-
-            // Create minions folder
-            if (!exists) {
+            if (!await this.vault.adapter.exists(MINIONS_PATH)) {
                 await this.vault.adapter.mkdir(MINIONS_PATH);
             }
 
-            // Write only jaskier-prep on fresh install (other minions are templates for custom agents)
-            const freshInstallMinions = STARTER_MINIONS.filter(m => m.name === 'jaskier-prep');
-            for (const minion of freshInstallMinions) {
+            let created = 0;
+            for (const minion of STARTER_MINIONS) {
                 const folderPath = `${MINIONS_PATH}/${minion.folder}`;
                 const filePath = `${folderPath}/minion.md`;
 
-                await this.vault.adapter.mkdir(folderPath);
+                // Skip if already exists (idempotent)
+                if (await this.vault.adapter.exists(filePath)) continue;
+
+                if (!await this.vault.adapter.exists(folderPath)) {
+                    await this.vault.adapter.mkdir(folderPath);
+                }
                 await this.vault.adapter.write(filePath, minion.content);
+                created++;
             }
 
-            console.log(`[MinionLoader] Created ${freshInstallMinions.length} starter minion(s)`);
+            if (created > 0) {
+                console.log(`[MinionLoader] Created ${created} starter minion(s)`);
+            }
         } catch (e) {
             console.error('[MinionLoader] Error creating starter minions:', e);
         }

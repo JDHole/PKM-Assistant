@@ -3,10 +3,31 @@
  * Manages playbook.md and vault_map.md per agent.
  * These files are the agent's "instruction manual" and "terrain map".
  * The minion reads them during auto-prep to prepare context.
+ *
+ * Playbook Builder: auto-generates sections from agent config,
+ * user can override per-agent, custom "Gdy → Zrób" rules.
+ * compilePlaybook() merges everything into playbook.md.
  */
+
+import { getArchetype } from '../agents/archetypes/Archetypes.js';
+import { TOOL_GROUPS } from './PromptBuilder.js';
+import { TOOL_INFO } from '../components/ToolCallDisplay.js';
 
 /** Base path for agent configs */
 const AGENTS_BASE = '.pkm-assistant/agents';
+
+/** Polish labels for tool groups */
+const GROUP_LABELS = {
+    vault: 'Vault (notatki)',
+    memory: 'Pamięć (długoterminowa)',
+    skills: 'Umiejętności',
+    delegation: 'Delegowanie',
+    communication: 'Komunikacja między agentami',
+    artifacts: 'Artefakty (plany, zadania)',
+    agora: 'Agora (wspólna baza wiedzy)',
+    web: 'Internet',
+    interaction: 'Interakcja z userem'
+};
 
 /**
  * Starter playbook templates for built-in agents
@@ -335,7 +356,7 @@ export class PlaybookManager {
 
     /** @private */
     _genericPlaybook(agent) {
-        return `# Playbook: ${agent.name} ${agent.emoji}
+        return `# Playbook: ${agent.name}
 
 ## Rola
 ${agent.personality || 'Asystent AI'}
@@ -353,7 +374,7 @@ ${agent.minion ? '- minion_task — deleguj ciężką robotę minionowi\n' : ''}
 
     /** @private */
     _genericVaultMap(agent) {
-        return `# Vault Map: ${agent.name} ${agent.emoji}
+        return `# Vault Map: ${agent.name}
 
 ## Dostęp
 ${agent.focusFolders?.length > 0 ? agent.focusFolders.map(f => `- ${f}`).join('\n') : 'Pełny dostęp do vaulta.'}
@@ -365,5 +386,222 @@ ${agent.focusFolders?.length > 0 ? agent.focusFolders.map(f => `- ${f}`).join('\
 ## Struktura vaulta użytkownika
 > Ta sekcja zostanie uzupełniona automatycznie przez miniona.
 `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PLAYBOOK BUILDER — auto-generation + compile
+    // ═══════════════════════════════════════════
+
+    /**
+     * Generate "Rola" section from archetype + role + personality.
+     * @param {import('../agents/Agent.js').default} agent
+     * @param {Object} plugin
+     * @returns {string} Markdown
+     */
+    generateRolaSection(agent, plugin) {
+        const lines = ['## Rola i zachowanie'];
+
+        // Archetype
+        const archetype = getArchetype(agent.archetype);
+        if (archetype) {
+            lines.push('', `**Typ:** ${archetype.name} — ${archetype.description}`, '');
+            lines.push('Zasady typu:');
+            for (const rule of archetype.behavior_rules || []) {
+                lines.push(`- ${rule}`);
+            }
+        }
+
+        // Role
+        const roleLoader = plugin.agentManager?.roleLoader;
+        const roleData = roleLoader?.getRole(agent.role);
+        if (roleData) {
+            lines.push('', `**Rola:** ${roleData.name} — ${roleData.description || ''}`, '');
+            if (roleData.behavior_rules?.length > 0) {
+                lines.push('Zasady roli:');
+                for (const rule of roleData.behavior_rules) {
+                    lines.push(`- ${rule}`);
+                }
+            }
+        }
+
+        // Personality
+        if (agent.personality) {
+            lines.push('', '**Osobowość:**', agent.personality);
+        }
+
+        // Agent rules
+        if (agent.agentRules) {
+            lines.push('', '**Reguły agenta:**', agent.agentRules);
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Generate "Narzędzia" section from enabled MCP tools.
+     * @param {import('../agents/Agent.js').default} agent
+     * @returns {string} Markdown
+     */
+    generateNarzedziaSection(agent) {
+        const lines = ['## Narzędzia'];
+
+        const allTools = Object.values(TOOL_GROUPS).flat();
+        const enabledTools = agent.enabledTools?.length > 0 ? agent.enabledTools : allTools;
+
+        for (const [groupId, toolNames] of Object.entries(TOOL_GROUPS)) {
+            const groupTools = toolNames.filter(t => enabledTools.includes(t));
+            if (groupTools.length === 0) continue;
+
+            lines.push('', `### ${GROUP_LABELS[groupId] || groupId}`);
+            for (const tool of groupTools) {
+                const info = TOOL_INFO[tool];
+                lines.push(`- **${tool}** — ${info?.label || tool}`);
+            }
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Generate "Skille" section from assigned skills.
+     * @param {import('../agents/Agent.js').default} agent
+     * @param {Object} plugin
+     * @returns {string} Markdown
+     */
+    generateSkilleSection(agent, plugin) {
+        const lines = ['## Umiejętności (Skille)'];
+
+        const skillLoader = plugin.agentManager?.skillLoader;
+        const agentSkills = agent.skills || []; // string[] of skill names
+
+        if (!skillLoader || agentSkills.length === 0) {
+            lines.push('', 'Brak przypisanych skilli.');
+            return lines.join('\n');
+        }
+
+        lines.push('');
+        for (const skillName of agentSkills) {
+            const skill = skillLoader.getSkill(skillName);
+            if (skill) {
+                lines.push(`- **${skill.name}** — ${skill.description || 'brak opisu'}`);
+            } else {
+                lines.push(`- **${skillName}** — (nie znaleziono)`);
+            }
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Generate rich "Delegowanie" section from minions + masters.
+     * @param {import('../agents/Agent.js').default} agent
+     * @param {Object} plugin
+     * @returns {string} Markdown
+     */
+    generateDelegowanieSection(agent, plugin) {
+        const lines = ['## Delegowanie'];
+
+        const minionLoader = plugin.agentManager?.minionLoader;
+        const masterLoader = plugin.agentManager?.masterLoader;
+
+        // Active minions
+        const activeMinions = agent.activeMinions || [];
+        if (activeMinions.length > 0 && minionLoader) {
+            lines.push('', '### Miniony (pomocnicy)');
+            lines.push('Deleguj ciężką robotę minionom używając **minion_task**.');
+
+            for (const assignment of activeMinions) {
+                const config = minionLoader.getMinion(assignment.name);
+                if (!config) continue;
+
+                lines.push('', `#### ${config.name}${assignment.default ? ' (DOMYŚLNY)' : ''}`);
+                if (config.description) lines.push(`- **Opis:** ${config.description}`);
+                if (assignment.role) lines.push(`- **Rola:** ${assignment.role}`);
+                if (config.tools?.length > 0) {
+                    const toolDescs = config.tools.map(t => {
+                        const info = TOOL_INFO[t];
+                        return info ? `${t} (${info.label})` : t;
+                    });
+                    lines.push(`- **Narzędzia:** ${toolDescs.join(', ')}`);
+                }
+                lines.push(`- **Kiedy delegować:** duże przeszukiwanie, analiza wielu plików, zbieranie kontekstu`);
+            }
+        }
+
+        // Active masters
+        const activeMasters = agent.activeMasters || [];
+        if (activeMasters.length > 0 && masterLoader) {
+            lines.push('', '### Mastery (eksperci)');
+            lines.push('Konsultuj trudne pytania z masterem używając **master_task**.');
+
+            for (const assignment of activeMasters) {
+                const config = masterLoader.getMaster(assignment.name);
+                if (!config) continue;
+
+                lines.push('', `#### ${config.name}${assignment.default ? ' (DOMYŚLNY)' : ''}`);
+                if (config.description) lines.push(`- **Opis:** ${config.description}`);
+                lines.push(`- **Kiedy konsultować:** złożone analizy, strategie, tematy wymagające głębokiego myślenia`);
+            }
+        }
+
+        if (activeMinions.length === 0 && activeMasters.length === 0) {
+            lines.push('', 'Brak przypisanych minionów i masterów.');
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Generate "Procedury" section from custom rules.
+     * @param {Array} customRules
+     * @returns {string} Markdown (empty string if no rules)
+     */
+    generateCustomRulesSection(customRules) {
+        if (!customRules || customRules.length === 0) return '';
+
+        const enabledRules = customRules.filter(r => r.enabled !== false);
+        if (enabledRules.length === 0) return '';
+
+        const lines = ['## Procedury'];
+        for (const rule of enabledRules) {
+            lines.push('', `### Gdy ${rule.trigger}`, rule.action);
+        }
+        return lines.join('\n');
+    }
+
+    /**
+     * Compile full playbook.md from agent config + overrides.
+     * Uses auto-generated sections unless user overrode them.
+     * @param {import('../agents/Agent.js').default} agent
+     * @param {Object} plugin
+     * @returns {Promise<string>} Compiled markdown
+     */
+    async compilePlaybook(agent, plugin) {
+        const overrides = agent.playbookOverrides || {};
+        const so = overrides.sectionOverrides || {};
+
+        const sections = [
+            `# Playbook: ${agent.name}`,
+            so.rola ?? this.generateRolaSection(agent, plugin),
+            so.narzedzia ?? this.generateNarzedziaSection(agent),
+            so.skille ?? this.generateSkilleSection(agent, plugin),
+            so.delegowanie ?? this.generateDelegowanieSection(agent, plugin),
+            this.generateCustomRulesSection(overrides.customRules),
+        ].filter(s => s); // remove empty strings
+
+        const markdown = sections.join('\n\n').trim() + '\n';
+
+        // Write to playbook.md
+        const path = this.getPlaybookPath(agent.name);
+        try {
+            const dir = path.substring(0, path.lastIndexOf('/'));
+            const dirExists = await this.vault.adapter.exists(dir);
+            if (!dirExists) await this.vault.adapter.mkdir(dir);
+            await this.vault.adapter.write(path, markdown);
+        } catch (e) {
+            console.warn('[PlaybookManager] compilePlaybook write error:', e);
+        }
+
+        return markdown;
     }
 }

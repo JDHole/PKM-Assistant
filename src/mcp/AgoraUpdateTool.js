@@ -60,7 +60,7 @@ export function createAgoraUpdateTool(app) {
             }
 
             const agentName = plugin?.agentManager?.activeAgent?.name || 'Unknown';
-            const agentEmoji = plugin?.agentManager?.activeAgent?.emoji || '';
+            // emoji removed — Crystal Soul uses SVG avatars
 
             try {
                 switch (args.section) {
@@ -111,7 +111,7 @@ export function createAgoraUpdateTool(app) {
                         }
                         return await agora.postActivity(
                             agentName,
-                            agentEmoji,
+                            '',
                             args.summary,
                             args.conclusions || '',
                             args.actions || ''

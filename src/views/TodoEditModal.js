@@ -4,6 +4,7 @@
  */
 import Obsidian from 'obsidian';
 const { Modal } = Obsidian;
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class TodoEditModal extends Modal {
     /**
@@ -37,7 +38,8 @@ export class TodoEditModal extends Modal {
 
         // Title
         const titleRow = contentEl.createDiv({ cls: 'pkm-todo-modal-title-row' });
-        titleRow.createSpan({ text: '📋', cls: 'pkm-todo-modal-icon' });
+        const todoIcon = titleRow.createSpan({ cls: 'pkm-todo-modal-icon' });
+        todoIcon.innerHTML = UiIcons.clipboard(22);
         this.titleInput = titleRow.createEl('input', {
             cls: 'pkm-todo-modal-title-input',
             value: this.editData.title,

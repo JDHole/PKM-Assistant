@@ -5,6 +5,7 @@
  */
 import Obsidian from 'obsidian';
 const { Modal } = Obsidian;
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 const STATUS_OPTIONS = [
     { value: 'pending', label: '○ Oczekuje' },
@@ -43,7 +44,8 @@ export class PlanEditModal extends Modal {
 
         // Title
         const titleRow = contentEl.createDiv({ cls: 'pkm-plan-modal-title-row' });
-        titleRow.createSpan({ text: '📋', cls: 'pkm-plan-modal-icon' });
+        const planIcon = titleRow.createSpan({ cls: 'pkm-plan-modal-icon' });
+        planIcon.innerHTML = UiIcons.clipboard(22);
         this.titleInput = titleRow.createEl('input', {
             cls: 'pkm-plan-modal-title-input',
             value: this.editData.title,

@@ -29,21 +29,22 @@ export function createSkillExecuteTool(app) {
                     return { success: false, error: 'Nie podano nazwy skilla. Użyj skill_list żeby zobaczyć dostępne.' };
                 }
 
-                // Check if skill exists in central library
-                const skill = agentManager.skillLoader.getSkill(skillName);
-                if (!skill) {
-                    return {
-                        success: false,
-                        error: `Skill "${skillName}" nie istnieje. Użyj skill_list żeby zobaczyć dostępne skille.`
-                    };
-                }
+                const activeAgent = agentManager.getActiveAgent();
 
                 // Check if skill is assigned to this agent
-                const activeAgent = agentManager.getActiveAgent();
                 if (activeAgent?.skills?.length > 0 && !activeAgent.skills.includes(skillName)) {
                     return {
                         success: false,
                         error: `Skill "${skillName}" nie jest przypisany do agenta ${activeAgent.name}. Dostępne: ${activeAgent.skills.join(', ')}`
+                    };
+                }
+
+                // Resolve skill with per-agent overrides
+                const skill = agentManager.resolveSkillConfig(skillName, activeAgent);
+                if (!skill) {
+                    return {
+                        success: false,
+                        error: `Skill "${skillName}" nie istnieje. Użyj skill_list żeby zobaczyć dostępne skille.`
                     };
                 }
 

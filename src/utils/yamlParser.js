@@ -77,10 +77,6 @@ export function validateAgentSchema(agentData) {
         errors.push('Missing or invalid "name" field (required string)');
     }
 
-    if (!agentData.emoji || typeof agentData.emoji !== 'string') {
-        errors.push('Missing or invalid "emoji" field (required string)');
-    }
-
     // Optional but typed fields
     if (agentData.archetype && typeof agentData.archetype !== 'string') {
         errors.push('"archetype" must be a string');
@@ -108,16 +104,63 @@ export function validateAgentSchema(agentData) {
         errors.push('"default_permissions" must be an object');
     }
 
-    if (agentData.skills && !Array.isArray(agentData.skills)) {
-        errors.push('"skills" must be an array of strings');
+    // Skills: array of strings or {name, overrides?} objects
+    if (agentData.skills !== undefined) {
+        if (!Array.isArray(agentData.skills)) {
+            errors.push('"skills" must be an array of strings or {name, overrides?}');
+        } else {
+            for (const s of agentData.skills) {
+                if (typeof s === 'string') continue; // shorthand allowed
+                if (!s || typeof s !== 'object' || !s.name || typeof s.name !== 'string') {
+                    errors.push('"skills" entries must be a string or have a "name" string');
+                    break;
+                }
+            }
+        }
     }
 
+    // Minion: old format (string) or new format (array of {name, ...})
     if (agentData.minion && typeof agentData.minion !== 'string') {
-        errors.push('"minion" must be a string (minion config name)');
+        errors.push('"minion" must be a string (old format, backward compat)');
+    }
+    if (agentData.minions !== undefined) {
+        if (!Array.isArray(agentData.minions)) {
+            errors.push('"minions" must be an array of {name, role?, default?, overrides?}');
+        } else {
+            for (const m of agentData.minions) {
+                if (typeof m === 'string') continue; // shorthand allowed
+                if (!m || typeof m !== 'object' || !m.name || typeof m.name !== 'string') {
+                    errors.push('"minions" entries must have a "name" string');
+                    break;
+                }
+            }
+        }
     }
 
     if (agentData.minion_enabled !== undefined && typeof agentData.minion_enabled !== 'boolean') {
         errors.push('"minion_enabled" must be a boolean');
+    }
+
+    // Master: old format (string) or new format (array of {name, ...})
+    if (agentData.master && typeof agentData.master !== 'string') {
+        errors.push('"master" must be a string (old format, backward compat)');
+    }
+    if (agentData.masters !== undefined) {
+        if (!Array.isArray(agentData.masters)) {
+            errors.push('"masters" must be an array of {name, default?, overrides?}');
+        } else {
+            for (const m of agentData.masters) {
+                if (typeof m === 'string') continue;
+                if (!m || typeof m !== 'object' || !m.name || typeof m.name !== 'string') {
+                    errors.push('"masters" entries must have a "name" string');
+                    break;
+                }
+            }
+        }
+    }
+
+    if (agentData.master_enabled !== undefined && typeof agentData.master_enabled !== 'boolean') {
+        errors.push('"master_enabled" must be a boolean');
     }
 
     if (agentData.models !== undefined) {

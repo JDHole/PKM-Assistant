@@ -16,7 +16,8 @@ export const PERMISSION_TYPES = {
     EXECUTE_COMMANDS: 'execute_commands',
     THINKING: 'thinking',
     MCP: 'mcp',
-    YOLO_MODE: 'yolo_mode'
+    YOLO_MODE: 'yolo_mode',
+    WEB_SEARCH: 'web_search'
 };
 
 /**
@@ -28,7 +29,8 @@ export const ACTION_PERMISSIONS = {
     'vault.create': PERMISSION_TYPES.CREATE_FILES,
     'vault.delete': PERMISSION_TYPES.DELETE_FILES,
     'command.execute': PERMISSION_TYPES.EXECUTE_COMMANDS,
-    'mcp.call': PERMISSION_TYPES.MCP
+    'mcp.call': PERMISSION_TYPES.MCP,
+    'web.search': PERMISSION_TYPES.WEB_SEARCH
 };
 
 export class PermissionSystem {
@@ -128,7 +130,7 @@ export class PermissionSystem {
      */
     requiresApproval(action, targetPath) {
         // Destructive actions always require approval (unless YOLO)
-        const destructiveActions = ['vault.write', 'vault.delete', 'command.execute'];
+        const destructiveActions = ['vault.write', 'vault.delete', 'command.execute', 'web.search'];
         if (destructiveActions.includes(action)) {
             // Will be enhanced in Batch 2 with VaultZones
             if (this.vaultZones && targetPath) {
@@ -211,6 +213,7 @@ export class PermissionSystem {
             [PERMISSION_TYPES.THINKING]: 'Extended thinking (Claude)',
             [PERMISSION_TYPES.MCP]: 'Narzędzia MCP',
             [PERMISSION_TYPES.YOLO_MODE]: 'YOLO mode (auto-approve wszystko)',
+            [PERMISSION_TYPES.WEB_SEARCH]: 'Wyszukiwanie w internecie',
             'memory': 'Pamięć agenta',
             'guidance_mode': 'Guidance mode'
         };

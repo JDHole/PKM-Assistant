@@ -1,25 +1,36 @@
+import { Agent } from '../agents/Agent.js';
 import { SmartItemView } from "obsidian-smart-env/views/smart_item_view.js";
 import { MarkdownRenderer, Notice } from 'obsidian';
 import { RollingWindow } from '../memory/RollingWindow.js';
-import { SessionManager } from '../memory/SessionManager.js';
-import { RAGRetriever } from '../memory/RAGRetriever.js';
-import { EmbeddingHelper } from '../memory/EmbeddingHelper.js';
+// SessionManager usunięty (v1.1.0) — zapis TYLKO przez AgentMemory
+// import { SessionManager } from '../memory/SessionManager.js';
+// RAGRetriever usunięty (v1.1.0) — memory_search i vault_search jako on-demand RAG
+// import { RAGRetriever } from '../memory/RAGRetriever.js';
+// import { EmbeddingHelper } from '../memory/EmbeddingHelper.js';
 import { MemoryExtractor } from '../memory/MemoryExtractor.js';
 import { Summarizer } from '../memory/Summarizer.js';
 import chat_view_styles from './chat_view.css' with { type: 'css' };
-import { createToolCallDisplay } from '../components/ToolCallDisplay.js';
+import { createToolCallDisplay, getToolIcon } from '../components/ToolCallDisplay.js';
 import { createThinkingBlock, updateThinkingBlock } from '../components/ThinkingBlock.js';
 import { createSubAgentBlock, createPendingSubAgentBlock } from '../components/SubAgentBlock.js';
 import { createChatTodoList } from '../components/ChatTodoList.js';
 import { createPlanArtifact } from '../components/PlanArtifact.js';
+import { MentionAutocomplete } from '../components/MentionAutocomplete.js';
+import { AttachmentManager } from '../components/AttachmentManager.js';
 import { TodoEditModal } from './TodoEditModal.js';
 import { PlanEditModal } from './PlanEditModal.js';
 import { log } from '../utils/Logger.js';
-import { openPermissionsModal } from './PermissionsModal.js';
+import { PERMISSION_TYPES } from '../core/PermissionSystem.js';
 import { createModelForRole, clearModelCache } from '../utils/modelResolver.js';
 import { TokenTracker } from '../utils/TokenTracker.js';
 import { countTokens } from '../utils/tokenCounter.js';
 import { filterToolsByMode, DEFAULT_MODE, getModeInfo, getAllModes } from '../core/WorkMode.js';
+import { CrystalGenerator } from '../crystal-soul/CrystalGenerator.js';
+import { IconGenerator } from '../crystal-soul/IconGenerator.js';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+import { pickColor } from '../crystal-soul/ColorPalette.js';
+import { ConnectorGenerator } from '../crystal-soul/ConnectorGenerator.js';
+import { hexToRgbTriplet } from '../crystal-soul/SvgHelper.js';
 // buildModePromptSection no longer needed here — workMode passed via context to PromptBuilder
 
 /**
@@ -37,9 +48,7 @@ export class ChatView extends SmartItemView {
         this.rollingWindow = this._createRollingWindow();
         this.is_generating = false;
         this.current_message_container = null;
-        this.sessionManager = null;
-        this.ragRetriever = null;
-        this.embeddingHelper = null;
+        // RAG usunięty — memory_search/vault_search jako on-demand RAG
 
         // Input history state
         this.inputHistory = [];
@@ -54,13 +63,47 @@ export class ChatView extends SmartItemView {
 
         // Token usage tracking (per-session, per-role)
         this.tokenTracker = new TokenTracker();
+
+        // Multi-agent tabs — per-agent state storage
+        this.chatTabs = []; // [{agentName, isActive}]
+        this._agentStates = new Map(); // agentName → {rollingWindow, tokenTracker, mode, scrollTop}
+    }
+
+    /**
+     * Create a crystal SVG avatar element for an agent.
+     * @param {Object} agent - Agent object (or null for default)
+     * @param {number} size - Pixel size
+     * @returns {HTMLElement}
+     */
+    _createCrystalAvatar(agent, size = 28) {
+        const color = agent?.color || pickColor(agent?.name || 'default').hex;
+        const name = agent?.name || 'default';
+        const svgStr = CrystalGenerator.generate(name, { size, color, glow: false });
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cs-crystal-avatar';
+        wrapper.innerHTML = svgStr;
+        return wrapper;
+    }
+
+    /**
+     * Get the active agent's color (hex).
+     * @returns {string}
+     */
+    _getAgentColor() {
+        const agent = this.plugin?.agentManager?.getActiveAgent();
+        return agent?.color || pickColor(agent?.name || 'default').hex;
+    }
+
+    /**
+     * Get the active agent's color as RGB triplet for CSS rgba().
+     * @returns {string} "R, G, B"
+     */
+    _getAgentRgb() {
+        return hexToRgbTriplet(this._getAgentColor());
     }
 
     async initSessionManager() {
-        this.sessionManager = new SessionManager(this.app.vault, this.env?.settings?.obsek || {});
-        await this.sessionManager.initialize();
-
-        // Auto-save: route through handleSaveSession() which uses AgentMemory first
+        // Auto-save timer: zapis co N minut przez AgentMemory
         const autoSaveInterval = this.env?.settings?.obsek?.autoSaveInterval;
         if (autoSaveInterval && autoSaveInterval > 0) {
             this._autoSaveTimer = setInterval(() => {
@@ -75,16 +118,19 @@ export class ChatView extends SmartItemView {
 
     updatePermissionsBadge() {
         const agent = this.plugin.agentManager?.getActiveAgent();
-        if (!agent || !this.permissionsBtn) return;
+        if (!agent) return;
 
-        let level = '🔒';
+        let iconFn;
         if (agent.permissions.yolo_mode) {
-            level = '🚀';
+            iconFn = (s) => UiIcons.rocket(s);
         } else if (agent.permissions.edit_notes || agent.permissions.mcp) {
-            level = '⚖️';
+            iconFn = (s) => UiIcons.shield(s);
+        } else {
+            iconFn = (s) => UiIcons.lock(s);
         }
 
-        this.permissionsBtn.innerHTML = level;
+        if (this.permissionsBtn) this.permissionsBtn.innerHTML = iconFn(16);
+        if (this._permBtn) this._permBtn.innerHTML = iconFn(12);
     }
 
     async render_view(params = {}, container = this.container) {
@@ -96,122 +142,128 @@ export class ChatView extends SmartItemView {
         container.empty();
         container.addClass('pkm-chat-view');
 
-        // Header
-        const header = container.createDiv({ cls: 'pkm-chat-header' });
+        // ── Initialize tabs for active agent ──
+        this._initTabs();
 
-        // Agent selector
-        const agentControls = header.createDiv({ cls: 'agent-controls' });
-        this.agentDropdown = agentControls.createEl('select', { cls: 'agent-dropdown' });
-        this.updateAgentDropdown();
-        this.agentDropdown.addEventListener('change', (e) => this.handleAgentChange(e.target.value));
+        // ── TAB BAR (replaces old header) ──
+        this._tabBarContainer = container.createDiv();
+        this._renderTabBar(this._tabBarContainer);
 
-        // Permissions button
-        const permissionsBtn = header.createEl('button', {
-            cls: 'chat-permissions-btn',
-            attr: { 'aria-label': 'Uprawnienia agenta' }
-        });
-        permissionsBtn.innerHTML = '🔐';
-        permissionsBtn.onclick = () => {
-            const activeAgent = this.plugin.agentManager?.getActiveAgent();
-            if (activeAgent) {
-                openPermissionsModal(this.app, activeAgent, (newPermissions) => {
-                    this.updatePermissionsBadge();
-                });
-            }
-        };
-        this.permissionsBtn = permissionsBtn;
-
-        // Session controls (right side)
-        const sessionControls = header.createDiv({ cls: 'session-controls' });
-
-        this.sessionDropdown = sessionControls.createEl('select', { cls: 'session-dropdown' });
-        this.sessionDropdown.createEl('option', { value: '', text: '-- Sesja --' });
-        this.sessionDropdown.addEventListener('change', (e) => this.handleLoadSession(e.target.value));
-
-        const newBtn = sessionControls.createEl('button', {
-            cls: 'session-new',
-            attr: { 'aria-label': 'Nowa rozmowa' }
-        });
-        newBtn.textContent = '⟳';
-        newBtn.addEventListener('click', () => this.handleNewSession());
-
-        const saveBtn = sessionControls.createEl('button', {
-            cls: 'session-save',
-            attr: { 'aria-label': 'Zapisz sesje' }
-        });
-        saveBtn.textContent = '💾';
-        saveBtn.addEventListener('click', () => this.handleSaveSession());
-
-        this.autosaveStatus = sessionControls.createDiv({ cls: 'autosave-status', text: '' });
-
-        // Token counter (clickable — opens overlay panel)
-        const tokenWrapper = header.createDiv({ cls: 'token-wrapper' });
-        const tokenCounter = tokenWrapper.createDiv({
-            cls: 'token-counter',
-            text: '0 / 100 000'
-        });
-        tokenCounter.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const panel = tokenWrapper.querySelector('.token-panel');
-            if (panel) panel.classList.toggle('hidden');
-        });
-        this.updateTokenCounter();
-
-        // Token usage panel (overlay, hidden by default)
-        const tokenPanel = tokenWrapper.createDiv({ cls: 'token-panel hidden' });
-        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-main' });
-        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-minion' });
-        tokenPanel.createDiv({ cls: 'token-panel-row token-panel-master' });
-
-        // Close panel on outside click
-        document.addEventListener('click', (e) => {
-            if (!tokenWrapper.contains(e.target)) {
-                tokenPanel.classList.add('hidden');
-            }
-        });
-
-        // Create main layout: body (row) → main (column) + toolbar
+        // Create main layout: body (row) → main (column) + slim bar
         const chatBody = container.createDiv({ cls: 'pkm-chat-body' });
         const chatMain = chatBody.createDiv({ cls: 'pkm-chat-main' });
 
-        // Messages area
-        this.messages_container = chatMain.createDiv({ cls: 'pkm-chat-messages' });
+        // Messages area (cs-root activates Crystal Soul CSS variables)
+        this.messages_container = chatMain.createDiv({ cls: 'pkm-chat-messages cs-root' });
         this.render_messages();
 
-        // Bottom panel (unified: skills + input)
-        const bottomPanel = chatMain.createDiv({ cls: 'pkm-chat-bottom-panel' });
+        // ── SLIM BAR (right side, 66px) ──
+        this._slimBar = chatBody.createDiv({ cls: 'cs-skillbar cs-root' });
+        this._slimBar.style.setProperty('--cs-agent-color-rgb', this._getAgentRgb());
+        this._renderSlimBar();
 
-        // Skill buttons bar
-        this.skillButtonsBar = bottomPanel.createDiv({ cls: 'pkm-skill-buttons' });
-        this.renderSkillButtons();
+        // ── BOTTOM PANEL: input + controls ──
+        const bottomPanel = chatMain.createDiv({ cls: 'cs-input-panel cs-root' });
+        bottomPanel.style.setProperty('--cs-agent-color-rgb', this._getAgentRgb());
 
-        // Input area
-        const input_container = bottomPanel.createDiv({ cls: 'pkm-chat-input-container' });
-        const input_wrapper = input_container.createDiv({ cls: 'pkm-chat-input-wrapper' });
-
-        this.input_area = input_wrapper.createEl('textarea', {
-            cls: 'pkm-chat-input',
-            attr: {
-                placeholder: 'Napisz wiadomosc...',
-                rows: '1'
-            }
+        // Textarea row
+        const inputRow = bottomPanel.createDiv({ cls: 'cs-input-row' });
+        this.input_area = inputRow.createEl('textarea', {
+            cls: 'cs-input-textarea',
+            attr: { placeholder: 'Napisz wiadomość...', rows: '1' }
         });
 
-        const button_container = input_wrapper.createDiv({ cls: 'pkm-chat-buttons' });
+        // Chip bar (attachment + mention chips)
+        this._chipBar = bottomPanel.createDiv({ cls: 'cs-input-chips' });
 
-        this.send_button = button_container.createEl('button', {
-            cls: 'pkm-chat-send-button'
+        // Separator
+        bottomPanel.createDiv({ cls: 'cs-input-separator' });
+
+        // Bottom bar: left controls + right actions
+        const bar = bottomPanel.createDiv({ cls: 'cs-input-bar' });
+        const barLeft = bar.createDiv({ cls: 'cs-input-bar__left' });
+        const barRight = bar.createDiv({ cls: 'cs-input-bar__right' });
+
+        // ── LEFT: Mode, Oczko, Skills, Artifacts, Permissions, Tokens ──
+        // Mode selector
+        const modeInfo = getModeInfo(this.currentMode);
+        this._modeBtn = barLeft.createEl('button', { cls: 'cs-input-ctrl', attr: { 'aria-label': `Tryb: ${modeInfo?.label || 'Praca'}` } });
+        this._modeBtn.innerHTML = this._getModeIcon(this.currentMode, 12) + `<span>${modeInfo?.label || 'Tryb'}</span>`;
+        this._modeBtn.style.position = 'relative';
+        this._modeBtn.addEventListener('click', (e) => { e.stopPropagation(); this._toggleModePopover(); });
+
+        // Oczko toggle
+        const oczkoBtn = barLeft.createEl('button', { cls: 'cs-input-ctrl', attr: { 'aria-label': 'Oczko — kontekst otwartej notatki' } });
+        oczkoBtn.innerHTML = UiIcons.eye(12);
+        if (this.env?.settings?.obsek?.enableOczko !== false) oczkoBtn.classList.add('active');
+        oczkoBtn.addEventListener('click', () => {
+            const obsek = this.env.settings.obsek || (this.env.settings.obsek = {});
+            const newValue = obsek.enableOczko === false;
+            obsek.enableOczko = newValue;
+            oczkoBtn.classList.toggle('active', newValue);
+            this.plugin.saveSettings();
         });
-        this.send_button.textContent = '➤';
 
-        this.stop_button = button_container.createEl('button', {
-            cls: 'pkm-chat-stop-button hidden'
+        // Skills + Artifacts are now in the slim bar (cs-skillbar)
+
+        // Permissions
+        this._permBtn = barLeft.createEl('button', { cls: 'cs-input-ctrl', attr: { 'aria-label': 'Uprawnienia' } });
+        this._permBtn.innerHTML = UiIcons.shield(12);
+        this._permBtn.style.position = 'relative';
+        this._permBtn.addEventListener('click', (e) => { e.stopPropagation(); this._togglePermPopover(); });
+
+        // Context % indicator
+        this._tokenDisplay = barLeft.createDiv({ cls: 'cs-input-tokens', text: '0%' });
+
+        // ── RIGHT: Attach, @, Send/Stop ──
+        // Attachment button (📎)
+        const attachBtnWrapper = barRight.createEl('button', { cls: 'cs-input-ctrl', attr: { 'aria-label': 'Załącznik' } });
+        attachBtnWrapper.innerHTML = UiIcons.paperclip(12);
+
+        // @ Mention button
+        const mentionBtn = barRight.createEl('button', { cls: 'cs-input-ctrl', attr: { 'aria-label': 'Mention @' } });
+        mentionBtn.innerHTML = UiIcons.at(12);
+        mentionBtn.addEventListener('click', () => {
+            // Insert @ at cursor and trigger autocomplete
+            const cursorPos = this.input_area.selectionStart;
+            const val = this.input_area.value;
+            this.input_area.value = val.slice(0, cursorPos) + '@' + val.slice(cursorPos);
+            this.input_area.selectionStart = this.input_area.selectionEnd = cursorPos + 1;
+            this.input_area.focus();
+            this.input_area.dispatchEvent(new Event('input'));
         });
-        this.stop_button.textContent = '■';
 
-        // Right toolbar
-        this.toolbar = chatBody.createDiv({ cls: 'pkm-chat-toolbar' });
-        this._renderToolbar();
+        // Diamond send button
+        this.send_button = barRight.createEl('button', { cls: 'cs-input-send' });
+        this.send_button.innerHTML = UiIcons.send(12);
+
+        // Stop button (hidden by default)
+        this.stop_button = barRight.createEl('button', { cls: 'cs-input-stop hidden' });
+        this.stop_button.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor"/></svg>';
+
+        // Attachment manager — wire to chip bar
+        this.attachmentManager = new AttachmentManager(this._chipBar, this.plugin, {
+            onChange: () => this.handleInputResize(),
+            dropZone: this.messages_container,
+            pasteTarget: this.input_area,
+        });
+        // Wire attach button click
+        attachBtnWrapper.addEventListener('click', () => {
+            this.attachmentManager.getAttachButton()?.click();
+        });
+
+        // Keep toolbar ref for mode popover positioning
+        this.toolbar = bar;
+
+        // @ Mentions autocomplete — chips rendered in AttachmentManager's chip bar
+        this.mentionAutocomplete = new MentionAutocomplete(this.input_area, this.plugin, {
+            onChange: (mentions) => {
+                this.attachmentManager.setMentionChips(mentions, (index) => {
+                    this.mentionAutocomplete.removeMention(index);
+                });
+                this.handleInputResize();
+            },
+        });
 
         // Event listeners
         this.input_area.addEventListener('input', this.handleInputResize.bind(this));
@@ -240,78 +292,200 @@ export class ChatView extends SmartItemView {
     }
 
     updateTokenCounter() {
-        const el = this.container?.querySelector('.token-counter');
+        const el = this._tokenDisplay || this.container?.querySelector('.cs-input-tokens');
         if (!el) return;
 
-        // Primary: show TokenTracker total (sum of ALL in+out across all roles)
-        const tracked = this.tokenTracker.getSessionTotal();
-        if (tracked.total > 0) {
-            el.textContent = `↑${tracked.input.toLocaleString('pl-PL')} ↓${tracked.output.toLocaleString('pl-PL')}`;
-        } else {
-            // Fallback: rollingWindow context estimate (API doesn't return usage)
-            const current = this.rollingWindow.getCurrentTokenCount();
-            const max = this.rollingWindow.maxTokens;
-            el.textContent = `~${current.toLocaleString('pl-PL')} / ${max.toLocaleString('pl-PL')}`;
-        }
-
-        // Visual warning if close to context limit
+        // Pod inputem: % okna kontekstu
         const current = this.rollingWindow.getCurrentTokenCount();
         const max = this.rollingWindow.maxTokens;
-        if (current > max * 0.9) {
-            el.addClass('token-warning');
+        const percent = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0;
+        const threshold = this.env?.settings?.obsek?.summarizationThreshold || 0.9;
+        const thresholdPercent = Math.round(threshold * 100);
+
+        el.textContent = `${percent}%`;
+
+        // Glow agent color at compression threshold
+        if (percent >= thresholdPercent) {
+            el.classList.add('cs-context-hot');
+            el.classList.remove('cs-context-warm');
+        } else if (percent >= 50) {
+            el.classList.add('cs-context-warm');
+            el.classList.remove('cs-context-hot');
         } else {
-            el.removeClass('token-warning');
+            el.classList.remove('cs-context-warm', 'cs-context-hot');
         }
+
+        this._updateContextCircle();
+        this._updateSlimBarTokens();
     }
 
-    /** Update the expandable token usage panel (overlay) */
+    /** Update token panels — redirects to slim bar counters. */
     _updateTokenPanel() {
-        try {
-            const mainRow = this.container?.querySelector('.token-panel-main');
-            const minionRow = this.container?.querySelector('.token-panel-minion');
-            const masterRow = this.container?.querySelector('.token-panel-master');
-            if (!mainRow) return;
+        this._updateSlimBarTokens();
+    }
 
-            const s = this.tokenTracker.getSessionTotal();
-            const fmt = (n) => n.toLocaleString('pl-PL');
+    /**
+     * Renders a visible compression block in the chat when summarization happens.
+     * Shows the summary text so user can see what the agent "remembers" from here.
+     * @param {string} summary - Compressed summary text
+     * @param {number} count - Summarization number
+     * @param {number} messagesKept - How many messages were kept
+     * @param {boolean} isEmergency - Was this an emergency (hard limit) summarization?
+     */
+    _renderCompressionBlock(summary, count, messagesKept, isEmergency = false) {
+        if (!this.messages_container) return;
 
-            // Main
-            const m = s.byRole?.main || { input: 0, output: 0 };
-            mainRow.textContent = (m.input + m.output > 0)
-                ? `Main: ↑${fmt(m.input)} ↓${fmt(m.output)}`
-                : 'Main: brak danych z API';
+        const cls = isEmergency ? 'pkm-compression-block emergency' : 'pkm-compression-block';
+        const block = this.messages_container.createDiv({ cls });
 
-            // Minion
-            if (minionRow) {
-                const mn = s.byRole?.minion || { input: 0, output: 0 };
-                minionRow.textContent = (mn.input + mn.output > 0)
-                    ? `Minion: ↑${fmt(mn.input)} ↓${fmt(mn.output)}`
-                    : 'Minion: nie użyty';
-            }
+        const headerRow = block.createDiv({ cls: 'pkm-compression-header' });
+        const compressionIcon = headerRow.createSpan({ cls: 'pkm-compression-icon' });
+        compressionIcon.innerHTML = isEmergency
+            ? '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M8,1 L15,14 H1 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="8" y1="6" x2="8" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="12" r="0.8" fill="currentColor"/></svg>'
+            : UiIcons.layers(14);
+        headerRow.createSpan({
+            cls: 'pkm-compression-label',
+            text: isEmergency
+                ? `Awaryjna kompresja #${count} — limit kontekstu`
+                : `Kompresja kontekstu #${count}`
+        });
+        headerRow.createSpan({
+            cls: 'pkm-compression-meta',
+            text: `${messagesKept} wiadomości zachowane`
+        });
 
-            // Master
-            if (masterRow) {
-                const ms = s.byRole?.master || { input: 0, output: 0 };
-                masterRow.textContent = (ms.input + ms.output > 0)
-                    ? `Master: ↑${fmt(ms.input)} ↓${fmt(ms.output)}`
-                    : 'Master: nie użyty';
-            }
+        const content = block.createDiv({ cls: 'pkm-compression-content collapsed' });
+        content.createDiv({ cls: 'pkm-compression-text', text: summary });
 
-            // Also update the main counter
-            this.updateTokenCounter();
-        } catch (e) {
-            console.warn('[Obsek] _updateTokenPanel error:', e);
+        const toggleBtn = block.createEl('button', {
+            cls: 'pkm-compression-toggle',
+            text: 'Pokaż podsumowanie'
+        });
+        toggleBtn.addEventListener('click', () => {
+            const isCollapsed = content.classList.contains('collapsed');
+            content.classList.toggle('collapsed');
+            toggleBtn.textContent = isCollapsed ? 'Ukryj podsumowanie' : 'Pokaż podsumowanie';
+        });
+
+        const hintText = isEmergency
+            ? 'Kontekst przepełniony — agent kontynuuje od tego momentu z podsumowaniem'
+            : '↑ Rozmowa powyżej została skompresowana — agent widzi stąd w dół';
+        block.createDiv({ cls: 'pkm-compression-hint', text: hintText });
+
+        // Scroll to compression block
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Update token counter after compression
+        this.updateTokenCounter();
+    }
+
+    /**
+     * Renders Phase 1 trim notification as a user-message-style bubble.
+     * @param {Object} info - {trimmed, details, savedChars, tokensBefore, tokensAfterTrim, totalTrimmed}
+     */
+    _renderTrimBlock(info) {
+        if (!this.messages_container) return;
+
+        const block = this.messages_container.createDiv({ cls: 'cs-message cs-message--user cs-trim-bubble' });
+
+        // Main text — header line
+        const textDiv = block.createDiv({ cls: 'cs-message__text' });
+        const percent = this.rollingWindow.getUsagePercent();
+        const headerP = textDiv.createEl('p');
+        headerP.innerHTML = `<strong>Skrócono wyniki narzędzi (Faza 1)</strong> — ${percent}% kontekstu`;
+
+        // Collapsed details
+        const detailsDiv = textDiv.createDiv({ cls: 'cs-trim-details collapsed' });
+
+        const lines = [];
+        lines.push(`Skrócono ${info.trimmed} starych wyników narzędzi (bez API call)`);
+        lines.push(`Zaoszczędzono ~${info.savedChars} znaków`);
+        if (info.tokensBefore && info.tokensAfterTrim) {
+            lines.push(`Tokeny: ${info.tokensBefore} → ${info.tokensAfterTrim} (limit: ${this.rollingWindow.maxTokens})`);
         }
+        if (info.totalTrimmed > info.trimmed) {
+            lines.push(`Łącznie skrócono w tej sesji: ${info.totalTrimmed} wyników`);
+        }
+        if (info.details && info.details.length > 0) {
+            lines.push('');
+            lines.push('Skrócone narzędzia:');
+            for (const d of info.details) {
+                lines.push(`  - ${d.toolName} (${d.originalSize} zn.)`);
+            }
+        }
+        detailsDiv.textContent = lines.join('\n');
+
+        // Toggle link
+        const toggleLink = textDiv.createEl('span', {
+            cls: 'cs-trim-toggle',
+            text: 'Pokaż szczegóły'
+        });
+        toggleLink.addEventListener('click', () => {
+            const isCollapsed = detailsDiv.classList.contains('collapsed');
+            detailsDiv.classList.toggle('collapsed');
+            toggleLink.textContent = isCollapsed ? 'Ukryj szczegóły' : 'Pokaż szczegóły';
+        });
+
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.updateTokenCounter();
+    }
+
+    /**
+     * Updates the context usage circle indicator.
+     * Shows percentage of context window used, visible from 50%.
+     */
+    _updateContextCircle() {
+        const wrapper = this.container?.querySelector('.token-wrapper');
+        if (!wrapper) return;
+
+        const percent = this.rollingWindow.getUsagePercent();
+
+        // Create or find existing circle
+        let circle = wrapper.querySelector('.pkm-context-circle');
+        if (!circle) {
+            circle = wrapper.createDiv({ cls: 'pkm-context-circle' });
+            // SVG donut chart
+            circle.innerHTML = `<svg viewBox="0 0 36 36" class="pkm-donut">
+                <circle cx="18" cy="18" r="14" class="pkm-donut-bg" />
+                <circle cx="18" cy="18" r="14" class="pkm-donut-fg"
+                    stroke-dasharray="0 100"
+                    transform="rotate(-90 18 18)" />
+                <text x="18" y="20" class="pkm-donut-text">0%</text>
+            </svg>`;
+        }
+
+        // Update values
+        const fg = circle.querySelector('.pkm-donut-fg');
+        const label = circle.querySelector('.pkm-donut-text');
+        if (fg) {
+            const circumference = 2 * Math.PI * 14; // ≈ 87.96
+            fg.setAttribute('stroke-dasharray', `${percent} ${100 - percent}`);
+        }
+        if (label) label.textContent = `${percent}%`;
+
+        // Color based on compression thresholds
+        const trimThreshold = Math.round((this.env?.settings?.obsek?.toolTrimThreshold || 0.7) * 100);
+        const summaryThreshold = Math.round((this.env?.settings?.obsek?.summarizationThreshold || 0.9) * 100);
+        if (percent >= summaryThreshold) {
+            circle.setAttribute('data-level', 'critical');
+        } else if (percent >= trimThreshold) {
+            circle.setAttribute('data-level', 'warning');
+        } else {
+            circle.setAttribute('data-level', 'normal');
+        }
+
+        // Show only from 50%
+        circle.style.display = percent >= 50 ? 'inline-flex' : 'none';
     }
 
     add_welcome_message() {
         const agentManager = this.plugin?.agentManager;
         const activeAgent = agentManager?.getActiveAgent();
         const agentName = activeAgent?.name || 'PKM Assistant';
-        const agentEmoji = activeAgent?.emoji || '🤖';
 
         const welcome = this.messages_container.createDiv({ cls: 'pkm-welcome-container' });
-        welcome.createDiv({ cls: 'pkm-welcome-avatar', text: agentEmoji });
+        const welcomeAvatar = welcome.createDiv({ cls: 'pkm-welcome-avatar' });
+        welcomeAvatar.appendChild(this._createCrystalAvatar(activeAgent, 48));
         welcome.createDiv({ cls: 'pkm-welcome-name', text: agentName });
         welcome.createDiv({
             cls: 'pkm-welcome-text',
@@ -329,42 +503,132 @@ export class ChatView extends SmartItemView {
         const skills = agentManager.getActiveAgentSkills();
         if (!skills || skills.length === 0) return;
 
+        // Label
+        this.skillButtonsBar.createDiv({ cls: 'cs-skillbar__label', text: 'skille' });
+
+        // Grid
+        const grid = this.skillButtonsBar.createDiv({ cls: 'cs-skillbar__grid' });
+
         for (const skill of skills) {
-            const btn = this.skillButtonsBar.createEl('button', {
-                cls: 'pkm-skill-btn',
-                attr: { title: skill.description }
+            if (skill.userInvocable === false) continue;
+
+            const btn = grid.createDiv({
+                cls: 'cs-skillbar__icon',
+                attr: { 'data-tip': skill.name }
             });
-            btn.createSpan({ cls: 'pkm-skill-btn-icon', text: '🎯' });
-            btn.createSpan({ text: skill.name });
+            btn.innerHTML = IconGenerator.generate(skill.name, skill.icon_category || 'arcane', { size: 16, color: 'currentColor' });
             btn.addEventListener('click', () => {
                 if (this.is_generating) return;
-                this.input_area.value = `Użyj skilla: ${skill.name}`;
-                this.send_message();
+
+                if (skill.preQuestions?.length > 0) {
+                    this._showSkillPreQuestions(skill);
+                    return;
+                }
+
+                this.input_area.value = skill.prompt || `Użyj skilla: ${skill.name}`;
+                this.input_area.focus();
+                this.handleInputResize();
             });
         }
     }
 
-    showTypingIndicator(statusText = 'Myślę...') {
+    /**
+     * Show pre-questions mini-form overlay for a skill.
+     * User fills in variables, then prompt is injected with substitutions.
+     */
+    _showSkillPreQuestions(skill) {
+        // Remove existing overlay if any
+        this.skillButtonsBar?.parentElement?.querySelector('.pkm-skill-pq-overlay')?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'pkm-skill-pq-overlay';
+        overlay.style.cssText = 'position:absolute; bottom:100%; left:0; right:0; background:var(--background-primary); border:1px solid var(--background-modifier-border); border-radius:8px; padding:12px; margin-bottom:4px; box-shadow:0 -2px 12px rgba(0,0,0,0.15); z-index:10;';
+
+        const title = document.createElement('div');
+        title.style.cssText = 'font-weight:600; margin-bottom:8px; font-size:13px;';
+        title.innerHTML = IconGenerator.generate(skill.name, skill.icon_category || 'arcane', { size: 16, color: 'currentColor' }) + ` ${skill.name}`;
+        overlay.appendChild(title);
+
+        const inputs = {};
+
+        for (const pq of skill.preQuestions) {
+            const row = document.createElement('div');
+            row.style.cssText = 'margin-bottom:6px;';
+
+            const label = document.createElement('label');
+            label.style.cssText = 'display:block; font-size:12px; color:var(--text-muted); margin-bottom:2px;';
+            label.textContent = pq.question;
+            row.appendChild(label);
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = pq.default || '';
+            input.placeholder = pq.key;
+            input.style.cssText = 'width:100%; padding:4px 8px; font-size:13px; border:1px solid var(--background-modifier-border); border-radius:4px; background:var(--background-primary); color:var(--text-normal); box-sizing:border-box;';
+            row.appendChild(input);
+
+            inputs[pq.key] = input;
+            overlay.appendChild(row);
+        }
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex; gap:8px; margin-top:8px; justify-content:flex-end;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Anuluj';
+        cancelBtn.style.cssText = 'padding:4px 12px; font-size:12px; cursor:pointer;';
+        cancelBtn.addEventListener('click', () => overlay.remove());
+        btnRow.appendChild(cancelBtn);
+
+        const useBtn = document.createElement('button');
+        useBtn.textContent = 'Użyj';
+        useBtn.className = 'mod-cta';
+        useBtn.style.cssText = 'padding:4px 12px; font-size:12px; cursor:pointer;';
+        useBtn.addEventListener('click', () => {
+            // Collect values
+            const values = {};
+            for (const [key, inp] of Object.entries(inputs)) {
+                values[key] = inp.value;
+            }
+
+            // Substitute variables in prompt
+            let prompt = skill.prompt || `Użyj skilla: ${skill.name}`;
+            prompt = prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                return values[key] !== undefined ? String(values[key]) : match;
+            });
+
+            this.input_area.value = prompt;
+            this.input_area.focus();
+            this.handleInputResize();
+            overlay.remove();
+        });
+        btnRow.appendChild(useBtn);
+
+        overlay.appendChild(btnRow);
+
+        // Position overlay relative to bottom panel
+        const bottomPanel = this.skillButtonsBar?.parentElement;
+        if (bottomPanel) {
+            bottomPanel.style.position = 'relative';
+            bottomPanel.appendChild(overlay);
+        }
+    }
+
+    showTypingIndicator(statusText = 'Krystalizuje...') {
         if (this.typingIndicator) {
-            // Already showing - just update text
             this.updateTypingStatus(statusText);
             return;
         }
 
-        this.typingIndicator = this.messages_container.createDiv({ cls: 'pkm-chat-message assistant' });
+        const activeAgent = this.plugin?.agentManager?.getActiveAgent();
+        const agentColor = activeAgent?.color || pickColor(activeAgent?.name || 'default').hex;
 
-        const emoji = this.plugin?.agentManager?.getActiveAgent()?.emoji || '🤖';
+        this.typingIndicator = this.messages_container.createDiv({ cls: 'cs-typing' });
 
-        // Message row
-        const row = this.typingIndicator.createDiv({ cls: 'pkm-chat-message-row' });
-        row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
+        const crystalEl = this.typingIndicator.createDiv({ cls: 'cs-typing__crystal' });
+        crystalEl.innerHTML = CrystalGenerator.generate(activeAgent?.name || 'default', { size: 20, color: agentColor, glow: true });
 
-        const bubble = row.createDiv({ cls: 'pkm-chat-bubble' });
-        const typing = bubble.createDiv({ cls: 'pkm-chat-typing' });
-        typing.createEl('span');
-        typing.createEl('span');
-        typing.createEl('span');
-        this.typingStatusEl = typing.createEl('span', { cls: 'pkm-chat-typing-text', text: statusText });
+        this.typingStatusEl = this.typingIndicator.createSpan({ cls: 'cs-typing__text', text: statusText });
 
         this.scrollToBottom();
     }
@@ -394,6 +658,9 @@ export class ChatView extends SmartItemView {
                 lastChild.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
             }
         }
+
+        // Redraw connector lines (position depends on layout)
+        this._drawConnectorLines();
     }
 
     /**
@@ -582,68 +849,427 @@ export class ChatView extends SmartItemView {
     }
 
     /**
+     * Get the UiIcons SVG string for a given work mode id.
+     * @param {string} modeId - Mode id (rozmowa, planowanie, praca, kreatywny)
+     * @param {number} size - Icon size in pixels
+     * @returns {string} SVG string
+     */
+    _getModeIcon(modeId, size = 16) {
+        switch (modeId) {
+            case 'rozmowa': return UiIcons.chat(size);
+            case 'planowanie': return UiIcons.clipboard(size);
+            case 'praca': return UiIcons.hammer(size);
+            case 'kreatywny': return UiIcons.sparkles(size);
+            default: return UiIcons.chat(size);
+        }
+    }
+
+    /**
      * Render the right toolbar with icon buttons.
      * Layout: TOP (general) / BOTTOM (chat-specific actions).
      */
     _renderToolbar() {
-        if (!this.toolbar) return;
-        this.toolbar.empty();
+        // Toolbar is now the slim bar (cs-skillbar).
+        // This method is kept as a no-op for backward compatibility.
+    }
 
-        // ── TOP: general actions ──
-        const topGroup = this.toolbar.createDiv({ cls: 'pkm-toolbar-top' });
+    /**
+     * Render the 66px slim bar on the right side of the chat.
+     * TOP: utility icons (artifacts, new chat, consolidate, save, close, tokens)
+     * BOTTOM: agent skills in 2-column grid
+     */
+    _renderSlimBar() {
+        if (!this._slimBar) return;
+        this._slimBar.empty();
 
-        // Artifact button
-        const artifactBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Artefakty sesji' } });
-        artifactBtn.textContent = '📦';
+        // ── TOP SECTION: utility buttons ──
+        const topSection = this._slimBar.createDiv({ cls: 'cs-skillbar__section' });
+        topSection.createDiv({ cls: 'cs-skillbar__label', text: 'akcje' });
+
+        // Artifacts
+        const artifactBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Artefakty' } });
+        artifactBtn.innerHTML = UiIcons.clipboard(16);
         artifactBtn.addEventListener('click', () => this._toggleArtifactPanel());
 
-        // Skills toggle
-        const skillsBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Skille' } });
-        skillsBtn.textContent = '⚡';
-        skillsBtn.addEventListener('click', () => {
-            if (this.skillButtonsBar) {
-                const isHidden = this.skillButtonsBar.style.display === 'none';
-                this.skillButtonsBar.style.display = isHidden ? '' : 'none';
-                skillsBtn.classList.toggle('active', isHidden);
+        // New chat
+        const newChatBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Nowy chat' } });
+        newChatBtn.innerHTML = UiIcons.refresh(16);
+        newChatBtn.addEventListener('click', () => this.handleNewSession());
+
+        // Consolidate memory
+        const consolidateBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Konsolidacja' } });
+        consolidateBtn.innerHTML = UiIcons.brain(16);
+        consolidateBtn.addEventListener('click', async () => {
+            if (this.rollingWindow.messages.length < 2) {
+                new Notice('Za mało wiadomości do konsolidacji pamięci');
+                return;
+            }
+            consolidateBtn.style.opacity = '0.3';
+            try {
+                new Notice('Konsolidacja pamięci...');
+                await this.consolidateSession();
+                new Notice('Pamięć zapisana!');
+            } catch (e) {
+                console.error('[Chat] Memory consolidation failed:', e);
+                new Notice('Błąd konsolidacji pamięci');
+            } finally {
+                consolidateBtn.style.opacity = '';
             }
         });
 
-        // Oczko (active note awareness) toggle
-        const oczkoBtn = topGroup.createDiv({ cls: 'pkm-toolbar-btn', attr: { 'aria-label': 'Oczko — kontekst otwartej notatki' } });
-        oczkoBtn.textContent = '👁️';
-        if (this.env?.settings?.obsek?.enableOczko !== false) {
-            oczkoBtn.classList.add('active');
+        // Save session
+        const saveBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Zapisz sesję' } });
+        saveBtn.innerHTML = UiIcons.save(16);
+        saveBtn.addEventListener('click', () => this.handleSaveSession());
+
+        // Compress context
+        const compressBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Kompresuj' } });
+        compressBtn.innerHTML = UiIcons.layers(16);
+        compressBtn.addEventListener('click', async () => {
+            if (this.rollingWindow.messages.length < 4) {
+                new Notice('Za mało wiadomości do kompresji');
+                return;
+            }
+            compressBtn.style.opacity = '0.3';
+            try {
+                const result = await this.rollingWindow.performTwoPhaseCompression(false);
+                this.updateTokenCounter();
+                this._updateTokenPanel();
+                if (result.summarized) {
+                    new Notice(`Kompresja #${this.rollingWindow.summarizationCount} (skrócono ${result.trimmed} wyników + sumaryzacja)`);
+                } else if (result.trimmed > 0) {
+                    new Notice(`Skrócono ${result.trimmed} wyników narzędzi (bez API call)`);
+                } else {
+                    new Notice('Nic do kompresji');
+                }
+            } catch (e) {
+                console.error('[Chat] Manual compression failed:', e);
+                new Notice('Błąd kompresji kontekstu');
+            } finally {
+                compressBtn.style.opacity = '';
+            }
+        });
+
+        // Close active tab
+        const closeBtn = topSection.createDiv({ cls: 'cs-skillbar__icon', attr: { 'data-tip': 'Zamknij chat' } });
+        closeBtn.innerHTML = UiIcons.x(16);
+        closeBtn.addEventListener('click', () => this._closeActiveTab());
+
+        // Spacer
+        this._slimBar.createDiv({ cls: 'cs-skillbar__spacer' });
+
+        // ── BOTTOM SECTION: skills grid ──
+        this.skillButtonsBar = this._slimBar.createDiv({ cls: 'cs-skillbar__section' });
+        this.renderSkillButtons();
+    }
+
+    /**
+     * Build a single token counter row for slim bar.
+     * @param {HTMLElement} parent
+     * @param {'main'|'minion'|'master'} role
+     * @returns {{el: HTMLElement, valEl: HTMLElement}}
+     */
+    _buildTokenRow(parent, role) {
+        const row = parent.createDiv({ cls: `cs-skillbar__token-row cs-skillbar__token-row--${role}` });
+        const icon = row.createSpan({ cls: 'cs-skillbar__token-icon' });
+        if (role === 'main') {
+            // Diamond crystal for main
+            icon.innerHTML = '<svg viewBox="0 0 10 10" width="8" height="8"><polygon points="5,0 10,5 5,10 0,5" fill="currentColor"/></svg>';
+        } else if (role === 'minion') {
+            icon.innerHTML = UiIcons.robot(8);
+        } else {
+            icon.innerHTML = UiIcons.crown(8);
         }
-        oczkoBtn.addEventListener('click', () => {
-            const obsek = this.env.settings.obsek || (this.env.settings.obsek = {});
-            const newValue = obsek.enableOczko === false;
-            obsek.enableOczko = newValue;
-            oczkoBtn.classList.toggle('active', newValue);
-            this.plugin.saveSettings();
-            log.debug('Chat', `Oczko toggled: ${newValue}`);
+        const valEl = row.createSpan({ cls: 'cs-skillbar__token-val' });
+        valEl.textContent = '0';
+        return { el: row, valEl };
+    }
+
+    /**
+     * Update the slim bar token display (3 counters: main/minion/master).
+     * Each shows in↑ out↓ from API.
+     */
+    _updateSlimBarTokens() {
+        if (!this._slimBarTokenMain) return;
+        const s = this.tokenTracker.getSessionTotal();
+        const fmt = (n) => n > 999 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+        const update = (ref, data) => {
+            const total = (data.input || 0) + (data.output || 0);
+            if (total > 0) {
+                ref.valEl.textContent = `${fmt(data.input)}↑${fmt(data.output)}↓`;
+                ref.el.style.display = '';
+            } else {
+                ref.valEl.textContent = '0';
+                ref.el.style.display = 'none';
+            }
+        };
+
+        const main = s.byRole?.main || { input: 0, output: 0 };
+        const minion = s.byRole?.minion || { input: 0, output: 0 };
+        const master = s.byRole?.master || { input: 0, output: 0 };
+
+        update(this._slimBarTokenMain, main);
+        update(this._slimBarTokenMinion, minion);
+        update(this._slimBarTokenMaster, master);
+
+        // Show main always if session has any tokens
+        if (s.total > 0) {
+            this._slimBarTokenMain.el.style.display = '';
+        }
+    }
+
+    /**
+     * Close the active tab. If last tab, just clear messages.
+     */
+    _closeActiveTab() {
+        const activeIndex = this.chatTabs.findIndex(t => t.isActive);
+        if (activeIndex === -1) return;
+
+        const activeName = this.chatTabs[activeIndex].agentName;
+
+        // Save before closing
+        if (this.rollingWindow.messages.length > 0) {
+            this.handleSaveSession();
+        }
+
+        // Remove state
+        this._agentStates.delete(activeName);
+
+        if (this.chatTabs.length <= 1) {
+            // Last tab — just clear it (new session)
+            this.handleNewSession();
+            return;
+        }
+
+        // Remove tab and switch to neighbor
+        this.chatTabs.splice(activeIndex, 1);
+        const newActiveIndex = Math.min(activeIndex, this.chatTabs.length - 1);
+        this._switchTab(this.chatTabs[newActiveIndex].agentName);
+    }
+
+    // ── MULTI-AGENT TABS ──
+
+    /**
+     * Initialize chatTabs from the current active agent.
+     * Called once in render_view. Ensures at least the active agent has a tab.
+     */
+    _initTabs() {
+        const activeAgent = this.plugin?.agentManager?.getActiveAgent();
+        const activeAgentName = activeAgent?.name || 'Jaskier';
+
+        // If tabs are empty, create the initial tab for the active agent
+        if (this.chatTabs.length === 0) {
+            this.chatTabs.push({ agentName: activeAgentName, isActive: true });
+        }
+
+        // Ensure current state is stored
+        if (!this._agentStates.has(activeAgentName)) {
+            this._agentStates.set(activeAgentName, {
+                rollingWindow: this.rollingWindow,
+                tokenTracker: this.tokenTracker,
+                mode: this.currentMode,
+                scrollTop: 0,
+            });
+        }
+    }
+
+    /**
+     * Render the tab bar (replaces old pkm-chat-header).
+     * @param {HTMLElement} container
+     */
+    _renderTabBar(container) {
+        container.empty();
+        const topbar = container.createDiv({ cls: 'cs-chat-topbar cs-root' });
+        const activeAgentColor = this._getAgentColor();
+        topbar.style.setProperty('--cs-agent-color-rgb', hexToRgbTriplet(activeAgentColor));
+
+        // Render tabs
+        for (const tab of this.chatTabs) {
+            const agent = this.plugin?.agentManager?.getAgent(tab.agentName);
+            const color = agent?.color || pickColor(tab.agentName).hex;
+
+            const tabEl = topbar.createDiv({
+                cls: `cs-tab ${tab.isActive ? 'cs-tab--active' : ''}`
+            });
+            tabEl.style.setProperty('--cs-agent-color-rgb', hexToRgbTriplet(color));
+
+            // Crystal mini
+            const crystal = tabEl.createDiv({ cls: 'cs-tab__crystal' });
+            crystal.innerHTML = CrystalGenerator.generate(tab.agentName, { size: 14, color });
+
+            // Name
+            tabEl.createSpan({ cls: 'cs-tab__name', text: tab.agentName });
+
+            tabEl.addEventListener('click', () => this._switchTab(tab.agentName));
+        }
+
+        // Plus button (add agent tab)
+        const addTab = topbar.createDiv({ cls: 'cs-tab cs-tab--add' });
+        addTab.textContent = '+';
+        addTab.addEventListener('click', () => this._openAgentPickerModal());
+
+        // ── Token counters (right side, replaces old session controls) ──
+        this._topbarTokensWrap = topbar.createDiv({ cls: 'cs-topbar-tokens' });
+        this._slimBarTokenMain = this._buildTokenRow(this._topbarTokensWrap, 'main');
+        this._slimBarTokenMinion = this._buildTokenRow(this._topbarTokensWrap, 'minion');
+        this._slimBarTokenMaster = this._buildTokenRow(this._topbarTokensWrap, 'master');
+        this._updateSlimBarTokens();
+    }
+
+    /**
+     * Switch to a different agent tab.
+     * Saves current agent state, restores target agent state, re-renders messages.
+     * @param {string} agentName
+     */
+    async _switchTab(agentName) {
+        const currentTab = this.chatTabs.find(t => t.isActive);
+        if (currentTab?.agentName === agentName) return; // already active
+
+        // 1. Save scroll position + state of current agent
+        if (currentTab) {
+            const scrollTop = this.messages_container?.scrollTop || 0;
+            this._agentStates.set(currentTab.agentName, {
+                rollingWindow: this.rollingWindow,
+                tokenTracker: this.tokenTracker,
+                mode: this.currentMode,
+                scrollTop,
+            });
+        }
+
+        // 2. Switch active flag
+        for (const tab of this.chatTabs) {
+            tab.isActive = tab.agentName === agentName;
+        }
+
+        // 3. Switch agent in AgentManager
+        const agentManager = this.plugin?.agentManager;
+        if (agentManager) {
+            agentManager.switchAgent(agentName);
+        }
+
+        // 4. Restore or create state for new agent
+        const stored = this._agentStates.get(agentName);
+        if (stored) {
+            this.rollingWindow = stored.rollingWindow;
+            this.tokenTracker = stored.tokenTracker;
+            this.currentMode = stored.mode;
+        } else {
+            this.rollingWindow = this._createRollingWindow();
+            this.tokenTracker = new TokenTracker();
+            this.currentMode = this._getDefaultMode();
+            this._agentStates.set(agentName, {
+                rollingWindow: this.rollingWindow,
+                tokenTracker: this.tokenTracker,
+                mode: this.currentMode,
+                scrollTop: 0,
+            });
+        }
+
+        // 5. Update UI
+        this._applyModeChange(this.currentMode);
+        this.updatePermissionsBadge();
+        this.renderSkillButtons();
+        this.updateTokenCounter();
+        this._updateTokenPanel();
+
+        // 6. Update agent color on input panel + slim bar
+        const agentRgb = this._getAgentRgb();
+        const bottomPanel = this.container?.querySelector('.cs-input-panel');
+        if (bottomPanel) {
+            bottomPanel.style.setProperty('--cs-agent-color-rgb', agentRgb);
+        }
+        if (this._slimBar) {
+            this._slimBar.style.setProperty('--cs-agent-color-rgb', agentRgb);
+            this._renderSlimBar();
+        }
+
+        // 7. Re-render messages
+        this.render_messages();
+        if (this.rollingWindow.messages.length === 0) {
+            this.add_welcome_message();
+        }
+
+        // 8. Re-render tab bar
+        if (this._tabBarContainer) {
+            this._renderTabBar(this._tabBarContainer);
+        }
+
+        // 9. Restore scroll position
+        if (stored?.scrollTop && this.messages_container) {
+            this.messages_container.scrollTop = stored.scrollTop;
+        }
+    }
+
+    /**
+     * Open the agent picker modal — grid of crystal cards for agents without open tabs.
+     */
+    _openAgentPickerModal() {
+        const agentManager = this.plugin?.agentManager;
+        if (!agentManager) return;
+
+        const allAgents = agentManager.getAllAgents();
+        const openNames = new Set(this.chatTabs.map(t => t.agentName));
+        const available = allAgents.filter(a => !openNames.has(a.name));
+
+        if (available.length === 0) {
+            new Notice('Wszyscy agenci mają otwarte zakładki');
+            return;
+        }
+
+        // Overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'cs-agent-picker-overlay';
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
         });
 
-        // ── BOTTOM: chat-specific actions ──
-        const bottomGroup = this.toolbar.createDiv({ cls: 'pkm-toolbar-bottom' });
+        // Modal
+        const modal = overlay.appendChild(document.createElement('div'));
+        modal.className = 'cs-agent-picker cs-root';
 
-        // Mode selector button (shows active mode icon)
-        const modeInfo = getModeInfo(this.currentMode);
-        this._modeBtn = bottomGroup.createDiv({
-            cls: 'pkm-toolbar-btn pkm-mode-btn',
-            attr: { 'aria-label': `Tryb: ${modeInfo?.label || 'Praca'}` }
-        });
-        this._modeBtn.textContent = modeInfo?.icon || '🔨';
-        this._modeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this._toggleModePopover();
-        });
+        modal.appendChild(document.createElement('div')).className = 'cs-agent-picker__title';
+        modal.querySelector('.cs-agent-picker__title').textContent = 'Wybierz agenta';
+
+        const grid = modal.appendChild(document.createElement('div'));
+        grid.className = 'cs-agent-picker__grid';
+
+        for (const agent of available) {
+            const color = agent.color || pickColor(agent.name).hex;
+
+            const card = grid.appendChild(document.createElement('div'));
+            card.className = 'cs-agent-picker__card';
+            card.style.setProperty('--cs-agent-color-rgb', hexToRgbTriplet(color));
+
+            const crystalDiv = card.appendChild(document.createElement('div'));
+            crystalDiv.className = 'cs-agent-picker__crystal';
+            crystalDiv.innerHTML = CrystalGenerator.generate(agent.name, { size: 32, color });
+
+            const nameDiv = card.appendChild(document.createElement('div'));
+            nameDiv.className = 'cs-agent-picker__name';
+            nameDiv.textContent = agent.name;
+
+            if (agent.role) {
+                const roleDiv = card.appendChild(document.createElement('div'));
+                roleDiv.className = 'cs-agent-picker__role';
+                roleDiv.textContent = agent.role;
+            }
+
+            card.addEventListener('click', () => {
+                // Add new tab and switch to it
+                this.chatTabs.push({ agentName: agent.name, isActive: false });
+                overlay.remove();
+                this._switchTab(agent.name);
+            });
+        }
+
+        document.body.appendChild(overlay);
     }
 
     /**
      * Toggle the mode selector popover.
      */
     _toggleModePopover() {
-        // Close if already open
         if (this._modePopover) {
             this._modePopover.remove();
             this._modePopover = null;
@@ -653,15 +1279,13 @@ export class ChatView extends SmartItemView {
         const modes = getAllModes();
 
         const popover = document.createElement('div');
-        popover.className = 'pkm-mode-popover';
+        popover.className = 'cs-mode-popover';
 
         for (const mode of modes) {
             const item = document.createElement('div');
-            item.className = 'pkm-mode-popover-item';
-            if (mode.id === this.currentMode) {
-                item.classList.add('pkm-mode-active');
-            }
-            item.innerHTML = `<span class="pkm-mode-icon">${mode.icon}</span><span class="pkm-mode-label">${mode.label}</span>`;
+            item.className = 'cs-mode-popover-item';
+            if (mode.id === this.currentMode) item.classList.add('active');
+            item.innerHTML = `<span>${this._getModeIcon(mode.id, 14)}</span><span>${mode.label}</span>`;
             item.addEventListener('click', () => {
                 this._applyModeChange(mode.id);
                 popover.remove();
@@ -670,23 +1294,122 @@ export class ChatView extends SmartItemView {
             popover.appendChild(item);
         }
 
-        // Auto-change indicator
         const autoChange = this.env?.settings?.obsek?.autoChangeMode || 'ask';
         const autoLabels = { off: 'Auto: wył.', ask: 'Auto: pytaj', on: 'Auto: tak' };
         const autoDiv = document.createElement('div');
-        autoDiv.className = 'pkm-mode-popover-auto';
+        autoDiv.className = 'cs-mode-popover-auto';
         autoDiv.textContent = autoLabels[autoChange] || autoLabels.ask;
         popover.appendChild(autoDiv);
 
-        // Position popover above the mode button
-        this.toolbar.appendChild(popover);
+        // Position relative to mode button
+        this._modeBtn.appendChild(popover);
         this._modePopover = popover;
 
-        // Close on outside click
         const closeHandler = (e) => {
             if (!popover.contains(e.target) && !this._modeBtn.contains(e.target)) {
                 popover.remove();
                 this._modePopover = null;
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    }
+
+    _togglePermPopover() {
+        if (this._permPopover) {
+            this._permPopover.remove();
+            this._permPopover = null;
+            return;
+        }
+
+        const agent = this.plugin?.agentManager?.getActiveAgent();
+        if (!agent) return;
+
+        const popover = document.createElement('div');
+        popover.className = 'cs-perm-popover';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'cs-perm-popover__head';
+        header.innerHTML = UiIcons.shield(12) + `<span>Uprawnienia</span>`;
+        popover.appendChild(header);
+
+        // Presets
+        const presets = document.createElement('div');
+        presets.className = 'cs-perm-popover__presets';
+        const PRESETS = {
+            safe:     { label: 'Safe',     icon: UiIcons.lock(11),   perms: { read_notes: true, edit_notes: false, create_files: false, delete_files: false, mcp: false, yolo_mode: false, memory: true, guidance_mode: false } },
+            standard: { label: 'Standard', icon: UiIcons.scales(11), perms: { read_notes: true, edit_notes: true,  create_files: true,  delete_files: false, mcp: true,  yolo_mode: false, memory: true, guidance_mode: false } },
+            full:     { label: 'Full',     icon: UiIcons.rocket(11), perms: { read_notes: true, edit_notes: true,  create_files: true,  delete_files: true,  mcp: true,  yolo_mode: true,  memory: true, guidance_mode: false } },
+        };
+        for (const [key, preset] of Object.entries(PRESETS)) {
+            const btn = document.createElement('button');
+            btn.className = `cs-perm-popover__preset cs-perm-popover__preset--${key}`;
+            btn.innerHTML = `${preset.icon}<span>${preset.label}</span>`;
+            btn.addEventListener('click', () => {
+                agent.update({ default_permissions: preset.perms });
+                this.plugin?.agentManager?.loader?.saveAgent(agent);
+                // Re-render popover to reflect new state
+                this._permPopover?.remove();
+                this._permPopover = null;
+                this._togglePermPopover();
+            });
+            presets.appendChild(btn);
+        }
+        popover.appendChild(presets);
+
+        // Separator
+        const sep = document.createElement('div');
+        sep.className = 'cs-perm-popover__sep';
+        popover.appendChild(sep);
+
+        // Permission rows
+        const PERM_ROWS = [
+            { key: PERMISSION_TYPES.READ_NOTES,    label: 'Czytanie notatek',  icon: UiIcons.eye(11) },
+            { key: PERMISSION_TYPES.EDIT_NOTES,    label: 'Edycja notatek',    icon: UiIcons.edit(11) },
+            { key: PERMISSION_TYPES.CREATE_FILES,  label: 'Tworzenie plików',  icon: UiIcons.file(11) },
+            { key: PERMISSION_TYPES.DELETE_FILES,  label: 'Usuwanie plików',   icon: UiIcons.trash(11) },
+            { key: PERMISSION_TYPES.MCP,           label: 'Narzędzia MCP',     icon: UiIcons.tool(11) },
+            { key: PERMISSION_TYPES.YOLO_MODE,     label: 'YOLO mode',         icon: UiIcons.rocket(11) },
+            { key: 'memory',                        label: 'Pamięć',            icon: UiIcons.brain(11) },
+            { key: 'guidance_mode',                 label: 'Guidance mode',     icon: UiIcons.compass(11) },
+        ];
+
+        for (const row of PERM_ROWS) {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'cs-perm-popover__row';
+
+            const labelEl = document.createElement('div');
+            labelEl.className = 'cs-perm-popover__label';
+            labelEl.innerHTML = `${row.icon}<span>${row.label}</span>`;
+
+            // Crystal toggle
+            const toggle = document.createElement('div');
+            toggle.className = 'cs-perm-toggle' + (agent.permissions[row.key] ? ' cs-perm-toggle--on' : '');
+            const thumb = document.createElement('div');
+            thumb.className = 'cs-perm-toggle__thumb';
+            toggle.appendChild(thumb);
+
+            toggle.addEventListener('click', () => {
+                const newVal = !agent.permissions[row.key];
+                agent.permissions[row.key] = newVal;
+                agent.update({ default_permissions: { ...agent.permissions } });
+                this.plugin?.agentManager?.loader?.saveAgent(agent);
+                toggle.classList.toggle('cs-perm-toggle--on', newVal);
+            });
+
+            rowEl.appendChild(labelEl);
+            rowEl.appendChild(toggle);
+            popover.appendChild(rowEl);
+        }
+
+        this._permBtn.appendChild(popover);
+        this._permPopover = popover;
+
+        const closeHandler = (e) => {
+            if (!popover.contains(e.target) && !this._permBtn.contains(e.target)) {
+                popover.remove();
+                this._permPopover = null;
                 document.removeEventListener('click', closeHandler);
             }
         };
@@ -709,7 +1432,9 @@ export class ChatView extends SmartItemView {
 
         // Header
         const header = panel.createDiv({ cls: 'pkm-artifact-panel-header' });
-        header.createSpan({ text: '📦 Artefakty' });
+        const artifactTitleIcon = header.createSpan({ cls: 'pkm-artifact-panel-title-icon' });
+        artifactTitleIcon.innerHTML = UiIcons.clipboard(16);
+        header.createSpan({ text: ' Artefakty' });
         const closeBtn = header.createEl('button', { cls: 'pkm-artifact-panel-close', text: '×' });
         closeBtn.addEventListener('click', () => this._toggleArtifactPanel());
 
@@ -721,7 +1446,8 @@ export class ChatView extends SmartItemView {
 
         // --- TODO section ---
         if (todoStore?.size > 0) {
-            list.createDiv({ cls: 'pkm-artifact-panel-section', text: '📋 Listy TODO' });
+            const todoSectionTitle = list.createDiv({ cls: 'pkm-artifact-panel-section' });
+            todoSectionTitle.innerHTML = UiIcons.clipboard(14) + ' Listy TODO';
             for (const [id, todo] of todoStore) {
                 hasItems = true;
                 const item = list.createDiv({ cls: 'pkm-artifact-panel-item' });
@@ -753,7 +1479,8 @@ export class ChatView extends SmartItemView {
                 const actions = item.createDiv({ cls: 'pkm-artifact-panel-item-actions' });
 
                 // Copy to vault as markdown
-                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', text: '📄', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                copyBtn.innerHTML = UiIcons.copy(14);
                 copyBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const md = `# ${todo.title}\n\n` + (todo.items || [])
@@ -765,7 +1492,8 @@ export class ChatView extends SmartItemView {
                 });
 
                 // Delete
-                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', text: '🗑️', attr: { 'aria-label': 'Usuń artefakt' } });
+                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', attr: { 'aria-label': 'Usuń artefakt' } });
+                delBtn.innerHTML = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M3,4 V12 A1,1 0 0,0 4,13 H10 A1,1 0 0,0 11,12 V4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2,4 H12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M5,4 V2.5 A0.5,0.5 0 0,1 5.5,2 H8.5 A0.5,0.5 0 0,1 9,2.5 V4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
                 delBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     todoStore.delete(id);
@@ -784,7 +1512,8 @@ export class ChatView extends SmartItemView {
 
         // --- PLAN section ---
         if (planStore?.size > 0) {
-            list.createDiv({ cls: 'pkm-artifact-panel-section', text: '📝 Plany' });
+            const planSectionTitle = list.createDiv({ cls: 'pkm-artifact-panel-section' });
+            planSectionTitle.innerHTML = UiIcons.clipboard(14) + ' Plany';
             for (const [id, plan] of planStore) {
                 hasItems = true;
                 const item = list.createDiv({ cls: 'pkm-artifact-panel-item' });
@@ -792,8 +1521,11 @@ export class ChatView extends SmartItemView {
 
                 const done = plan.steps?.filter(s => s.status === 'done').length || 0;
                 const total = plan.steps?.length || 0;
-                const icon = plan.approved ? '✅' : '📝';
-                info.createSpan({ cls: 'pkm-artifact-panel-item-title', text: `${icon} ${plan.title || 'Plan'}` });
+                const titleSpan = info.createSpan({ cls: 'pkm-artifact-panel-item-title' });
+                const planIconSvg = plan.approved
+                    ? '<svg viewBox="0 0 14 14" width="14" height="14"><polyline points="3,7 6,10 11,4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> '
+                    : UiIcons.clipboard(14) + ' ';
+                titleSpan.innerHTML = planIconSvg + (plan.title || 'Plan');
                 info.createSpan({ cls: 'pkm-artifact-panel-item-progress', text: `${done}/${total}` });
                 if (plan.createdBy) {
                     info.createSpan({ cls: 'pkm-artifact-panel-item-badge', text: plan.createdBy });
@@ -815,7 +1547,8 @@ export class ChatView extends SmartItemView {
                 const actions = item.createDiv({ cls: 'pkm-artifact-panel-item-actions' });
 
                 // Copy to vault as markdown
-                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', text: '📄', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                const copyBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action', attr: { 'aria-label': 'Kopiuj do vaulta' } });
+                copyBtn.innerHTML = UiIcons.copy(14);
                 copyBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     let md = `# ${plan.title}\n\n`;
@@ -837,7 +1570,8 @@ export class ChatView extends SmartItemView {
                 });
 
                 // Delete
-                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', text: '🗑️', attr: { 'aria-label': 'Usuń artefakt' } });
+                const delBtn = actions.createEl('button', { cls: 'pkm-artifact-panel-action pkm-artifact-panel-action-danger', attr: { 'aria-label': 'Usuń artefakt' } });
+                delBtn.innerHTML = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M3,4 V12 A1,1 0 0,0 4,13 H10 A1,1 0 0,0 11,12 V4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2,4 H12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M5,4 V2.5 A0.5,0.5 0 0,1 5.5,2 H8.5 A0.5,0.5 0 0,1 9,2.5 V4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
                 delBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     planStore.delete(id);
@@ -869,6 +1603,13 @@ export class ChatView extends SmartItemView {
     }
 
     handle_input_keydown(e) {
+        // @ mention autocomplete takes priority when open
+        if (this.mentionAutocomplete?.isOpen) {
+            if (['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+                return; // MentionAutocomplete handles these via its own keydown listener
+            }
+        }
+
         // Send on Enter (without Shift)
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -917,6 +1658,188 @@ export class ChatView extends SmartItemView {
         this.input_area.value = '';
         this.input_area.style.height = '40px'; // Reset to min-height
         this.historyIndex = -1;
+    }
+
+    /**
+     * Render an inline ask_user question block with clickable options.
+     * Returns the DOM element. Sets up promise for AskUserTool to await.
+     */
+    _renderAskUserBlock(toolCall, container) {
+        let args = toolCall.arguments;
+        if (typeof args === 'string') {
+            try { args = JSON.parse(args); } catch { args = {}; }
+        }
+        const question = args.question || 'Agent pyta...';
+        const options = args.options || [];
+        const context = args.context || '';
+
+        const block = document.createElement('div');
+        block.addClass('cs-ask-user');
+
+        // Header
+        const head = block.createDiv({ cls: 'cs-ask-user__head' });
+        const iconEl = head.createSpan({ cls: 'cs-ask-user__icon' });
+        iconEl.innerHTML = UiIcons.question(14);
+        head.createSpan({ text: 'Pytanie', cls: 'cs-ask-user__label' });
+
+        // Context
+        if (context) {
+            block.createDiv({ text: context, cls: 'cs-ask-user__context' });
+        }
+
+        // Question
+        block.createDiv({ text: question, cls: 'cs-ask-user__question' });
+
+        // Options
+        const optionsWrap = block.createDiv({ cls: 'cs-ask-user__options' });
+        let selectedOption = null;
+
+        for (const opt of options) {
+            const optBtn = optionsWrap.createEl('button', { text: opt, cls: 'cs-ask-user__opt' });
+            optBtn.addEventListener('click', () => {
+                optionsWrap.querySelectorAll('.cs-ask-user__opt').forEach(b => b.removeClass('selected'));
+                optBtn.addClass('selected');
+                selectedOption = opt;
+                customInput.value = '';
+            });
+        }
+
+        // Custom input
+        const customRow = block.createDiv({ cls: 'cs-ask-user__custom' });
+        const customInput = customRow.createEl('input', {
+            type: 'text',
+            placeholder: 'Własna odpowiedź...',
+            cls: 'cs-ask-user__input'
+        });
+        customInput.addEventListener('input', () => {
+            if (customInput.value.trim()) {
+                optionsWrap.querySelectorAll('.cs-ask-user__opt').forEach(b => b.removeClass('selected'));
+                selectedOption = null;
+            }
+        });
+
+        // Submit
+        const submitBtn = block.createEl('button', { text: 'Odpowiedz', cls: 'cs-ask-user__submit' });
+
+        // Promise for AskUserTool to await
+        let resolveAnswer;
+        this.plugin._askUserPromise = new Promise(resolve => { resolveAnswer = resolve; });
+        this.plugin._askUserResolve = resolveAnswer;
+
+        submitBtn.addEventListener('click', () => {
+            const answer = customInput.value.trim() || selectedOption || (options.length > 0 ? options[0] : 'OK');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Wysłano';
+            customInput.disabled = true;
+            optionsWrap.querySelectorAll('.cs-ask-user__opt').forEach(b => { b.disabled = true; });
+            block.createDiv({ text: `Odpowiedź: ${answer}`, cls: 'cs-ask-user__answer' });
+            if (this.plugin._askUserResolve) {
+                this.plugin._askUserResolve(answer);
+            }
+        });
+
+        return block;
+    }
+
+    /**
+     * Extract text from multimodal content blocks array.
+     * @param {Array} blocks - Content blocks array [{type:'text',text:...}, {type:'image_url',...}]
+     * @returns {string}
+     */
+    _contentBlocksToText(blocks) {
+        if (!Array.isArray(blocks)) return String(blocks || '');
+        return blocks
+            .filter(b => b.type === 'text')
+            .map(b => b.text)
+            .join('\n');
+    }
+
+    /**
+     * Render multimodal user content (text + image thumbnails).
+     * @param {HTMLElement} container
+     * @param {Array} contentBlocks
+     * @param {string} displayText
+     */
+    _renderMultimodalUserContent(container, contentBlocks, displayText) {
+        // Text part
+        container.createEl('p', { text: displayText });
+
+        // Image thumbnails
+        const images = contentBlocks.filter(b => b.type === 'image_url');
+        if (images.length > 0) {
+            const thumbRow = container.createDiv({ cls: 'pkm-attachment-thumbs' });
+            for (const img of images) {
+                const thumbEl = thumbRow.createEl('img', {
+                    cls: 'pkm-attachment-thumb',
+                    attr: {
+                        src: img.image_url.url,
+                        alt: 'Załączony obraz',
+                    },
+                });
+                // Click to view full size
+                thumbEl.addEventListener('click', () => {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'pkm-image-overlay';
+                    const fullImg = overlay.createEl('img', { attr: { src: img.image_url.url } });
+                    overlay.addEventListener('click', () => overlay.remove());
+                    document.body.appendChild(overlay);
+                });
+            }
+        }
+    }
+
+    /**
+     * Resolve @ mentions in user text.
+     * V3: Lightweight references only — no file reading.
+     * Agent decides whether to vault_read or delegate to minion.
+     *
+     * @param {string} text - Raw user input
+     * @returns {Promise<{displayText: string, contextText: string}>}
+     *   displayText: user text with chip labels
+     *   contextText: reference list for agent (paths only, no content)
+     */
+    async _resolveMentions(text) {
+        const mentionChips = this.mentionAutocomplete?.getMentions() || [];
+
+        if (mentionChips.length === 0) {
+            return { displayText: text, contextText: '' };
+        }
+
+        const refs = [];
+
+        for (const m of mentionChips) {
+            try {
+                // Check AccessGuard
+                const { AccessGuard } = await import('../core/AccessGuard.js');
+                if (AccessGuard._isNoGo && AccessGuard._isNoGo(m.path)) {
+                    log.warn('MentionResolve', `No-Go zone: ${m.path}`);
+                    continue;
+                }
+
+                if (m.type === 'folder') {
+                    const folder = this.app.vault.getAbstractFileByPath(m.path);
+                    const fileCount = folder?.children?.filter(f => f.extension === 'md').length || 0;
+                    refs.push(`- 📁 Folder: "${m.path}" (${fileCount} notatek)`);
+                } else {
+                    let file = this.app.vault.getAbstractFileByPath(m.path);
+                    if (!file) file = this.app.vault.getAbstractFileByPath(m.path + '.md');
+                    const size = file?.stat?.size ? `${Math.round(file.stat.size / 1024)}KB` : '?';
+                    refs.push(`- 📄 Notatka: "${file?.path || m.path}" (${size})`);
+                }
+            } catch (err) {
+                log.error('MentionResolve', `Błąd dla ${m.path}:`, err);
+            }
+        }
+
+        // displayText = raw user text (with inline @[Name] markers visible)
+        const displayText = text;
+
+        // Build lightweight context — agent reads content via vault_read when needed
+        const contextText = refs.length > 0
+            ? `User wskazał następujące pliki/foldery (użyj vault_read żeby przeczytać potrzebne, lub oddeleguj minionowi):\n${refs.join('\n')}`
+            : '';
+
+        return { displayText, contextText };
     }
 
     /**
@@ -1008,8 +1931,9 @@ export class ChatView extends SmartItemView {
         const timeoutMs = (this.env?.settings?.sessionTimeoutMinutes || 30) * 60 * 1000;
         if (this.lastMessageTimestamp && this.rollingWindow.messages.length > 0) {
             if (Date.now() - this.lastMessageTimestamp > timeoutMs) {
-                await this.consolidateSession();
-                if (this.sessionManager) this.sessionManager.startNewSession();
+                await this.handleSaveSession();
+                const agentMem = this.plugin?.agentManager?.getActiveMemory();
+                if (agentMem) agentMem.startNewSession();
                 this.rollingWindow = this._createRollingWindow();
                 this.render_messages();
                 this.add_welcome_message();
@@ -1032,6 +1956,35 @@ export class ChatView extends SmartItemView {
                 this.resetInputArea();
                 return;
             }
+            if (command === '/memory') {
+                if (this.rollingWindow.messages.length >= 2) {
+                    new Notice('Konsolidacja pamięci...');
+                    await this.consolidateSession();
+                    new Notice('Pamięć zapisana!');
+                } else {
+                    new Notice('Za mało wiadomości do konsolidacji');
+                }
+                this.resetInputArea();
+                return;
+            }
+            if (command === '/compress') {
+                if (this.rollingWindow.messages.length >= 4) {
+                    const result = await this.rollingWindow.performTwoPhaseCompression(false);
+                    this.updateTokenCounter();
+                    this._updateTokenPanel();
+                    if (result.summarized) {
+                        new Notice(`Kompresja #${this.rollingWindow.summarizationCount} (skrócono ${result.trimmed} wyników + sumaryzacja)`);
+                    } else if (result.trimmed > 0) {
+                        new Notice(`Skrócono ${result.trimmed} wyników narzędzi`);
+                    } else {
+                        new Notice('Kontekst poniżej progu kompresji');
+                    }
+                } else {
+                    new Notice('Za mało wiadomości do kompresji');
+                }
+                this.resetInputArea();
+                return;
+            }
         }
 
         // Add to history (max 20)
@@ -1040,19 +1993,34 @@ export class ChatView extends SmartItemView {
             this.inputHistory.shift();
         }
 
-        // Clear input
-        this.resetInputArea();
+        // Resolve @ mentions ONCE, before any clearing (fixes bug: mentions lost when no attachments)
+        const { displayText: mentionDisplayText, contextText: mentionContextText } = await this._resolveMentions(text);
 
-        // Add user message
-        await this.append_message('user', text);
+        // Capture attachments before clearing
+        const hasAttachments = this.attachmentManager?.hasAttachments();
+        let attachmentResult = null;
+        if (hasAttachments) {
+            const textWithMentions = mentionContextText ? mentionContextText + '\n\n' + mentionDisplayText : mentionDisplayText;
+            attachmentResult = this.attachmentManager.buildMessageContent(textWithMentions);
+        }
+
+        // Clear input + attachments + mention chips
+        this.resetInputArea();
+        if (hasAttachments) this.attachmentManager.clear();
+        if (this.mentionAutocomplete?.hasMentions()) this.mentionAutocomplete.clear();
+
+        if (hasAttachments && attachmentResult) {
+            // Attachments present: content may be array (multimodal) or string
+            // Display: user's text with @[Name] badges (no mention metadata)
+            await this.append_message('user', attachmentResult.content, mentionDisplayText);
+        } else {
+            // No attachments: API gets mention context, display shows only user text
+            const apiContent = mentionContextText ? mentionContextText + '\n\n' + mentionDisplayText : mentionDisplayText;
+            await this.append_message('user', apiContent, mentionContextText ? mentionDisplayText : undefined);
+        }
 
         // Toggle UI state
         this.set_generating(true);
-
-        // Ensure RAG is initialized (lazy init - waits for embed model)
-        const t0 = Date.now();
-        await this.ensureRAGInitialized();
-        log.timing('Chat', 'ensureRAGInitialized', t0);
 
         // Get system prompt from active agent (includes memory: brain + active context)
         const agentManager = this.plugin?.agentManager;
@@ -1088,89 +2056,8 @@ export class ChatView extends SmartItemView {
             }
         }
 
-        // RAG: Retrieve relevant context before preparing request
-        if (this.ragRetriever) {
-            const t2 = Date.now();
-            try {
-                const ragResults = await this.ragRetriever.retrieve(text);
-                if (ragResults.length > 0) {
-                    log.timing('Chat', `RAG: ${ragResults.length} wyników`, t2);
-                    const context = this.ragRetriever.formatContext(ragResults);
-                    const currentBase = this.rollingWindow.baseSystemPrompt || '';
-                    this.rollingWindow.setSystemPrompt(
-                        `${currentBase}\n\n--- Relevantny kontekst z poprzednich rozmów ---\n${context}`
-                    );
-                } else {
-                    log.timing('Chat', 'RAG: brak wyników', t2);
-                }
-            } catch (ragError) {
-                log.warn('Chat', 'RAG retrieval failed:', ragError);
-                log.timing('Chat', 'RAG FAILED', t2);
-            }
-        }
-
-        // === MINION AUTO-PREP (first message in session, toggle in settings) ===
+        // Auto-prep usunięty (v1.1.0) — agent sam decyduje kiedy pytać miniona via minion_task
         const activeAgent = this.plugin?.agentManager?.getActiveAgent();
-        const autoPrepEnabled = this.env?.settings?.obsek?.autoPrepEnabled !== false; // default: true
-        if (autoPrepEnabled && activeAgent?.minionEnabled !== false && activeAgent?.minion) {
-            const isFirstMessage = this.rollingWindow.messages.filter(m => m.role === 'user').length <= 1;
-            if (isFirstMessage) {
-                const t3 = Date.now();
-                const minionConfig = this.plugin?.agentManager?.minionLoader?.getMinion(activeAgent.minion);
-                if (minionConfig) {
-                    const minionModel = this._getMinionModel(activeAgent, minionConfig);
-                    const prepModel = minionModel || this.get_chat_model?.();
-                    if (prepModel?.stream && this.plugin?.toolRegistry) {
-                        try {
-                            // Show pending SubAgentBlock during minion work
-                            this.showTypingIndicator('🤖 Przygotowanie kontekstu...');
-
-                            if (!this._minionRunner) {
-                                const { MinionRunner } = await import('../core/MinionRunner.js');
-                                this._minionRunner = new MinionRunner({
-                                    toolRegistry: this.plugin.toolRegistry,
-                                    app: this.app,
-                                    plugin: this.plugin
-                                });
-                            }
-                            const prepResult = await this._minionRunner.runAutoPrep(
-                                text, activeAgent, minionConfig, prepModel,
-                                { workMode: this.currentMode }
-                            );
-                            log.timing('Chat', 'Minion auto-prep', t3);
-                            // Track minion auto-prep tokens: prefer API, fallback to text estimate
-                            const prepInput = prepResult.usage?.prompt_tokens || countTokens(text);
-                            const prepOutput = prepResult.usage?.completion_tokens || countTokens(prepResult.context || '');
-                            if (prepInput > 0 || prepOutput > 0) {
-                                this.tokenTracker.record('minion', prepInput, prepOutput);
-                                this._updateTokenPanel();
-                            }
-                            // Store auto-prep data — will be rendered INSIDE assistant bubble in handle_chunk
-                            if (prepResult.toolsUsed?.length > 0 || prepResult.usage || prepResult.context) {
-                                this._autoPrepData = {
-                                    type: 'auto-prep',
-                                    toolsUsed: prepResult.toolsUsed,
-                                    toolCallDetails: prepResult.toolCallDetails || [],
-                                    duration: prepResult.duration,
-                                    usage: prepResult.usage,
-                                    response: prepResult.context || '',
-                                };
-                            }
-                            if (prepResult.context && prepResult.context !== 'Brak dodatkowego kontekstu.') {
-                                const currentBase = this.rollingWindow.baseSystemPrompt || '';
-                                this.rollingWindow.setSystemPrompt(
-                                    `${currentBase}\n\n--- Kontekst przygotowany przez miniona ---\n${prepResult.context}\n--- Koniec kontekstu miniona ---`
-                                );
-                            }
-                        } catch (minionError) {
-                            log.timing('Chat', 'Minion auto-prep FAILED', t3);
-                            console.warn('[Obsek] Minion auto-prep failed (non-fatal):', minionError);
-                        }
-                    }
-                }
-            }
-        }
-        // === END MINION AUTO-PREP ===
 
         // === SNAPSHOT for "Pokaż prompt" in Settings ===
         if (this.plugin) {
@@ -1181,7 +2068,7 @@ export class ChatView extends SmartItemView {
                 timestamp: Date.now(),
                 mode: this.currentMode,
                 agentName: activeAgent?.name || '',
-                agentEmoji: activeAgent?.emoji || '',
+                agentEmoji: '',
             };
         }
 
@@ -1215,6 +2102,13 @@ export class ChatView extends SmartItemView {
             log.debug('Chat', `Tools: ${tools.length} narzędzi (mode: ${this.currentMode}, filtered: ${!!enabled?.length})`);
         }
 
+        // Cache tool definitions token count w RollingWindow (do dokładnego liczenia kontekstu)
+        if (tools.length > 0) {
+            this.rollingWindow.setToolDefinitionsTokens(countTokens(JSON.stringify(tools)));
+        } else {
+            this.rollingWindow.setToolDefinitionsTokens(0);
+        }
+
         try {
             // Get or create chat model
             const chat_model = this.get_chat_model();
@@ -1224,10 +2118,15 @@ export class ChatView extends SmartItemView {
             log.timing('Chat', `TOTAL send→stream (model: ${chat_model.model_key || 'unknown'}, msgs: ${messages.length}, tools: ${tools.length})`, sendStart);
 
             // Count input tokens from text (always works, no API dependency)
-            const inputText = messages.map(m => m.content || '').join('\n');
+            const inputText = messages.map(m => {
+                if (typeof m.content === 'string') return m.content;
+                if (Array.isArray(m.content)) return m.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+                return '';
+            }).join('\n');
             this._lastInputTokens = countTokens(inputText);
 
             // Start streaming with tools
+            this._agentHeaderShown = false;
             this.showTypingIndicator();
             await chat_model.stream(
                 { messages, tools: tools.length > 0 ? tools : undefined },
@@ -1247,28 +2146,31 @@ export class ChatView extends SmartItemView {
     handle_chunk(response) {
         this.hideTypingIndicator();
         if (!this.current_message_container) {
-            // Create assistant message container
+            // Create .cs-message--agent container
+            const streamAgent = this.plugin?.agentManager?.getActiveAgent();
+            const streamColor = streamAgent?.color || pickColor(streamAgent?.name || 'default').hex;
+            const agentName = streamAgent?.name || 'Agent';
+
             this.current_message_container = this.messages_container.createDiv({
-                cls: 'pkm-chat-message assistant'
+                cls: 'cs-message cs-message--agent'
             });
+            this.current_message_container.style.setProperty('--cs-agent-color-rgb', hexToRgbTriplet(streamColor));
 
-            // Message row (avatar + bubble)
-            const row = this.current_message_container.createDiv({ cls: 'pkm-chat-message-row' });
-
-            const emoji = this.plugin?.agentManager?.getActiveAgent()?.emoji || '🤖';
-            row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
-
-            this.current_message_bubble = row.createDiv({ cls: 'pkm-chat-bubble streaming' });
-
-            // Insert auto-prep SubAgentBlock INSIDE the bubble (stays with the message)
-            if (this._autoPrepData) {
-                const subBlock = createSubAgentBlock(this._autoPrepData);
-                this.current_message_bubble.appendChild(subBlock);
-                this._autoPrepData = null;
+            // Agent header (crystal + name) — only once per agent turn
+            if (!this._agentHeaderShown) {
+                const head = this.current_message_container.createDiv({ cls: 'cs-message__agent-head' });
+                const crystalEl = head.createDiv({ cls: 'cs-message__agent-crystal' });
+                crystalEl.innerHTML = CrystalGenerator.generate(agentName, { size: 18, color: streamColor, glow: false });
+                head.createSpan({ cls: 'cs-message__agent-name', text: agentName });
+                this._agentHeaderShown = true;
             }
 
-            this.current_message_text = this.current_message_bubble.createDiv({
-                cls: 'pkm-chat-content'
+            // Tool calls wrapper (actions will be inserted here)
+            this.current_message_bubble = this.current_message_container.createDiv({ cls: 'cs-tool-calls-wrapper' });
+
+            // Text content area
+            this.current_message_text = this.current_message_container.createDiv({
+                cls: 'cs-message__text'
             });
         }
 
@@ -1276,14 +2178,15 @@ export class ChatView extends SmartItemView {
         const content = response?.choices?.[0]?.message?.content || '';
         const reasoningContent = response?.choices?.[0]?.message?.reasoning_content || '';
 
-        // Render thinking block if reasoning_content present and setting enabled
+        // Render thinking block if reasoning_content present
         const showThinking = this.env?.settings?.obsek?.showThinking ?? true;
         if (showThinking && reasoningContent.length > 0) {
             if (!this._currentThinkingBlock) {
                 this._currentThinkingBlock = createThinkingBlock(reasoningContent, true);
-                this.current_message_bubble.insertBefore(
+                // Insert thinking row BEFORE tool calls wrapper (correct order: thinking → tools → text)
+                this.current_message_container.insertBefore(
                     this._currentThinkingBlock,
-                    this.current_message_text
+                    this.current_message_bubble
                 );
             } else {
                 updateThinkingBlock(this._currentThinkingBlock, reasoningContent);
@@ -1331,6 +2234,8 @@ export class ChatView extends SmartItemView {
         const toolCalls = this.plugin?.mcpClient?.parseToolCalls(response) || [];
 
         // Also check direct tool_calls on response (OpenAI format)
+        // Note: parseToolCalls already handles choices[0].message.tool_calls and splits concatenated calls.
+        // This fallback is for response objects with tool_calls directly on root (rare).
         if (response?.tool_calls?.length > 0) {
             for (const tc of response.tool_calls) {
                 toolCalls.push({
@@ -1341,51 +2246,83 @@ export class ChatView extends SmartItemView {
             }
         }
 
+        // Safety: run split on all collected calls via MCPClient (handles DeepSeek concatenation)
+        if (this.plugin?.mcpClient?._trySplitConcatenatedToolCall && toolCalls.length > 0) {
+            const expanded = [];
+            for (const tc of toolCalls) {
+                expanded.push(...this.plugin.mcpClient._trySplitConcatenatedToolCall(tc));
+            }
+            toolCalls.length = 0;
+            toolCalls.push(...expanded);
+        }
+
         // Check for tool calls in response
         if (toolCalls.length > 0) {
             log.info('Chat', `Tool calls: ${toolCalls.length} → ${toolCalls.map(tc => tc.name).join(', ')}`);
 
-            // Ensure we have a container
+            // Ensure we have a container (CS agent message)
             if (!this.current_message_container) {
+                const streamAgent = this.plugin?.agentManager?.getActiveAgent();
+                const streamColor = streamAgent?.color || pickColor(streamAgent?.name || 'default').hex;
+                const agName = streamAgent?.name || 'Agent';
+
                 this.current_message_container = this.messages_container.createDiv({
-                    cls: 'pkm-chat-message assistant'
+                    cls: 'cs-message cs-message--agent'
                 });
+                this.current_message_container.style.setProperty('--cs-agent-color-rgb', hexToRgbTriplet(streamColor));
+
+                if (!this._agentHeaderShown) {
+                    const head = this.current_message_container.createDiv({ cls: 'cs-message__agent-head' });
+                    const crystalEl = head.createDiv({ cls: 'cs-message__agent-crystal' });
+                    crystalEl.innerHTML = CrystalGenerator.generate(agName, { size: 18, color: streamColor, glow: false });
+                    head.createSpan({ cls: 'cs-message__agent-name', text: agName });
+                    this._agentHeaderShown = true;
+                }
+
+                this.current_message_bubble = this.current_message_container.createDiv({ cls: 'cs-tool-calls-wrapper' });
+                this.current_message_text = this.current_message_container.createDiv({ cls: 'cs-message__text' });
             }
 
-            const toolCallsContainer = this.current_message_container.createDiv({ cls: 'tool-calls-wrapper' });
-            toolCallsContainer.style.width = '100%';
-            toolCallsContainer.style.marginTop = '8px';
+            // Use existing tool calls wrapper or create one
+            const toolCallsContainer = this.current_message_bubble || this.current_message_container.createDiv({ cls: 'cs-tool-calls-wrapper' });
 
             const toolResults = [];
             const agentName = this.plugin?.agentManager?.getActiveAgent()?.name || 'unknown';
 
-            // Tool status messages in Polish
+            // Tool status messages in Polish (no emoji)
             const TOOL_STATUS = {
-                vault_search: '🔍 Szukam w vaultcie...',
-                vault_read: '📖 Czytam notatkę...',
-                vault_list: '📁 Przeglądam foldery...',
-                vault_write: '✏️ Zapisuję...',
-                vault_delete: '🗑️ Usuwam...',
-                memory_search: '🧠 Przeszukuję pamięć...',
-                memory_update: '🧠 Aktualizuję pamięć...',
-                memory_status: '🧠 Sprawdzam pamięć...',
-                skill_list: '📚 Sprawdzam umiejętności...',
-                skill_execute: '🎯 Aktywuję skill...',
-                minion_task: '🔧 Delegowanie do miniona...',
-                master_task: '🧠 Konsultuje z ekspertem...',
-                chat_todo: '📋 Aktualizuję listę zadań...',
-                plan_action: '📋 Aktualizuję plan...',
+                vault_search: 'Szukam w vaultcie...',
+                vault_read: 'Czytam notatkę...',
+                vault_list: 'Przeglądam foldery...',
+                vault_write: 'Zapisuję...',
+                vault_delete: 'Usuwam...',
+                memory_search: 'Przeszukuję pamięć...',
+                memory_update: 'Aktualizuję pamięć...',
+                memory_status: 'Sprawdzam pamięć...',
+                skill_list: 'Sprawdzam umiejętności...',
+                skill_execute: 'Aktywuję skill...',
+                minion_task: 'Delegowanie do miniona...',
+                master_task: 'Konsultuje z ekspertem...',
+                chat_todo: 'Aktualizuję listę zadań...',
+                plan_action: 'Aktualizuję plan...',
             };
 
             // ── PHASE 1: Create ALL pending UI blocks (sync) ──
             const pendingEntries = toolCalls.map(toolCall => {
                 const isSubAgent = toolCall.name === 'minion_task' || toolCall.name === 'master_task';
+                const isAskUser = toolCall.name === 'ask_user';
                 let toolDisplay;
-                if (isSubAgent) {
+                if (isAskUser) {
+                    // Render inline question block with clickable options
                     this.hideTypingIndicator();
-                    toolDisplay = createPendingSubAgentBlock(toolCall.name);
+                    toolDisplay = this._renderAskUserBlock(toolCall, toolCallsContainer);
+                } else if (isSubAgent) {
+                    this.hideTypingIndicator();
+                    const _subArgs = typeof toolCall.arguments === 'string' ? (() => { try { return JSON.parse(toolCall.arguments); } catch { return {}; } })() : (toolCall.arguments || {});
+                    const _subName = _subArgs.minion || _subArgs.master || '';
+                    toolDisplay = createPendingSubAgentBlock(toolCall.name, _subName);
                 } else {
-                    const statusMsg = TOOL_STATUS[toolCall.name] || `🔧 ${toolCall.name}...`;
+                    const statusMsg = TOOL_STATUS[toolCall.name] || `${toolCall.name}...`;
                     this.showTypingIndicator(statusMsg);
                     toolDisplay = createToolCallDisplay({
                         name: toolCall.name,
@@ -1394,7 +2331,7 @@ export class ChatView extends SmartItemView {
                     });
                 }
                 toolCallsContainer.appendChild(toolDisplay);
-                if (isSubAgent) toolDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                if (isSubAgent || isAskUser) toolDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 return { toolCall, toolDisplay, isSubAgent };
             });
 
@@ -1430,9 +2367,11 @@ export class ChatView extends SmartItemView {
                         }));
                     }
                 } else if (isSubAgent && result?.success) {
-                    const taskQuery = typeof toolCall.arguments === 'string'
-                        ? (() => { try { return JSON.parse(toolCall.arguments).task; } catch { return toolCall.arguments; } })()
-                        : toolCall.arguments?.task || '';
+                    const _saArgs = typeof toolCall.arguments === 'string'
+                        ? (() => { try { return JSON.parse(toolCall.arguments); } catch { return {}; } })()
+                        : (toolCall.arguments || {});
+                    const taskQuery = _saArgs.task || '';
+                    const _saName = _saArgs.minion || _saArgs.master || '';
                     const role = toolCall.name === 'minion_task' ? 'minion' : 'master';
 
                     const subInput = result.usage?.prompt_tokens || countTokens(taskQuery);
@@ -1444,6 +2383,7 @@ export class ChatView extends SmartItemView {
 
                     const fullBlock = createSubAgentBlock({
                         type: toolCall.name,
+                        agentName: _saName,
                         query: taskQuery,
                         response: typeof result.result === 'string' ? result.result : '',
                         toolsUsed: result.tools_used || [],
@@ -1454,9 +2394,13 @@ export class ChatView extends SmartItemView {
                     toolDisplay.replaceWith(fullBlock);
                     fullBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 } else if (isSubAgent && !result?.success) {
+                    const _saErrArgs = typeof toolCall.arguments === 'string'
+                        ? (() => { try { return JSON.parse(toolCall.arguments); } catch { return {}; } })()
+                        : (toolCall.arguments || {});
                     const errorBlock = createSubAgentBlock({
                         type: toolCall.name,
-                        query: typeof toolCall.arguments === 'string' ? toolCall.arguments : toolCall.arguments?.task || '',
+                        agentName: _saErrArgs.minion || _saErrArgs.master || '',
+                        query: _saErrArgs.task || '',
                         response: `Błąd: ${result?.error || 'Nieznany błąd'}`,
                         duration: 0,
                     });
@@ -1533,10 +2477,9 @@ export class ChatView extends SmartItemView {
 
                     if (!result?.isError && writePath) {
                         const linkDiv = document.createElement('div');
-                        linkDiv.addClass('pkm-vault-link');
+                        linkDiv.addClass('cs-vault-link');
                         const link = document.createElement('a');
-                        link.addClass('pkm-vault-link-anchor');
-                        link.textContent = `📄 ${writePath}`;
+                        link.innerHTML = UiIcons.file(14) + ` ${writePath}`;
                         link.href = '#';
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
@@ -1555,9 +2498,18 @@ export class ChatView extends SmartItemView {
             }
 
             // Save assistant message with tool calls to history
-            // MUST include tool_calls for Anthropic, reasoning_content for DeepSeek Reasoner
-            const rawToolCalls = response?.choices?.[0]?.message?.tool_calls || [];
-            const toolMsgMeta = { tool_calls: rawToolCalls };
+            // MUST use PARSED toolCalls (not raw response!) because raw may have concatenated
+            // names from DeepSeek Reasoner (e.g. "minion_taskminion_task" → 2 separate calls).
+            // The tool_call IDs must match the tool_call_ids in tool result messages.
+            const apiToolCalls = toolCalls.map(tc => ({
+                id: tc.id,
+                type: 'function',
+                function: {
+                    name: tc.name,
+                    arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments)
+                }
+            }));
+            const toolMsgMeta = { tool_calls: apiToolCalls };
             if (reasoningContent) {
                 toolMsgMeta.reasoning_content = reasoningContent;
             }
@@ -1590,21 +2542,19 @@ export class ChatView extends SmartItemView {
         }
 
 
-        // No tool calls - normal completion
+        // No tool calls - normal completion (TASK COMPLETE)
         log.info('Chat', `Odpowiedź GOTOWA: ${content.length} znaków (bez tool calls)`);
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
         const idx = this.rollingWindow.messages.length; // Will be the index after adding
-        this.rollingWindow.addMessage('assistant', content, { timestamp });
+        await this.rollingWindow.addMessage('assistant', content, { timestamp });
         this.updateTokenCounter();
 
         // Add timestamp and actions to the streamed message
         if (this.current_message_container) {
-            // Add actions toolbar to the bubble
-            const actionsDiv = this.current_message_bubble.createDiv({ cls: 'pkm-chat-actions' });
-            this.addMessageActions(actionsDiv, content, 'assistant', idx);
-
-            // Add timestamp below the message
-            this.current_message_container.createDiv({ cls: 'pkm-chat-timestamp', text: timestamp });
+            // Add meta bar (hover: timestamp + actions)
+            const meta = this.current_message_container.createDiv({ cls: 'cs-message__meta' });
+            meta.createSpan({ text: timestamp });
+            this.addMessageActions(meta, content, 'assistant', idx);
 
             // Render delegation button if pending
             if (this._pendingDelegation) {
@@ -1633,6 +2583,30 @@ export class ChatView extends SmartItemView {
         this.current_message_bubble = null;
         this.current_message_text = null;
         this.set_generating(false);
+
+        // DWUFAZOWA KOMPRESJA PO zakończeniu taska (jak Claude Code):
+        // Faza 1: skróć stare wyniki narzędzi (darmowe, bez API call)
+        // Faza 2: pełna sumaryzacja (drogie) — tylko jeśli Faza 1 nie wystarczyła
+        const compressionNeeded = this.rollingWindow.getCompressionNeeded();
+        if (compressionNeeded !== 'none') {
+            log.info('Chat', `Kompresja (${compressionNeeded}) — kontekst: ${this.rollingWindow.getCurrentTokenCount()} / ${this.rollingWindow.maxTokens} tokenów`);
+
+            if (compressionNeeded === 'summarize') {
+                // Faza 2 będzie potrzebna — zapisz pełną rozmowę przed sumaryzacją
+                await this.handleSaveSession();
+                const sessionPath = this.plugin?.agentManager?.getActiveMemory()?.activeSessionPath || '';
+                this.rollingWindow.sessionPath = sessionPath;
+            }
+
+            const result = await this.rollingWindow.performTwoPhaseCompression(false);
+
+            if (result.trimmed > 0 && !result.summarized) {
+                log.info('Chat', `Faza 1 wystarczyła: skrócono ${result.trimmed} wyników, bez API call`);
+            }
+
+            this.updateTokenCounter();
+            this._updateTokenPanel();
+        }
     }
 
     /**
@@ -1643,30 +2617,24 @@ export class ChatView extends SmartItemView {
     _renderDelegationButton(container, data) {
         const div = container.createDiv({ cls: 'pkm-delegation-proposal' });
         div.createEl('p', {
-            text: data.reason || `Proponuję przekazać rozmowę do ${data.to_emoji} ${data.to_name}`,
+            text: data.reason || `Proponuję przekazać rozmowę do ${data.to_name}`,
             cls: 'pkm-delegation-reason'
         });
         const btn = div.createEl('button', {
-            text: `Przejdź do ${data.to_emoji} ${data.to_name}`,
-            cls: 'pkm-delegation-btn mod-cta'
+            text: `Przejdź do ${data.to_name}`,
+            cls: 'pkm-delegation-btn'
         });
         btn.addEventListener('click', async () => {
             btn.disabled = true;
             btn.textContent = 'Przełączam...';
-            // Consolidate current session before switching
+            // Tylko zapisz sesję — BEZ konsolidacji (v1.1.0)
             if (this.rollingWindow.messages.length > 0) {
-                await this.consolidateSession();
+                await this.handleSaveSession();
             }
-            const switched = this.plugin.agentManager?.switchAgent(data.to_agent);
+            // Use tab system for agent switch
+            await this.handleAgentChange(data.to_agent);
+            const switched = !!this.plugin.agentManager?.getActiveAgent();
             if (switched) {
-                const agentMemory = this.plugin.agentManager.getActiveMemory();
-                agentMemory?.startNewSession();
-                this.rollingWindow = this._createRollingWindow();
-                this.render_messages();
-                this.updateAgentDropdown?.();
-                this.updatePermissionsBadge();
-                this.renderSkillButtons();
-                await this.updateSessionDropdown();
 
                 // Auto-send delegation context as first message
                 const delegationMsg = data.context_summary
@@ -1714,12 +2682,12 @@ export class ChatView extends SmartItemView {
         this.currentMode = newMode;
         // Sync to plugin for cross-component access (e.g. MinionTaskTool)
         if (this.plugin) this.plugin.currentWorkMode = newMode;
-        // Update toolbar mode button if it exists
+        // Update mode button in input bar
         if (this._modeBtn) {
-            this._modeBtn.textContent = info.icon;
+            this._modeBtn.innerHTML = this._getModeIcon(newMode, 12) + `<span>${info.label}</span>`;
             this._modeBtn.setAttribute('aria-label', `Tryb: ${info.label}`);
         }
-        new Notice(`Tryb: ${info.icon} ${info.label}`);
+        new Notice(`Tryb: ${info.label}`);
         log.info('Chat', `Mode changed → ${newMode}`);
     }
 
@@ -1729,19 +2697,23 @@ export class ChatView extends SmartItemView {
      * @param {Object} data - { mode, label, icon, reason }
      */
     _renderModeChangeButton(container, data) {
+        const modeInfo = getModeInfo(data.mode);
+        const label = data.label || modeInfo?.label || data.mode;
         const div = container.createDiv({ cls: 'pkm-mode-proposal' });
         div.createEl('p', {
-            text: data.reason || `Proponuję zmianę trybu na ${data.icon} ${data.label}`,
+            text: data.reason || `Proponuję zmianę trybu na ${label}`,
             cls: 'pkm-mode-proposal-reason'
         });
-        const btn = div.createEl('button', {
-            text: `Przełącz na ${data.icon} ${data.label}`,
-            cls: 'pkm-mode-proposal-btn mod-cta'
-        });
+        const btn = div.createEl('button', { cls: 'pkm-mode-proposal-btn' });
+        btn.innerHTML = `${this._getModeIcon(data.mode, 12)}<span>Przełącz na ${label}</span>`;
         btn.addEventListener('click', () => {
             btn.disabled = true;
-            btn.textContent = 'Zmieniono!';
+            btn.innerHTML = `<span>Zmieniono!</span>`;
             this._applyModeChange(data.mode);
+            // Auto-continue: budzimy agenta żeby kontynuował poprzednie zadanie
+            const confirmedLabel = modeInfo?.label || label;
+            this.input_area.value = `[System] Tryb zmieniony na "${confirmedLabel}". Kontynuuj poprzednie zadanie.`;
+            setTimeout(() => this.send_message(), 300);
         });
     }
 
@@ -1777,6 +2749,11 @@ export class ChatView extends SmartItemView {
             }
         }
 
+        // Update tool definitions token count for continuation calls
+        if (tools.length > 0) {
+            this.rollingWindow.setToolDefinitionsTokens(countTokens(JSON.stringify(tools)));
+        }
+
         try {
             const chat_model = this.get_chat_model();
             if (!chat_model?.stream) {
@@ -1810,10 +2787,11 @@ export class ChatView extends SmartItemView {
             });
         } else {
             const error_msg = this.messages_container.createDiv({
-                cls: 'pkm-chat-message assistant'
+                cls: 'cs-message cs-message--agent'
             });
-            const bubble = error_msg.createDiv({ cls: 'pkm-chat-bubble pkm-chat-error' });
-            bubble.createEl('p', { text: `Error: ${error.message || 'Unknown error occurred'}` });
+            error_msg.style.setProperty('--cs-agent-color-rgb', this._getAgentRgb());
+            const textDiv = error_msg.createDiv({ cls: 'cs-message__text' });
+            textDiv.createEl('p', { text: `Error: ${error.message || 'Unknown error occurred'}`, cls: 'pkm-chat-error' });
         }
 
         this.set_generating(false);
@@ -1826,45 +2804,55 @@ export class ChatView extends SmartItemView {
         this.set_generating(false);
     }
 
-    async append_message(role, content) {
+    /**
+     * Append a message to chat history and render it.
+     * @param {string} role - 'user' | 'assistant'
+     * @param {string|Array} content - Text string or multimodal content blocks array
+     * @param {string} [displayText] - Optional display text for UI (when content is array)
+     */
+    async append_message(role, content, displayText) {
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 
         // Add to history with timestamp
         await this.rollingWindow.addMessage(role, content, { timestamp });
         this.updateTokenCounter();
 
-        // Render in UI
-        const message_div = this.messages_container.createDiv({
-            cls: `pkm-chat-message ${role}`
-        });
-
-        // Message row (avatar + bubble)
-        const row = message_div.createDiv({ cls: 'pkm-chat-message-row' });
-
-        // Avatar for assistant only
-        if (role === 'assistant') {
-            const emoji = this.plugin?.agentManager?.getActiveAgent()?.emoji || '🤖';
-            row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
-        }
-
-        const bubble = row.createDiv({ cls: 'pkm-chat-bubble' });
-
-        // Actions toolbar (will be populated by addMessageActions)
-        const actionsDiv = bubble.createDiv({ cls: 'pkm-chat-actions' });
-
-        const content_div = bubble.createDiv({ cls: 'pkm-chat-content' });
+        // Determine what to show in UI vs what goes to API
+        const uiText = displayText || (typeof content === 'string' ? content : this._contentBlocksToText(content));
+        const activeAgent = this.plugin?.agentManager?.getActiveAgent();
+        const agentColor = activeAgent?.color || pickColor(activeAgent?.name || 'default').hex;
+        const agentRgb = hexToRgbTriplet(agentColor);
+        const idx = this.rollingWindow.messages.length - 1;
 
         if (role === 'user') {
-            content_div.createEl('p', { text: content });
+            const userDiv = this.messages_container.createDiv({ cls: 'cs-message cs-message--user' });
+            userDiv.style.setProperty('--cs-agent-color-rgb', agentRgb);
+            const textDiv = userDiv.createDiv({ cls: 'cs-message__text' });
+            if (Array.isArray(content)) {
+                this._renderMultimodalUserContent(textDiv, content, uiText);
+            } else {
+                this._renderUserText(textDiv, uiText);
+            }
+            const meta = userDiv.createDiv({ cls: 'cs-message__meta' });
+            meta.createSpan({ text: timestamp });
+            this.addMessageActions(meta, uiText, 'user', idx);
+            this._agentHeaderShown = false;
         } else {
-            MarkdownRenderer.renderMarkdown(content, content_div, '', this);
+            const agentDiv = this.messages_container.createDiv({ cls: 'cs-message cs-message--agent' });
+            agentDiv.style.setProperty('--cs-agent-color-rgb', agentRgb);
+            if (!this._agentHeaderShown) {
+                const head = agentDiv.createDiv({ cls: 'cs-message__agent-head' });
+                const crystalEl = head.createDiv({ cls: 'cs-message__agent-crystal' });
+                crystalEl.innerHTML = CrystalGenerator.generate(activeAgent?.name || 'Agent', { size: 18, color: agentColor, glow: false });
+                head.createSpan({ cls: 'cs-message__agent-name', text: activeAgent?.name || 'Agent' });
+                this._agentHeaderShown = true;
+            }
+            const textDiv = agentDiv.createDiv({ cls: 'cs-message__text' });
+            MarkdownRenderer.renderMarkdown(uiText, textDiv, '', this);
+            const meta = agentDiv.createDiv({ cls: 'cs-message__meta' });
+            meta.createSpan({ text: timestamp });
+            this.addMessageActions(meta, uiText, 'assistant', idx);
         }
-
-        // Timestamp
-        message_div.createDiv({ cls: 'pkm-chat-timestamp', text: timestamp });
-
-        const idx = this.rollingWindow.messages.length - 1;
-        this.addMessageActions(actionsDiv, content, role, idx);
 
         // Scroll to bottom
         this.scrollToBottom();
@@ -1872,58 +2860,227 @@ export class ChatView extends SmartItemView {
 
     render_messages() {
         this.messages_container.empty();
+        const agent = this.plugin?.agentManager?.getActiveAgent();
+        const agentColor = agent?.color || pickColor(agent?.name || 'default').hex;
+        const agentRgb = hexToRgbTriplet(agentColor);
+        const agentName = agent?.name || 'Agent';
+
+        let prevRole = null;
         this.rollingWindow.messages.forEach((msg, idx) => {
-            const message_div = this.messages_container.createDiv({
-                cls: `pkm-chat-message ${msg.role}`
-            });
+            // Skip tool messages (they were displayed inline with the tool call)
+            if (msg.role === 'tool') return;
 
-            // Message row (avatar + bubble)
-            const row = message_div.createDiv({ cls: 'pkm-chat-message-row' });
-
-            // Avatar for assistant only
-            if (msg.role === 'assistant') {
-                const emoji = this.plugin?.agentManager?.getActiveAgent()?.emoji || '🤖';
-                row.createDiv({ cls: 'pkm-chat-avatar', text: emoji });
-            }
-
-            const bubble = row.createDiv({ cls: 'pkm-chat-bubble' });
-
-            // Actions toolbar
-            const actionsDiv = bubble.createDiv({ cls: 'pkm-chat-actions' });
-
-            const content_div = bubble.createDiv({ cls: 'pkm-chat-content' });
+            const uiText = typeof msg.content === 'string' ? msg.content : this._contentBlocksToText(msg.content);
 
             if (msg.role === 'user') {
-                content_div.createEl('p', { text: msg.content });
-            } else {
-                MarkdownRenderer.renderMarkdown(msg.content, content_div, '', this);
-            }
+                // ── USER MESSAGE — .cs-message--user ──
+                const userDiv = this.messages_container.createDiv({ cls: 'cs-message cs-message--user' });
+                userDiv.style.setProperty('--cs-agent-color-rgb', agentRgb);
 
-            // Timestamp
-            const timestamp = msg.metadata?.timestamp || '';
-            if (timestamp) {
-                message_div.createDiv({ cls: 'pkm-chat-timestamp', text: timestamp });
-            }
+                // Text content
+                const textDiv = userDiv.createDiv({ cls: 'cs-message__text' });
+                if (Array.isArray(msg.content)) {
+                    this._renderMultimodalUserContent(textDiv, msg.content, uiText);
+                } else {
+                    this._renderUserText(textDiv, uiText);
+                }
 
-            this.addMessageActions(actionsDiv, msg.content, msg.role, idx);
+                // Meta (hover: timestamp + actions)
+                const meta = userDiv.createDiv({ cls: 'cs-message__meta' });
+                const timestamp = msg.metadata?.timestamp || '';
+                if (timestamp) meta.createSpan({ text: timestamp });
+                this.addMessageActions(meta, uiText, 'user', idx);
+
+            } else if (msg.role === 'assistant') {
+                // ── AGENT MESSAGE — .cs-message--agent ──
+                const agentDiv = this.messages_container.createDiv({ cls: 'cs-message cs-message--agent' });
+                agentDiv.style.setProperty('--cs-agent-color-rgb', agentRgb);
+
+                // Agent header (crystal + name) — only on first in a series
+                if (prevRole !== 'assistant') {
+                    const head = agentDiv.createDiv({ cls: 'cs-message__agent-head' });
+                    const crystalEl = head.createDiv({ cls: 'cs-message__agent-crystal' });
+                    crystalEl.innerHTML = CrystalGenerator.generate(agentName, { size: 16, color: agentColor, glow: false });
+                    head.createSpan({ cls: 'cs-message__agent-name', text: agentName });
+                }
+
+                // Reconstruct action rows from metadata (thinking, tool_calls)
+                if (msg.metadata?.reasoning_content) {
+                    const thinkRow = createThinkingBlock(msg.metadata.reasoning_content, false);
+                    agentDiv.appendChild(thinkRow);
+                }
+                if (msg.metadata?.tool_calls?.length > 0) {
+                    for (const tc of msg.metadata.tool_calls) {
+                        const tcName = tc.function?.name || tc.name || 'unknown';
+                        const tcArgs = tc.function?.arguments || tc.arguments;
+                        // Find matching tool result in next messages
+                        let tcOutput = null;
+                        for (let j = idx + 1; j < this.rollingWindow.messages.length; j++) {
+                            const m = this.rollingWindow.messages[j];
+                            if (m.role === 'tool' && m.metadata?.tool_call_id === tc.id) {
+                                try { tcOutput = JSON.parse(m.content); } catch { tcOutput = m.content; }
+                                break;
+                            }
+                        }
+                        const isSubAgent = tcName === 'minion_task' || tcName === 'master_task';
+                        if (isSubAgent) {
+                            const _hArgs = typeof tcArgs === 'string'
+                                ? (() => { try { return JSON.parse(tcArgs); } catch { return {}; } })()
+                                : (tcArgs || {});
+                            const taskQuery = _hArgs.task || '';
+                            const _hName = _hArgs.minion || _hArgs.master || '';
+                            const block = createSubAgentBlock({
+                                type: tcName,
+                                agentName: _hName,
+                                query: taskQuery,
+                                response: typeof tcOutput === 'string' ? tcOutput : (tcOutput?.result || ''),
+                                toolsUsed: tcOutput?.tools_used || [],
+                                toolCallDetails: tcOutput?.tool_call_details || [],
+                                duration: tcOutput?.duration_ms || 0,
+                                usage: tcOutput?.usage,
+                            });
+                            agentDiv.appendChild(block);
+                        } else {
+                            const display = createToolCallDisplay({
+                                name: tcName,
+                                input: typeof tcArgs === 'string' ? (() => { try { return JSON.parse(tcArgs); } catch { return tcArgs; } })() : tcArgs,
+                                output: tcOutput,
+                                status: tcOutput?.isError ? 'error' : 'success',
+                                error: tcOutput?.error
+                            });
+                            agentDiv.appendChild(display);
+                        }
+                    }
+                }
+
+                // Text response
+                if (uiText) {
+                    const textDiv = agentDiv.createDiv({ cls: 'cs-message__text' });
+                    MarkdownRenderer.renderMarkdown(uiText, textDiv, '', this);
+                }
+
+                // Meta (hover: timestamp + actions)
+                const meta = agentDiv.createDiv({ cls: 'cs-message__meta' });
+                const timestamp = msg.metadata?.timestamp || '';
+                if (timestamp) meta.createSpan({ text: timestamp });
+                this.addMessageActions(meta, uiText, 'assistant', idx);
+            }
+            prevRole = msg.role;
         });
+
+        // Track crystal header state for streaming continuation
+        this._agentHeaderShown = (prevRole === 'assistant');
+        // Draw connector lines
+        this._drawConnectorLines();
+    }
+
+    /**
+     * Draw a continuous vertical line from crystal header through all action rows.
+     * Uses absolute positioning within messages_container so it spans across multiple agent divs.
+     */
+    _drawConnectorLines() {
+        // Remove old lines
+        this.messages_container.querySelectorAll('.cs-connector-line').forEach(el => el.remove());
+
+        const containerRect = this.messages_container.getBoundingClientRect();
+        const agentMsgs = this.messages_container.querySelectorAll('.cs-message--agent');
+        if (!agentMsgs.length) return;
+
+        // Group consecutive agent messages
+        let groups = [];
+        let current = [];
+        let prev = null;
+        for (const msg of agentMsgs) {
+            if (prev && msg.previousElementSibling === prev) {
+                current.push(msg);
+            } else {
+                if (current.length) groups.push(current);
+                current = [msg];
+            }
+            prev = msg;
+        }
+        if (current.length) groups.push(current);
+
+        // For each group, find first crystal and last action row icon, draw one line
+        for (const group of groups) {
+            const firstMsg = group[0];
+            const crystal = firstMsg.querySelector('.cs-message__agent-crystal');
+            if (!crystal) continue;
+
+            // Find last action row's icon in the group
+            let lastIcon = null;
+            for (let i = group.length - 1; i >= 0; i--) {
+                const rows = group[i].querySelectorAll('.cs-action-row');
+                if (rows.length) {
+                    lastIcon = rows[rows.length - 1].querySelector('.cs-action-row__icon') || rows[rows.length - 1];
+                    break;
+                }
+            }
+            if (!lastIcon) continue;
+
+            const crystalRect = crystal.getBoundingClientRect();
+            const lastRect = lastIcon.getBoundingClientRect();
+
+            // Dynamic horizontal position: center of crystal
+            const crystalCenterX = crystalRect.left + crystalRect.width / 2 - containerRect.left;
+            const top = crystalRect.bottom - containerRect.top + this.messages_container.scrollTop;
+            const bottom = lastRect.top + lastRect.height / 2 - containerRect.top + this.messages_container.scrollTop;
+            const height = bottom - top;
+            if (height <= 0) continue;
+
+            const line = document.createElement('div');
+            line.className = 'cs-connector-line';
+            line.style.top = `${top}px`;
+            line.style.height = `${height}px`;
+            line.style.left = `${crystalCenterX}px`;
+            // Inherit agent color from the group
+            const agentRgb = firstMsg.style.getPropertyValue('--cs-agent-color-rgb');
+            if (agentRgb) line.style.setProperty('--cs-agent-color-rgb', agentRgb);
+            this.messages_container.appendChild(line);
+        }
     }
 
 
-    addMessageActions(actionsDiv, content, role, idx) {
-        // Copy button (all messages)
-        const copyBtn = actionsDiv.createEl('button', { cls: 'pkm-action-btn', text: '📋' });
+    /**
+     * Render user text with inline @[Name] mention badges.
+     * Falls back to plain text if no mentions found.
+     */
+    _renderUserText(container, text) {
+        if (!text.includes('@[')) {
+            container.createEl('p', { text });
+            return;
+        }
+        const p = container.createEl('p');
+        const parts = text.split(/(@\[[^\]]+\])/g);
+        for (const part of parts) {
+            const match = part.match(/^@\[(.+)\]$/);
+            if (match) {
+                const badge = p.createSpan({ cls: 'pkm-mention-badge' });
+                badge.textContent = `@ ${match[1]}`;
+            } else {
+                p.appendText(part);
+            }
+        }
+    }
+
+    addMessageActions(metaEl, content, role, idx) {
+        // Copy button
+        const copyBtn = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+        copyBtn.innerHTML = UiIcons.copy(12);
         copyBtn.setAttribute('aria-label', 'Kopiuj');
-        copyBtn.onclick = async () => {
+        copyBtn.onclick = async (e) => {
+            e.stopPropagation();
             await navigator.clipboard.writeText(content);
-            copyBtn.textContent = '✓';
-            setTimeout(() => { copyBtn.textContent = '📋'; }, 2000);
+            copyBtn.innerHTML = UiIcons.check(12);
+            setTimeout(() => { copyBtn.innerHTML = UiIcons.copy(12); }, 2000);
         };
 
-        // Delete button (all messages)
-        const deleteBtn = actionsDiv.createEl('button', { cls: 'pkm-action-btn', text: '🗑️' });
+        // Delete button
+        const deleteBtn = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+        deleteBtn.innerHTML = UiIcons.trash(12);
         deleteBtn.setAttribute('aria-label', 'Usuń');
-        deleteBtn.onclick = () => {
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
             if (idx < this.rollingWindow.messages.length &&
                 this.rollingWindow.messages[idx].content === content &&
                 this.rollingWindow.messages[idx].role === role) {
@@ -1941,22 +3098,25 @@ export class ChatView extends SmartItemView {
         };
 
         if (role === 'user') {
-            // Edit button (user only)
-            const editBtn = actionsDiv.createEl('button', { cls: 'pkm-action-btn', text: '✏️' });
+            const editBtn = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+            editBtn.innerHTML = UiIcons.edit(12);
             editBtn.setAttribute('aria-label', 'Edytuj');
-            editBtn.onclick = () => this.startEditMessage(idx, content);
+            editBtn.onclick = (e) => { e.stopPropagation(); this.startEditMessage(idx, content); };
         }
 
         if (role === 'assistant') {
-            // React buttons
-            const thumbsUp = actionsDiv.createEl('button', { cls: 'pkm-action-btn pkm-react-btn', text: '👍' });
-            const thumbsDown = actionsDiv.createEl('button', { cls: 'pkm-action-btn pkm-react-btn', text: '👎' });
+            // Thumbs up/down
+            const thumbsUp = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+            thumbsUp.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M3.5,6 V10 H2 V6 Z M3.5,6 L5,3 C5,2 6,1.2 6.5,2 L6.5,4.5 H9 C10,4.5 10.3,5.3 10,6 L9,10 H3.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+            const thumbsDown = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+            thumbsDown.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M8.5,6 V2 H10 V6 Z M8.5,6 L7,9 C7,10 6,10.8 5.5,10 L5.5,7.5 H3 C2,7.5 1.7,6.7 2,6 L3,2 H8.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
             const msg = this.rollingWindow.messages[idx];
             if (msg?.metadata?.reaction === 'positive') thumbsUp.classList.add('active');
             if (msg?.metadata?.reaction === 'negative') thumbsDown.classList.add('active');
 
-            thumbsUp.onclick = () => {
+            thumbsUp.onclick = (e) => {
+                e.stopPropagation();
                 const msg = this.rollingWindow.messages[idx];
                 if (msg) {
                     msg.metadata = msg.metadata || {};
@@ -1970,7 +3130,8 @@ export class ChatView extends SmartItemView {
                     }
                 }
             };
-            thumbsDown.onclick = () => {
+            thumbsDown.onclick = (e) => {
+                e.stopPropagation();
                 const msg = this.rollingWindow.messages[idx];
                 if (msg) {
                     msg.metadata = msg.metadata || {};
@@ -1985,11 +3146,12 @@ export class ChatView extends SmartItemView {
                 }
             };
 
-            // Regenerate (only for last assistant message)
+            // Regenerate (only last assistant)
             if (this.isLastAssistantMessage(content)) {
-                const regenBtn = actionsDiv.createEl('button', { cls: 'pkm-action-btn', text: '🔄' });
+                const regenBtn = metaEl.createEl('button', { cls: 'cs-message__meta-btn' });
+                regenBtn.innerHTML = UiIcons.refresh(12);
                 regenBtn.setAttribute('aria-label', 'Generuj ponownie');
-                regenBtn.onclick = () => this.regenerateLastResponse();
+                regenBtn.onclick = (e) => { e.stopPropagation(); this.regenerateLastResponse(); };
             }
         }
     }
@@ -2065,30 +3227,7 @@ export class ChatView extends SmartItemView {
         // RAG will be initialized lazily on first message if embed model is ready
     }
 
-    /**
-     * Lazy RAG initialization - called before sending message
-     */
-    async ensureRAGInitialized() {
-        if (this.ragRetriever) return;
-
-        const chatSettings = this.env?.settings?.smart_chat_model || {};
-        try {
-            this.embeddingHelper = new EmbeddingHelper(this.env);
-            if (!this.embeddingHelper.isReady()) return;
-
-            const agentMemory = this.plugin?.agentManager?.getActiveMemory();
-            if (!agentMemory) return;
-
-            this.ragRetriever = new RAGRetriever({
-                embeddingHelper: this.embeddingHelper,
-                agentMemory: agentMemory,
-                settings: this.env?.settings?.obsek || {}
-            });
-            await this.ragRetriever.indexAllSessions();
-        } catch (ragError) {
-            console.warn('[Obsek] RAG initialization failed:', ragError);
-        }
-    }
+    // ensureRAGInitialized() usunięty (v1.1.0) — memory_search/vault_search jako on-demand RAG
 
     onClose() {
         if (this.handleGlobalKeydownBound) {
@@ -2096,6 +3235,18 @@ export class ChatView extends SmartItemView {
         }
         if (this.handleBeforeUnloadBound) {
             window.removeEventListener('beforeunload', this.handleBeforeUnloadBound);
+        }
+
+        // Cleanup mention autocomplete
+        if (this.mentionAutocomplete) {
+            this.mentionAutocomplete.destroy();
+            this.mentionAutocomplete = null;
+        }
+
+        // Cleanup attachment manager
+        if (this.attachmentManager) {
+            this.attachmentManager.destroy();
+            this.attachmentManager = null;
         }
 
         // Cleanup artifact panel
@@ -2112,10 +3263,6 @@ export class ChatView extends SmartItemView {
             clearInterval(this._autoSaveTimer);
             this._autoSaveTimer = null;
         }
-        if (this.sessionManager) {
-            this.sessionManager.stopAutoSave();
-        }
-
         // Best-effort fire-and-forget save (async - may not complete before Obsidian closes)
         // Auto-save is the primary safety net; this is a bonus attempt
         if (this.rollingWindow?.messages?.length > 0) {
@@ -2126,16 +3273,14 @@ export class ChatView extends SmartItemView {
     // --- Session Handlers ---
 
     async handleNewSession() {
-        log.info('Chat', `handleNewSession: ${this.rollingWindow.messages.length} wiadomości do konsolidacji`);
-        // Consolidate session (extract memory + save) BEFORE clearing
+        log.info('Chat', `handleNewSession: ${this.rollingWindow.messages.length} wiadomości`);
+        // Tylko zapisz surową sesję — BEZ konsolidacji pamięci (v1.1.0)
+        // Konsolidacja jest opcjonalna — user klika "🧠 Zapisz pamięć" gdy chce
         if (this.rollingWindow.messages.length > 0) {
-            await this.consolidateSession();
+            await this.handleSaveSession();
         }
 
-        // Reset session trackers so next save creates a new file
-        if (this.sessionManager) {
-            this.sessionManager.startNewSession();
-        }
+        // Reset session tracker so next save creates a new file
         const agentMemory = this.plugin?.agentManager?.getActiveMemory();
         if (agentMemory) {
             agentMemory.startNewSession();
@@ -2168,30 +3313,23 @@ export class ChatView extends SmartItemView {
                 tokens_used: this.rollingWindow.getCurrentTokenCount()
             };
 
-            // Try to save to agent memory first
+            // Save through AgentMemory (single source of truth)
             if (agentManager) {
                 const savedPath = await agentManager.saveActiveSession(
                     this.rollingWindow.messages,
                     metadata
                 );
                 if (savedPath) {
-                    this.autosaveStatus.textContent = `Saved to ${activeAgentName}!`;
-                    setTimeout(() => { this.autosaveStatus.textContent = ''; }, 2000);
+                    if (this.autosaveStatus) {
+                        this.autosaveStatus.textContent = `Saved to ${activeAgentName}!`;
+                        setTimeout(() => { if (this.autosaveStatus) this.autosaveStatus.textContent = ''; }, 2000);
+                    }
                     await this.updateSessionDropdown();
-                    return;
                 }
-            }
-
-            // Fallback to shared SessionManager
-            if (this.sessionManager) {
-                await this.sessionManager.saveSession(this.rollingWindow.messages, metadata);
-                this.autosaveStatus.textContent = 'Saved!';
-                setTimeout(() => { this.autosaveStatus.textContent = ''; }, 2000);
-                await this.updateSessionDropdown();
             }
         } catch (e) {
             console.error('Error saving session:', e);
-            this.autosaveStatus.textContent = 'Save failed';
+            if (this.autosaveStatus) this.autosaveStatus.textContent = 'Save failed';
         }
     }
 
@@ -2200,16 +3338,11 @@ export class ChatView extends SmartItemView {
         try {
             let parsed;
 
-            // Try loading from AgentMemory first
+            // Load from AgentMemory (single source of truth)
             const agentMemory = this.plugin?.agentManager?.getActiveMemory();
-            if (agentMemory) {
-                const filename = path.split('/').pop();
-                parsed = await agentMemory.loadSession(filename);
-            } else if (this.sessionManager) {
-                parsed = await this.sessionManager.loadSession(path);
-            } else {
-                return;
-            }
+            if (!agentMemory) return;
+            const filename = path.split('/').pop();
+            parsed = await agentMemory.loadSession(filename);
 
             if (!parsed?.messages) return;
             this.rollingWindow = this._createRollingWindow();
@@ -2226,13 +3359,11 @@ export class ChatView extends SmartItemView {
     async updateSessionDropdown() {
         if (!this.sessionDropdown) return;
 
-        // Get sessions from AgentMemory (primary) or SessionManager (fallback)
+        // Get sessions from AgentMemory (single source of truth)
         let sessions = [];
         const agentMemory = this.plugin?.agentManager?.getActiveMemory();
         if (agentMemory) {
             sessions = await agentMemory.listSessions();
-        } else if (this.sessionManager) {
-            sessions = await this.sessionManager.listSessions();
         }
 
         // Clear existing options except the first placeholder
@@ -2288,30 +3419,72 @@ export class ChatView extends SmartItemView {
             log.error('Chat', 'Memory extraction FAIL:', error);
         }
 
-        // L1/L2 consolidation trigger (runs independently of extraction)
+        // L1/L2/L3 consolidation trigger (runs independently of extraction)
+        // Garbage sessions (<3 user messages) are filtered out before L1
+        const keepRecent = this.env?.settings?.obsek?.keepRecentSessions || 5;
+        const l3Threshold = this.env?.settings?.obsek?.l3Threshold || 10;
+        const mainModel = this.get_chat_model?.();
+
         if (agentMemory && chatModel?.stream) {
             try {
+                // Filter out garbage sessions first
                 let unconsolidated = await agentMemory.getUnconsolidatedSessions();
-                while (unconsolidated.length >= 5) {
-                    const l1Result = await agentMemory.createL1Summary(unconsolidated.slice(0, 5), chatModel);
-                    if (!l1Result) {
-                        console.warn('[ChatView] L1 creation failed, stopping consolidation (will retry next session)');
-                        break;
-                    }
-                    unconsolidated = await agentMemory.getUnconsolidatedSessions();
+                const validSessions = [];
+                for (const s of unconsolidated) {
+                    try {
+                        const data = await agentMemory.loadSession(s);
+                        if (!agentMemory._isGarbageSession(data)) {
+                            validSessions.push(s);
+                        }
+                    } catch (e) { /* skip unreadable */ }
                 }
 
-                let unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
-                while (unconsolidatedL1s.length >= 5) {
-                    const l2Result = await agentMemory.createL2Summary(unconsolidatedL1s.slice(0, 5), chatModel);
-                    if (!l2Result) {
-                        console.warn('[ChatView] L2 creation failed, stopping consolidation (will retry next session)');
+                // L1: 5 valid sessions → 1 L1 + cleanup source sessions
+                let remaining = validSessions;
+                while (remaining.length >= 5) {
+                    const batch = remaining.slice(0, 5);
+                    const batchNames = batch.map(s => s.name);
+                    const l1Result = await agentMemory.createL1Summary(batch, chatModel);
+                    if (!l1Result) {
+                        console.warn('[ChatView] L1 creation failed, stopping');
                         break;
                     }
+                    await agentMemory._cleanupAfterL1(batchNames, keepRecent);
+                    remaining = remaining.slice(5);
+                }
+
+                // L2: 5 L1 → 1 L2 + cleanup source L1s
+                let unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
+                while (unconsolidatedL1s.length >= 5) {
+                    const batch = unconsolidatedL1s.slice(0, 5);
+                    const batchNames = batch.map(l => l.name);
+                    // L2 uses main model for better quality (if available)
+                    const l2Model = (mainModel?.stream ? mainModel : chatModel);
+                    const l2Result = await agentMemory.createL2Summary(batch, l2Model);
+                    if (!l2Result) {
+                        console.warn('[ChatView] L2 creation failed, stopping');
+                        break;
+                    }
+                    await agentMemory._cleanupAfterL2(batchNames);
                     unconsolidatedL1s = await agentMemory.getUnconsolidatedL1s();
                 }
-            } catch (l1l2Error) {
-                log.error('Chat', 'L1/L2 consolidation FAIL:', l1l2Error);
+
+                // L3: N L2 → 1 L3 + cleanup source L2s
+                let unconsolidatedL2s = await agentMemory.getUnconsolidatedL2s();
+                while (unconsolidatedL2s.length >= l3Threshold) {
+                    const batch = unconsolidatedL2s.slice(0, l3Threshold);
+                    const batchNames = batch.map(l => l.name);
+                    const l3Model = (mainModel?.stream ? mainModel : chatModel);
+                    const l3Result = await agentMemory.createL3Summary(batch, l3Model);
+                    if (!l3Result) {
+                        console.warn('[ChatView] L3 creation failed, stopping');
+                        break;
+                    }
+                    await agentMemory._cleanupAfterL3(batchNames);
+                    unconsolidatedL2s = await agentMemory.getUnconsolidatedL2s();
+                }
+            } catch (consolidationError) {
+                log.error('Chat', 'L1/L2/L3 consolidation FAIL:', consolidationError);
             }
         }
         log.groupEnd();
@@ -2338,69 +3511,100 @@ export class ChatView extends SmartItemView {
      */
     _createRollingWindow() {
         const maxTokens = this.env?.settings?.obsek?.maxContextTokens || 100000;
-        const chatModel = this._getMinionModel() || this.get_chat_model?.();
-        let summarizer = null;
-        if (chatModel?.stream) {
-            summarizer = new Summarizer({ chatModel });
+        const threshold = this.env?.settings?.obsek?.summarizationThreshold || 0.9;
+        const toolTrimThreshold = this.env?.settings?.obsek?.toolTrimThreshold || 0.7;
+        console.log(`[RollingWindow] Init: maxTokens=${maxTokens}, threshold=${threshold}, toolTrim=${toolTrimThreshold}, trigger=${Math.round(maxTokens * threshold)}`);
+        return new RollingWindow({
+            maxTokens,
+            triggerThreshold: threshold,
+            toolTrimThreshold,
+            // Lazy model provider — model może nie być gotowy przy init
+            modelProvider: () => this._getMinionModel() || this.get_chat_model?.(),
+            onSummarized: (summary, count, messagesKept, isEmergency) => {
+                this._renderCompressionBlock(summary, count, messagesKept, isEmergency);
+                this._updateContextCircle();
+            },
+            onToolsTrimmed: (info) => {
+                log.info('Chat', `Faza 1: skrócono ${info.trimmed} wyników narzędzi (łącznie: ${info.totalTrimmed})`);
+                this._renderTrimBlock(info);
+                this._updateContextCircle();
+            },
+            emergencyContextProvider: () => this._buildEmergencyTaskContext()
+        });
+    }
+
+    /**
+     * Buduje szczegółowy kontekst aktywnego zadania dla awaryjnej sumaryzacji.
+     * Zawiera pełne TODO i PLAN ze statusami, żeby agent wiedział co kontynuować.
+     * @returns {string}
+     */
+    _buildEmergencyTaskContext() {
+        const parts = [];
+
+        // Ścieżka do zapisanej sesji — agent może ją przeczytać żeby zweryfikować szczegóły
+        const sessionPath = this.plugin?.agentManager?.getActiveMemory()?.activeSessionPath;
+        if (sessionPath) {
+            parts.push(`📂 Pełna rozmowa zapisana w: ${sessionPath}`);
         }
-        return new RollingWindow({ maxTokens, summarizer });
+
+        // Aktywne TODO — pełna lista itemów ze statusami
+        const todoStore = this.plugin?._chatTodoStore;
+        if (todoStore?.size > 0) {
+            for (const [id, todo] of todoStore) {
+                if (!todo.items?.length) continue;
+                const done = todo.items.filter(i => i.done).length;
+                const total = todo.items.length;
+                const lines = [`📋 TODO "${todo.title}" (${done}/${total} gotowe):`];
+                for (const item of todo.items) {
+                    lines.push(`  ${item.done ? '✅' : '⬜'} ${item.text}`);
+                }
+                parts.push(lines.join('\n'));
+            }
+        }
+
+        // Aktywne PLANY — pełna lista kroków ze statusami i subtaskami
+        const planStore = this.plugin?._planStore;
+        if (planStore?.size > 0) {
+            for (const [id, plan] of planStore) {
+                if (!plan.steps?.length) continue;
+                const done = plan.steps.filter(s => s.status === 'done').length;
+                const total = plan.steps.length;
+                const approved = plan.approved ? 'zatwierdzony' : 'niezatwierdzony';
+                const lines = [`📝 PLAN "${plan.title}" (${done}/${total} kroków, ${approved}):`];
+                for (let i = 0; i < plan.steps.length; i++) {
+                    const step = plan.steps[i];
+                    const icon = step.status === 'done' ? '✅'
+                        : step.status === 'in_progress' ? '🔄'
+                        : step.status === 'skipped' ? '⏭️' : '⬜';
+                    lines.push(`  ${icon} ${i + 1}. ${step.label}${step.description ? ` — ${step.description}` : ''}`);
+                    if (step.note) lines.push(`     📌 ${step.note}`);
+                    if (step.subtasks?.length) {
+                        for (const sub of step.subtasks) {
+                            lines.push(`     ${sub.done ? '✅' : '⬜'} ${sub.text}`);
+                        }
+                    }
+                }
+                parts.push(lines.join('\n'));
+            }
+        }
+
+        return parts.join('\n\n');
     }
 
     // --- Agent Handlers ---
 
     updateAgentDropdown() {
-        if (!this.agentDropdown) return;
-
-        const agentManager = this.plugin?.agentManager;
-        if (!agentManager) {
-            this.agentDropdown.createEl('option', { value: '', text: 'No agents' });
-            return;
-        }
-
-        // Clear existing options
-        this.agentDropdown.empty();
-
-        const agents = agentManager.getAgentListForUI();
-        for (const agent of agents) {
-            const opt = this.agentDropdown.createEl('option', {
-                value: agent.name,
-                text: `${agent.emoji} ${agent.name}`
-            });
-            if (agent.isActive) {
-                opt.selected = true;
-            }
-        }
+        // No-op — agent switching is now handled via tabs (_renderTabBar / _switchTab).
+        // Kept for backward compatibility with callers.
     }
 
     async handleAgentChange(agentName) {
         if (!agentName) return;
-
-        const agentManager = this.plugin?.agentManager;
-        if (!agentManager) return;
-
-        // Consolidate session (extract memory + save) before switching agent
-        if (this.rollingWindow.messages.length > 0) {
-            await this.consolidateSession();
+        // Delegate to tab system — ensure agent has a tab, then switch
+        const hasTab = this.chatTabs.some(t => t.agentName === agentName);
+        if (!hasTab) {
+            this.chatTabs.push({ agentName, isActive: false });
         }
-
-        // Reset session tracker for the old agent before switching
-        const oldMemory = agentManager.getActiveMemory();
-        if (oldMemory) {
-            oldMemory.startNewSession();
-        }
-
-        const switched = agentManager.switchAgent(agentName);
-        if (switched) {
-            this.updatePermissionsBadge();
-            this.renderSkillButtons();
-            // Reset work mode to new agent's default
-            this.currentMode = this._getDefaultMode();
-            this._applyModeChange(this.currentMode);
-            // Re-render welcome if no messages
-            if (this.rollingWindow.messages.length === 0) {
-                this.messages_container.empty();
-                this.add_welcome_message();
-            }
-        }
+        await this._switchTab(agentName);
     }
 }

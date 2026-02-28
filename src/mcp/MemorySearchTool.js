@@ -10,7 +10,7 @@ import { EmbeddingHelper } from '../memory/EmbeddingHelper.js';
 export function createMemorySearchTool(app) {
     return {
         name: 'memory_search',
-        description: 'Przeszukaj SWOJĄ pamięć — przeszłe sesje, brain.md (fakty o userze), podsumowania L1/L2. Szuka semantycznie (po znaczeniu) z fallbackiem na słowa kluczowe.\n\nCO PRZESZUKUJE:\n- sessions: pliki rozmów z userem (każda sesja = osobny .md)\n- brain: brain.md — trwałe fakty o userze (preferencje, ustalenia, informacje osobiste)\n- summaries: streszczenia L1 (5 sesji → 1 plik) i L2 (5 L1 → 1 mega-streszczenie)\n\nKIEDY UŻYWAĆ:\n- User pyta "co rozmawialiśmy o X?", "pamiętasz że...?", "kiedy ostatnio...?"\n- Szukasz kontekstu z poprzednich rozmów\n- Potrzebujesz sprawdzić co wiesz o userze\n\nKIEDY NIE UŻYWAĆ:\n- Szukasz w notatkach USERA → użyj vault_search\n- Chcesz przeczytać brain.md → użyj memory_update z operation="read_brain"\n- Chcesz statystyki pamięci → użyj memory_status\n\nUWAGI:\n- Wyszukuje semantycznie (batch embedding — efektywny, 1-2 HTTP calls)\n- Max 30 dokumentów przeszukiwanych jednocześnie\n- Wyniki posortowane po score (0-1, im wyżej tym lepiej)\n- Zwraca snippet (200 znaków) z każdego wyniku',
+        description: 'Przeszukaj SWOJĄ pamięć — przeszłe sesje, brain.md (fakty o userze), podsumowania L1/L2/L3. Szuka semantycznie (po znaczeniu) z fallbackiem na słowa kluczowe.\n\nCO PRZESZUKUJE:\n- sessions: pliki rozmów z userem (każda sesja = osobny .md)\n- brain: brain.md — trwałe fakty o userze (preferencje, ustalenia, informacje osobiste)\n- summaries: streszczenia L1 (5 sesji → 1 plik), L2 (5 L1 → 1 streszczenie) i L3 (10 L2 → mega-streszczenie wzorców/trendów)\n\nKIEDY UŻYWAĆ:\n- User pyta "co rozmawialiśmy o X?", "pamiętasz że...?", "kiedy ostatnio...?"\n- Szukasz kontekstu z poprzednich rozmów\n- Potrzebujesz sprawdzić co wiesz o userze\n\nKIEDY NIE UŻYWAĆ:\n- Szukasz w notatkach USERA → użyj vault_search\n- Chcesz przeczytać brain.md → użyj memory_update z operation="read_brain"\n- Chcesz statystyki pamięci → użyj memory_status\n\nUWAGI:\n- Wyszukuje semantycznie (batch embedding — efektywny, 1-2 HTTP calls)\n- Max 30 dokumentów przeszukiwanych jednocześnie\n- Wyniki posortowane po score (0-1, im wyżej tym lepiej)\n- Zwraca snippet (200 znaków) z każdego wyniku',
         inputSchema: {
             type: 'object',
             properties: {
@@ -21,7 +21,7 @@ export function createMemorySearchTool(app) {
                 scope: {
                     type: 'string',
                     enum: ['all', 'sessions', 'brain', 'summaries'],
-                    description: '"all" (domyślnie) = przeszukaj wszystko. "sessions" = tylko rozmowy. "brain" = tylko trwałe fakty. "summaries" = tylko streszczenia L1/L2.'
+                    description: '"all" (domyślnie) = przeszukaj wszystko. "sessions" = tylko rozmowy. "brain" = tylko trwałe fakty. "summaries" = tylko streszczenia L1/L2/L3.'
                 },
                 limit: {
                     type: 'number',
@@ -92,9 +92,9 @@ export function createMemorySearchTool(app) {
                     } catch (e) { /* no brain yet */ }
                 }
 
-                // Collect summaries (L1/L2)
+                // Collect summaries (L1/L2/L3)
                 if (scope === 'all' || scope === 'summaries') {
-                    for (const subdir of ['summaries/L1', 'summaries/L2']) {
+                    for (const subdir of ['summaries/L1', 'summaries/L2', 'summaries/L3']) {
                         const dirPath = `${memoryBase}/${subdir}`;
                         try {
                             const listed = await adapter.list(dirPath);

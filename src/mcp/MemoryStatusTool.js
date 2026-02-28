@@ -5,7 +5,7 @@
 export function createMemoryStatusTool(app) {
     return {
         name: 'memory_status',
-        description: 'Pokaż statystyki swojej pamięci — rozmiar brain.md, liczba sesji, podsumowań L1/L2, archiwum.\n\nKIEDY UŻYWAĆ:\n- User pyta "ile pamiętasz?", "pokaż swoją pamięć", "jaka jest Twoja historia?"\n- Chcesz sprawdzić stan swojej pamięci (np. czy brain.md nie jest za duży)\n- Diagnostyka: ile sesji, ile podsumowań, rozmiar archiwum\n\nCO ZWRACA:\n- brain: rozmiar (znaki, ~tokeny, linie)\n- sessions: liczba zapisanych rozmów\n- summaries: liczba L1 i L2\n- archive: rozmiar brain_archive.md (overflow z brain.md)\n- auditEntries: liczba wpisów w logu zmian pamięci\n\nNie wymaga żadnych parametrów.',
+        description: 'Pokaż statystyki swojej pamięci — rozmiar brain.md, liczba sesji, podsumowań L1/L2/L3, archiwum.\n\nKIEDY UŻYWAĆ:\n- User pyta "ile pamiętasz?", "pokaż swoją pamięć", "jaka jest Twoja historia?"\n- Chcesz sprawdzić stan swojej pamięci (np. czy brain.md nie jest za duży)\n- Diagnostyka: ile sesji, ile podsumowań, rozmiar archiwum\n\nCO ZWRACA:\n- brain: rozmiar (znaki, ~tokeny, linie)\n- sessions: liczba zapisanych rozmów\n- summaries: liczba L1, L2 i L3\n- archive: rozmiar brain_archive.md (overflow z brain.md)\n- auditEntries: liczba wpisów w logu zmian pamięci\n\nNie wymaga żadnych parametrów.',
         inputSchema: {
             type: 'object',
             properties: {},
@@ -44,7 +44,7 @@ export function createMemoryStatusTool(app) {
 
                 // Summary counts
                 const summaryCounts = {};
-                for (const subdir of ['L1', 'L2']) {
+                for (const subdir of ['L1', 'L2', 'L3']) {
                     try {
                         const listed = await adapter.list(`${basePath}/summaries/${subdir}`);
                         summaryCounts[subdir] = listed?.files?.filter(f => f.endsWith('.md')).length || 0;

@@ -45,7 +45,7 @@ export function createAgentMessageTool(app) {
                 // Validate recipient exists
                 const toAgent = agentManager.getAgent(args.to_agent);
                 if (!toAgent) {
-                    const available = agentManager.getAllAgents().map(a => `${a.emoji} ${a.name}`).join(', ');
+                    const available = agentManager.getAllAgents().map(a => a.name).join(', ');
                     return {
                         success: false,
                         error: `Agent "${args.to_agent}" nie istnieje. Dostępni agenci: ${available}`
@@ -74,7 +74,7 @@ export function createAgentMessageTool(app) {
 
                 return {
                     success: true,
-                    message: `Wiadomość wysłana do ${toAgent.emoji} ${toAgent.name}`,
+                    message: `Wiadomość wysłana do ${toAgent.name}`,
                     messageId
                 };
             } catch (e) {

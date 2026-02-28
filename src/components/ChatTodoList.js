@@ -10,6 +10,8 @@
  *   onOpenModal(id)
  */
 
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+
 /**
  * Creates an interactive todo list widget.
  * @param {Object} todoData - { id, title, items: [{text, done}], mode, savedTo }
@@ -23,7 +25,8 @@ export function createChatTodoList(todoData, options = {}) {
 
     // Header: title + progress
     const header = container.createDiv({ cls: 'pkm-todo-header' });
-    header.createSpan({ cls: 'pkm-todo-title', text: `📋 ${todoData.title}` });
+    const titleSpan = header.createSpan({ cls: 'pkm-todo-title' });
+    titleSpan.innerHTML = `${UiIcons.clipboard(16)} ${todoData.title}`;
 
     const doneCount = todoData.items.filter(i => i.done).length;
     const total = todoData.items.length;
@@ -66,14 +69,15 @@ export function createChatTodoList(todoData, options = {}) {
     const footer = container.createDiv({ cls: 'pkm-todo-footer' });
 
     if (options.onOpenModal) {
-        const modalBtn = footer.createEl('button', { cls: 'pkm-todo-modal-btn', text: '🔲 Pełny widok' });
+        const modalBtn = footer.createEl('button', { cls: 'pkm-todo-modal-btn' });
+        modalBtn.innerHTML = `${UiIcons.expand(14)} Pełny widok`;
         modalBtn.addEventListener('click', () => options.onOpenModal(todoData.id));
     }
 
-    footer.createSpan({
-        cls: 'pkm-todo-mode',
-        text: todoData.mode === 'persistent' ? '💾 Trwała' : '⏳ Tymczasowa'
-    });
+    const modeSpan = footer.createSpan({ cls: 'pkm-todo-mode' });
+    modeSpan.innerHTML = todoData.mode === 'persistent'
+        ? `${UiIcons.save(14)} Trwała`
+        : `${UiIcons.hourglass(14)} Tymczasowa`;
     if (todoData.savedTo) {
         footer.createSpan({ cls: 'pkm-todo-saved', text: ` → ${todoData.savedTo}` });
     }

@@ -28,30 +28,34 @@
     gap: 6px;
 }
 
-/* Agent Card */
+/* Agent Card — Crystal Soul */
 .agent-card {
     display: flex;
     flex-direction: column;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--cs-transition-normal);
     border: 1px solid transparent;
+    border-left: var(--cs-border-accent-width) solid transparent;
+    position: relative;
 }
 
 .agent-card:hover {
     background-color: var(--background-modifier-hover);
     border-color: var(--background-modifier-border);
+    border-left-color: var(--cs-border-accent-faded);
 }
 
 .agent-card.active {
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border-color: var(--interactive-accent);
+    background-color: var(--cs-shard-subtle);
+    color: var(--cs-text-primary);
+    border-color: var(--cs-surface-border);
+    border-left-color: var(--cs-border-accent-color);
 }
 
 .agent-card.active:hover {
-    background-color: var(--interactive-accent-hover);
+    background-color: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 }
 
 /* Card Header Row */
@@ -90,14 +94,27 @@
 }
 
 .agent-card.active .agent-card-role {
-    color: var(--text-on-accent);
-    opacity: 0.8;
+    color: var(--cs-text-secondary);
 }
 
+/* Diamond active indicator — Crystal Soul */
 .agent-card-active {
-    color: var(--text-on-accent);
-    font-size: 0.7em;
+    width: var(--cs-diamond-size);
+    height: var(--cs-diamond-size);
+    min-width: var(--cs-diamond-size);
+    min-height: var(--cs-diamond-size);
+    background: var(--cs-diamond-color);
+    transform: rotate(45deg);
+    box-shadow: 0 0 6px var(--cs-shard-glow);
+    font-size: 0;
     flex-shrink: 0;
+    transition: all var(--cs-transition-normal);
+}
+
+.agent-card:not(.active) .agent-card-active {
+    background: transparent;
+    border: 1px solid var(--cs-diamond-empty-color);
+    box-shadow: none;
 }
 
 /* Action Buttons */
@@ -130,12 +147,12 @@
 }
 
 .agent-card.active .agent-card-action-btn {
-    background: rgba(255, 255, 255, 0.2);
-    color: var(--text-on-accent);
+    background: var(--cs-shard-subtle);
+    color: var(--cs-text-primary);
 }
 
 .agent-card.active .agent-card-action-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
 }
 
 .agent-card-delete-btn:hover {
@@ -151,17 +168,19 @@
 .agent-add-button {
     width: 100%;
     padding: 8px 12px;
-    border-radius: 6px;
-    background: var(--background-modifier-border);
-    border: none;
-    color: var(--text-normal);
+    border-radius: 4px;
+    background: transparent;
+    border: 1px dashed var(--cs-surface-border);
+    color: var(--cs-text-secondary);
     cursor: pointer;
     font-size: 0.9em;
-    transition: background-color 0.15s ease;
+    transition: all var(--cs-transition-normal);
 }
 
 .agent-add-button:hover {
-    background: var(--background-modifier-hover);
+    border-color: var(--cs-border-accent-faded);
+    color: var(--cs-text-primary);
+    border-style: solid;
 }
 
 /* Error state */
@@ -300,4 +319,34 @@
 
 .communicator-badge.hidden {
     display: none;
+}
+
+/* ═══════════════════════════════════════════
+   CRYSTAL SOUL: Agent Color System
+   ═══════════════════════════════════════════ */
+
+.agent-card[data-agent-color] {
+    --cs-agent-accent: hsl(var(--cs-agent-h, 37), var(--cs-agent-s, 77%), var(--cs-agent-l, 49%));
+    --cs-agent-glow: hsl(var(--cs-agent-h, 37) var(--cs-agent-s, 77%) var(--cs-agent-l, 49%) / 0.25);
+    --cs-agent-subtle: hsl(var(--cs-agent-h, 37) var(--cs-agent-s, 77%) var(--cs-agent-l, 49%) / 0.08);
+}
+
+.agent-card[data-agent-color].active {
+    background-color: var(--cs-agent-subtle);
+    border-left-color: var(--cs-agent-accent);
+    border-color: hsl(var(--cs-agent-h, 37) var(--cs-agent-s, 77%) var(--cs-agent-l, 49%) / 0.2);
+}
+
+.agent-card[data-agent-color]:hover {
+    border-left-color: hsl(var(--cs-agent-h, 37) var(--cs-agent-s, 77%) var(--cs-agent-l, 49%) / 0.35);
+}
+
+.agent-card[data-agent-color] .agent-card-active {
+    background: var(--cs-agent-accent);
+    box-shadow: 0 0 6px var(--cs-agent-glow);
+}
+
+.agent-card[data-agent-color]:not(.active) .agent-card-active {
+    background: transparent;
+    border-color: hsl(var(--cs-agent-h, 37) var(--cs-agent-s, 77%) var(--cs-agent-l, 49%) / 0.3);
 }

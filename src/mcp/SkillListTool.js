@@ -13,6 +13,10 @@ export function createSkillListTool(app) {
                 category: {
                     type: 'string',
                     description: 'Filtruj po kategorii. Przykłady: "productivity", "writing", "organization", "analysis". Puste = wszystkie skille.'
+                },
+                tag: {
+                    type: 'string',
+                    description: 'Filtruj po tagu. Przykłady: "weekly", "review", "planning". Puste = bez filtrowania.'
                 }
             },
             required: []
@@ -39,13 +43,22 @@ export function createSkillListTool(app) {
                     };
                 }
 
+                // Filter by tag if provided
+                if (args.tag) {
+                    skills = skills.filter(s => s.tags?.includes(args.tag));
+                }
+
                 return {
                     success: true,
                     count: skills.length,
                     skills: skills.map(s => ({
                         name: s.name,
                         description: s.description,
-                        category: s.category
+                        category: s.category,
+                        icon: s.icon || '⚡',
+                        tags: s.tags || [],
+                        allowedTools: s.allowedTools || [],
+                        has_pre_questions: (s.preQuestions?.length || 0) > 0
                     }))
                 };
             } catch (e) {

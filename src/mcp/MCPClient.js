@@ -20,7 +20,8 @@ const ACTION_TYPE_MAP = {
     'plan_action': 'vault.read',
     'agora_read': 'vault.read',
     'agora_update': 'vault.write',
-    'agora_project': 'vault.write'
+    'agora_project': 'vault.write',
+    'web_search': 'web.search'
 };
 
 /**
@@ -78,7 +79,8 @@ export class MCPClient {
             'vault_search': 'wyszukiwania',
             'agent_message': 'wysłania wiadomości',
             'agora_update': 'aktualizacji Agory',
-            'agora_project': 'zmiany projektu'
+            'agora_project': 'zmiany projektu',
+            'web_search': 'wyszukiwania w internecie'
         };
         return labels[toolName] || toolName;
     }
@@ -276,7 +278,8 @@ export class MCPClient {
      * Try to split a concatenated tool call into separate calls.
      * DeepSeek Reasoner sometimes glues multiple tool calls into one:
      * name: "chat_todoplan_action" → "chat_todo" + "plan_action"
-     * args: '{"action":"list"}{"action":"list"}' → two separate JSON objects
+     * name: "minion_taskminion_taskminion_task" → 3x "minion_task"
+     * args: '{"a":1}{"b":2}{"c":3}' → separate JSON objects
      *
      * @param {Object} toolCall - { id, name, arguments }
      * @returns {Array<Object>} Array of tool calls (1 if no split needed, 2+ if split)
@@ -289,30 +292,52 @@ export class MCPClient {
             return [toolCall];
         }
 
-        // Try to find two known tool names concatenated
-        const allToolNames = this.toolRegistry.getAllToolNames();
-        for (const t1 of allToolNames) {
-            if (name.startsWith(t1) && name.length > t1.length) {
-                const rest = name.slice(t1.length);
-                if (allToolNames.includes(rest)) {
-                    log.warn('MCPClient', `Wykryto sklejone tool calls: "${name}" → "${t1}" + "${rest}"`);
+        // Try to decompose name into N known tool names (greedy, longest match first)
+        const allToolNames = this.toolRegistry.getAllToolNames()
+            .sort((a, b) => b.length - a.length); // longest first for greedy match
 
-                    // Split arguments (two JSON objects concatenated)
-                    const argsStr = typeof toolCall.arguments === 'string'
-                        ? toolCall.arguments
-                        : JSON.stringify(toolCall.arguments);
-                    const splitArgs = this._splitConcatenatedJSON(argsStr);
+        const foundNames = this._decomposeToolName(name, allToolNames);
+        if (!foundNames || foundNames.length < 2) {
+            // No split possible — return as-is (will fail gracefully in executeToolCall)
+            return [toolCall];
+        }
 
-                    return [
-                        { id: toolCall.id, name: t1, arguments: splitArgs[0] || '{}' },
-                        { id: `${toolCall.id}_split`, name: rest, arguments: splitArgs[1] || '{}' }
-                    ];
+        log.warn('MCPClient', `Wykryto ${foundNames.length} sklejonych tool calls: "${name}" → ${foundNames.map(n => `"${n}"`).join(' + ')}`);
+
+        // Split arguments (N JSON objects concatenated)
+        const argsStr = typeof toolCall.arguments === 'string'
+            ? toolCall.arguments
+            : JSON.stringify(toolCall.arguments);
+        const splitArgs = this._splitConcatenatedJSON(argsStr);
+
+        return foundNames.map((toolName, i) => ({
+            id: i === 0 ? toolCall.id : `${toolCall.id}_split${i}`,
+            name: toolName,
+            arguments: splitArgs[i] || '{}'
+        }));
+    }
+
+    /**
+     * Decompose a concatenated tool name into individual known tool names.
+     * Uses recursive backtracking to find valid decomposition.
+     * e.g. "minion_taskminion_taskminion_task" → ["minion_task", "minion_task", "minion_task"]
+     * @param {string} str - Concatenated tool name
+     * @param {string[]} knownNames - List of known tool names (sorted longest first)
+     * @returns {string[]|null} Array of tool names, or null if no valid decomposition
+     */
+    _decomposeToolName(str, knownNames) {
+        if (str.length === 0) return [];
+
+        for (const toolName of knownNames) {
+            if (str.startsWith(toolName)) {
+                const rest = this._decomposeToolName(str.slice(toolName.length), knownNames);
+                if (rest !== null) {
+                    return [toolName, ...rest];
                 }
             }
         }
 
-        // No split possible — return as-is (will fail gracefully in executeToolCall)
-        return [toolCall];
+        return null; // no valid decomposition
     }
 
     /**

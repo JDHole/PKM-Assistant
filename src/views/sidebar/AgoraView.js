@@ -5,13 +5,42 @@
  */
 import { Modal } from 'obsidian';
 import { AccessGuard } from '../../core/AccessGuard.js';
+import { UiIcons } from '../../crystal-soul/UiIcons.js';
+import { CrystalGenerator } from '../../crystal-soul/CrystalGenerator.js';
+import { pickColor } from '../../crystal-soul/ColorPalette.js';
+
+// ── SVG Icon Constants (via UiIcons) ──────────────────────────────────────
+const SVG_CHEVRON = UiIcons.chevronDown(12);
+const SVG_EDIT = UiIcons.edit(14);
+const SVG_DELETE = UiIcons.x(14);
+const SVG_CHECK = UiIcons.check(14);
+const SVG_CANCEL = SVG_DELETE;
+const SVG_ADD = UiIcons.plus(14);
+const SVG_TRASH = UiIcons.trash(14);
+const SVG_NOGO = UiIcons.noEntry(16);
+const SVG_FOLDER = UiIcons.folder(14);
+const SVG_EYE = UiIcons.eye(14);
+const SVG_PENCIL = UiIcons.edit(14);
+
+// ── Access level indicator SVGs ─────────────────────────────
+const SVG_DOT_GREEN = UiIcons.dotGreen(10);
+const SVG_DOT_YELLOW = UiIcons.dotYellow(10);
+const SVG_DOT_RED = UiIcons.dotRed(10);
+
+// ── Tab icon generators ─────────────────────────────────────
+const SVG_TAB_PROFILE = UiIcons.user(14);
+const SVG_TAB_ACTIVITY = UiIcons.chart(14);
+const SVG_TAB_PROJECTS = UiIcons.clipboard(14);
+const SVG_TAB_MAP = UiIcons.compass(14);
+const SVG_TAB_ACCESS = UiIcons.shield(14);
+const SVG_AGORA_TITLE = UiIcons.globe(18);
 
 const TABS = [
-    { id: 'profile', label: '👤 Profil' },
-    { id: 'activity', label: '📢 Aktywność' },
-    { id: 'projects', label: '📋 Projekty' },
-    { id: 'map', label: '🗺️ Mapa' },
-    { id: 'access', label: '🔐 Dostęp' }
+    { id: 'profile', label: 'Profil', icon: SVG_TAB_PROFILE },
+    { id: 'activity', label: 'Aktywność', icon: SVG_TAB_ACTIVITY },
+    { id: 'projects', label: 'Projekty', icon: SVG_TAB_PROJECTS },
+    { id: 'map', label: 'Mapa', icon: SVG_TAB_MAP },
+    { id: 'access', label: 'Dostęp', icon: SVG_TAB_ACCESS }
 ];
 
 /** Map display headers → AgoraManager section keys */
@@ -38,31 +67,33 @@ const PROFILE_SECTION_MAP = {
  * @param {Object} params - { tab?: string }
  */
 export function renderAgoraView(container, plugin, nav, params) {
+    container.classList.add('cs-root');
     const agora = plugin.agoraManager;
     if (!agora) {
         container.createEl('p', { text: 'AgoraManager nie jest zainicjalizowany.', cls: 'agent-error' });
         return;
     }
 
-    container.createEl('h3', { text: '🏛️ Agora', cls: 'sidebar-section-title' });
+    const titleEl = container.createDiv({ cls: 'cs-section-title' });
+    titleEl.innerHTML = UiIcons.globe(12) + ' Agora';
     container.createEl('p', {
         text: 'Wspólna baza wiedzy — to widzi każdy agent.',
         cls: 'agora-subtitle'
     });
 
     const activeTab = params.tab || 'profile';
-    const tabBar = container.createDiv({ cls: 'sidebar-profile-tabs' });
+    const tabBar = container.createDiv({ cls: 'cs-profile-tabs' });
     for (const tab of TABS) {
         const btn = tabBar.createEl('button', {
-            cls: `sidebar-profile-tab ${tab.id === activeTab ? 'active' : ''}`,
-            text: tab.label
+            cls: `cs-profile-tab ${tab.id === activeTab ? 'cs-profile-tab--active' : ''}`
         });
+        btn.innerHTML = tab.icon + ` ${tab.label}`;
         btn.addEventListener('click', () => {
             nav.replace('agora', { tab: tab.id }, 'Agora');
         });
     }
 
-    const content = container.createDiv({ cls: 'sidebar-profile-tab-content' });
+    const content = container.createDiv({ cls: 'cs-profile-content' });
     const refresh = () => nav.replace('agora', { tab: activeTab }, 'Agora');
 
     switch (activeTab) {
@@ -174,7 +205,7 @@ async function renderActivityTab(container, plugin, agora, refresh) {
             new ActivityModal(plugin.app, plugin, {
                 onSave: async (data) => {
                     await agora.postActivity(
-                        data.agent, data.emoji || '',
+                        data.agent, '',
                         data.summary, data.conclusions, data.actions
                     );
                     refresh();
@@ -199,7 +230,7 @@ function renderActivityCard(container, entry, plugin, agora, refresh) {
     const editBtn = headerRight.createEl('button', {
         cls: 'agora-item-btn', attr: { title: 'Edytuj' }
     });
-    editBtn.textContent = '✏️';
+    editBtn.innerHTML = SVG_EDIT;
     editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         new ActivityModal(plugin.app, plugin, {
@@ -215,7 +246,7 @@ function renderActivityCard(container, entry, plugin, agora, refresh) {
     const delBtn = headerRight.createEl('button', {
         cls: 'agora-item-btn agora-item-delete', attr: { title: 'Usuń' }
     });
-    delBtn.textContent = '✕';
+    delBtn.innerHTML = SVG_DELETE;
     delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await agora.deleteActivity(entry.id);
@@ -263,7 +294,7 @@ class ActivityModal extends Modal {
         const agentRow = contentEl.createDiv({ cls: 'agora-modal-field' });
         agentRow.createEl('label', { text: 'Agent / Autor' });
         const agentInput = agentRow.createEl('input', {
-            attr: { type: 'text', placeholder: 'np. Jaskier 🎭 lub Użytkownik' }
+            attr: { type: 'text', placeholder: 'np. Jaskier lub Użytkownik' }
         });
         agentInput.value = entry?.agent || 'Użytkownik';
 
@@ -429,7 +460,14 @@ class ProjectCreateModal extends Modal {
             const label = cbContainer.createEl('label', { cls: 'agora-modal-checkbox' });
             const cb = label.createEl('input', { attr: { type: 'checkbox' } });
             cb.value = a.name;
-            label.appendText(` ${a.emoji} ${a.name}`);
+            const agentColor = pickColor(a.name);
+            const agentCrystalSvg = CrystalGenerator.generate(a.name, { size: 14, color: agentColor });
+            const agentCrystalSpan = document.createElement('span');
+            agentCrystalSpan.className = 'cs-icon-inline';
+            agentCrystalSpan.innerHTML = agentCrystalSvg;
+            label.appendChild(document.createTextNode(' '));
+            label.appendChild(agentCrystalSpan);
+            label.appendText(` ${a.name}`);
             checkboxes.push(cb);
         }
 
@@ -518,9 +556,15 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
         const agentsBadges = agentsSection.createDiv({ cls: 'agora-agent-badges' });
         for (const a of project.agents) {
             const agentObj = plugin.agentManager?.getAgent(a);
-            const emoji = agentObj?.emoji || '';
             const badge = agentsBadges.createDiv({ cls: 'agora-agent-badge' });
-            badge.createSpan({ text: `${emoji} ${a}` });
+            const badgeLabel = badge.createSpan();
+            const agentColor = agentObj?.color ? agentObj.color : pickColor(a);
+            const crystalSvg = CrystalGenerator.generate(a, { size: 14, color: agentColor });
+            const crystalSpan = document.createElement('span');
+            crystalSpan.className = 'cs-icon-inline';
+            crystalSpan.innerHTML = crystalSvg;
+            badgeLabel.appendChild(crystalSpan);
+            badgeLabel.appendText(` ${a}`);
 
             // Remove agent button (only if more than 1 agent)
             if (project.agents.length > 1) {
@@ -528,7 +572,7 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
                     cls: 'agora-badge-remove',
                     attr: { title: `Usuń ${a} z projektu` }
                 });
-                removeBtn.textContent = '✕';
+                removeBtn.innerHTML = SVG_DELETE;
                 removeBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     await agora.removeAgentFromProject(params.slug, a);
@@ -552,7 +596,7 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
             const agentSelect = addAgentForm.createEl('select', { cls: 'agora-add-input' });
             agentSelect.createEl('option', { text: 'Dodaj agenta...', value: '' });
             for (const a of availableAgents) {
-                agentSelect.createEl('option', { text: `${a.emoji} ${a.name}`, value: a.name });
+                agentSelect.createEl('option', { text: a.name, value: a.name });
             }
 
             const notifyLabel = addAgentForm.createEl('label', { cls: 'agora-notify-label' });
@@ -586,7 +630,7 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
         const descEditBtn = descHeader.createEl('button', {
             cls: 'agora-item-btn', attr: { title: 'Edytuj opis' }
         });
-        descEditBtn.textContent = '✏️';
+        descEditBtn.innerHTML = SVG_EDIT;
 
         const descContent = descSection.createDiv({ cls: 'agora-project-desc-text' });
         descContent.textContent = project.description || '(brak opisu)';
@@ -650,7 +694,7 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
                     cls: 'agora-item-btn agora-item-delete',
                     attr: { title: 'Usuń zadanie' }
                 });
-                delBtn.textContent = '✕';
+                delBtn.innerHTML = SVG_DELETE;
                 delBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     await agora.deleteTask(params.slug, idx);
@@ -710,9 +754,11 @@ export async function renderAgoraProjectDetailView(container, plugin, nav, param
         // ── Delete Project ──
         const dangerSection = container.createDiv({ cls: 'agora-project-danger' });
         const deleteBtn = dangerSection.createEl('button', {
-            text: '🗑️ Usuń projekt',
             cls: 'agora-danger-btn'
         });
+        const trashIconSpan = deleteBtn.createSpan({ cls: 'cs-icon-inline' });
+        trashIconSpan.innerHTML = SVG_TRASH;
+        deleteBtn.appendText(' Usuń projekt');
         deleteBtn.addEventListener('click', () => {
             // Confirmation step
             deleteBtn.style.display = 'none';
@@ -824,7 +870,10 @@ async function renderMapTab(container, plugin, agora, refresh) {
         // ── No-Go zone ──
         const noGoSettings = plugin.env?.settings?.obsek?.no_go_folders || [];
         const noGoDiv = container.createDiv({ cls: 'agora-map-section agora-nogo-section' });
-        noGoDiv.createEl('h4', { text: '🚫 No-Go (prywatne)', cls: 'agora-profile-header' });
+        const noGoHeader = noGoDiv.createEl('h4', { cls: 'agora-profile-header' });
+        const noGoIconSpan = noGoHeader.createSpan({ cls: 'cs-icon-inline' });
+        noGoIconSpan.innerHTML = SVG_NOGO;
+        noGoHeader.appendText(' No-Go (prywatne)');
         noGoDiv.createEl('p', {
             text: 'Foldery całkowicie niedostępne dla agentów i wykluczone z indeksowania.',
             cls: 'setting-item-description'
@@ -836,9 +885,9 @@ async function renderMapTab(container, plugin, agora, refresh) {
         }
         for (let i = 0; i < noGoSettings.length; i++) {
             const folder = noGoSettings[i];
-            renderEditableItem(noGoItems, `🚫 ${folder}`, {
+            renderEditableItem(noGoItems, folder, {
                 onSave: async (newVal) => {
-                    const clean = newVal.replace(/^🚫\s*/, '').trim();
+                    const clean = newVal.trim();
                     noGoSettings[i] = clean;
                     await _saveNoGoFolders(plugin, noGoSettings);
                     refresh();
@@ -858,7 +907,10 @@ async function renderMapTab(container, plugin, agora, refresh) {
 
         // ── Agent WHITELIST cross-reference ──
         const agentZonesDiv = container.createDiv({ cls: 'agora-map-section' });
-        agentZonesDiv.createEl('h4', { text: '📁 Dostęp agentów (WHITELIST)', cls: 'agora-profile-header' });
+        const whitelistHeader = agentZonesDiv.createEl('h4', { cls: 'agora-profile-header' });
+        const whitelistIconSpan = whitelistHeader.createSpan({ cls: 'cs-icon-inline' });
+        whitelistIconSpan.innerHTML = SVG_FOLDER;
+        whitelistHeader.appendText(' Dostęp agentów (WHITELIST)');
 
         const allAgents = plugin.agentManager?.getAgentListForUI() || [];
         for (const agentInfo of allAgents) {
@@ -867,10 +919,14 @@ async function renderMapTab(container, plugin, agora, refresh) {
 
             const folders = agent.focusFolders || [];
             const agentRow = agentZonesDiv.createDiv({ cls: 'agora-agent-zone' });
-            agentRow.createSpan({
-                text: `${agentInfo.emoji} ${agentInfo.name}: `,
-                cls: 'agora-agent-zone-name'
-            });
+            const zoneNameSpan = agentRow.createSpan({ cls: 'agora-agent-zone-name' });
+            const zoneAgentColor = agent.color ? agent.color : pickColor(agentInfo.name);
+            const zoneCrystal = CrystalGenerator.generate(agentInfo.name, { size: 14, color: zoneAgentColor });
+            const zoneCrystalSpan = document.createElement('span');
+            zoneCrystalSpan.className = 'cs-icon-inline';
+            zoneCrystalSpan.innerHTML = zoneCrystal;
+            zoneNameSpan.appendChild(zoneCrystalSpan);
+            zoneNameSpan.appendText(` ${agentInfo.name}: `);
 
             if (folders.length === 0) {
                 agentRow.createSpan({ text: '(cały vault)', cls: 'sidebar-empty-text' });
@@ -879,11 +935,11 @@ async function renderMapTab(container, plugin, agora, refresh) {
                 for (const f of folders) {
                     const path = typeof f === 'string' ? f : f.path;
                     const access = typeof f === 'string' ? 'readwrite' : (f.access || 'readwrite');
-                    const icon = access === 'read' ? '👁️' : '📝';
-                    folderList.createSpan({
-                        text: `${icon} ${path}`,
-                        cls: 'agora-folder-badge'
-                    });
+                    const accessIconSvg = access === 'read' ? SVG_EYE : SVG_PENCIL;
+                    const folderBadge = folderList.createSpan({ cls: 'agora-folder-badge' });
+                    const accessIconSpan = folderBadge.createSpan({ cls: 'cs-icon-inline' });
+                    accessIconSpan.innerHTML = accessIconSvg;
+                    folderBadge.appendText(` ${path}`);
                 }
             }
 
@@ -937,7 +993,7 @@ function _renderZoneAssignButton(secDiv, zoneFolders, plugin, refresh) {
     const row = secDiv.createDiv({ cls: 'agora-zone-assign' });
     const select = row.createEl('select', { cls: 'agora-zone-select' });
     for (const a of allAgents) {
-        select.createEl('option', { text: `${a.emoji} ${a.name}`, value: a.name });
+        select.createEl('option', { text: a.name, value: a.name });
     }
     const btn = row.createEl('button', { text: 'Daj dostęp do strefy', cls: 'agora-zone-assign-btn', attr: { title: 'Dodaje wszystkie foldery z tej strefy do focus folders wybranego agenta' } });
     btn.addEventListener('click', async () => {
@@ -991,18 +1047,20 @@ async function renderAccessTab(container, plugin, agora, refresh) {
 
         // Level legend
         const legend = container.createDiv({ cls: 'agora-access-legend' });
-        legend.createEl('div', {
-            text: '🟢 admin — pełny zapis (profil, mapa, aktywność, projekty)',
-            cls: 'agora-access-legend-item'
-        });
-        legend.createEl('div', {
-            text: '🟡 contributor — zapis aktywności i projektów',
-            cls: 'agora-access-legend-item'
-        });
-        legend.createEl('div', {
-            text: '🔴 reader — tylko odczyt',
-            cls: 'agora-access-legend-item'
-        });
+        const legendAdmin = legend.createEl('div', { cls: 'agora-access-legend-item' });
+        const adminDot = legendAdmin.createSpan({ cls: 'cs-icon-inline' });
+        adminDot.innerHTML = SVG_DOT_GREEN;
+        legendAdmin.appendText(' admin — pełny zapis (profil, mapa, aktywność, projekty)');
+
+        const legendContrib = legend.createEl('div', { cls: 'agora-access-legend-item' });
+        const contribDot = legendContrib.createSpan({ cls: 'cs-icon-inline' });
+        contribDot.innerHTML = SVG_DOT_YELLOW;
+        legendContrib.appendText(' contributor — zapis aktywności i projektów');
+
+        const legendReader = legend.createEl('div', { cls: 'agora-access-legend-item' });
+        const readerDot = legendReader.createSpan({ cls: 'cs-icon-inline' });
+        readerDot.innerHTML = SVG_DOT_RED;
+        legendReader.appendText(' reader — tylko odczyt');
 
         // Agent access list
         const list = container.createDiv({ cls: 'agora-access-list' });
@@ -1010,18 +1068,23 @@ async function renderAccessTab(container, plugin, agora, refresh) {
             const access = await agora.getAccess(agentInfo.name);
             const row = list.createDiv({ cls: 'agora-access-row' });
 
-            row.createSpan({
-                text: `${agentInfo.emoji} ${agentInfo.name}`,
-                cls: 'agora-access-agent'
-            });
+            const accessAgentSpan = row.createSpan({ cls: 'agora-access-agent' });
+            const accessAgent = plugin.agentManager?.getAgent(agentInfo.name);
+            const accessAgentColor = accessAgent?.color ? accessAgent.color : pickColor(agentInfo.name);
+            const accessCrystal = CrystalGenerator.generate(agentInfo.name, { size: 14, color: accessAgentColor });
+            const accessCrystalSpan = document.createElement('span');
+            accessCrystalSpan.className = 'cs-icon-inline';
+            accessCrystalSpan.innerHTML = accessCrystal;
+            accessAgentSpan.appendChild(accessCrystalSpan);
+            accessAgentSpan.appendText(` ${agentInfo.name}`);
 
-            // Inline level select
+            // Inline level select (option elements can only contain text, use dot prefix)
             const select = row.createEl('select', { cls: 'agora-access-select' });
             for (const level of ['admin', 'contributor', 'reader']) {
-                const emoji = level === 'admin' ? '🟢' :
-                              level === 'contributor' ? '🟡' : '🔴';
+                const dot = level === 'admin' ? '\u25C9' :
+                            level === 'contributor' ? '\u25CE' : '\u25CB';
                 const opt = select.createEl('option', {
-                    text: `${emoji} ${level}`,
+                    text: `${dot} ${level}`,
                     value: level
                 });
                 if (level === access.level) opt.selected = true;
@@ -1064,7 +1127,7 @@ function renderEditableItem(container, text, callbacks) {
     const editBtn = actions.createEl('button', {
         cls: 'agora-item-btn', attr: { title: 'Edytuj' }
     });
-    editBtn.textContent = '✏️';
+    editBtn.innerHTML = SVG_EDIT;
     editBtn.addEventListener('click', () => {
         textSpan.style.display = 'none';
         actions.style.display = 'none';
@@ -1075,8 +1138,10 @@ function renderEditableItem(container, text, callbacks) {
             value: text,
             attr: { type: 'text' }
         });
-        const saveBtn = editRow.createEl('button', { cls: 'agora-edit-save', text: '✓' });
-        const cancelBtn = editRow.createEl('button', { cls: 'agora-edit-cancel', text: '✕' });
+        const saveBtn = editRow.createEl('button', { cls: 'agora-edit-save' });
+        saveBtn.innerHTML = SVG_CHECK;
+        const cancelBtn = editRow.createEl('button', { cls: 'agora-edit-cancel' });
+        cancelBtn.innerHTML = SVG_CANCEL;
 
         const cancelEdit = () => {
             editRow.remove();
@@ -1104,7 +1169,7 @@ function renderEditableItem(container, text, callbacks) {
     const delBtn = actions.createEl('button', {
         cls: 'agora-item-btn agora-item-delete', attr: { title: 'Usuń' }
     });
-    delBtn.textContent = '✕';
+    delBtn.innerHTML = SVG_DELETE;
     delBtn.addEventListener('click', async () => {
         await callbacks.onDelete();
     });
@@ -1172,7 +1237,7 @@ function renderFolderAutocompleteForm(container, app, exclude, onAdd, placeholde
     });
     const addBtn = inputRow.createEl('button', { cls: 'agora-add-btn', text: '+' });
 
-    const dropdown = wrapper.createDiv({ cls: 'focus-folder-dropdown' });
+    const dropdown = wrapper.createDiv({ cls: 'cs-focus-dropdown' });
     dropdown.style.display = 'none';
 
     const allFolders = _getAllVaultFolders(app);
@@ -1191,7 +1256,10 @@ function renderFolderAutocompleteForm(container, app, exclude, onAdd, placeholde
 
         dropdown.style.display = 'block';
         for (const folder of matches) {
-            const item = dropdown.createDiv({ cls: 'focus-folder-suggestion', text: `📁 ${folder}` });
+            const item = dropdown.createDiv({ cls: 'cs-focus-suggestion' });
+            const folderIconSpan = item.createSpan({ cls: 'cs-icon-inline' });
+            folderIconSpan.innerHTML = SVG_FOLDER;
+            item.appendText(` ${folder}`);
             item.addEventListener('click', () => {
                 input.value = folder;
                 dropdown.style.display = 'none';

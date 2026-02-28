@@ -23,6 +23,1147 @@
 
 ---
 
+## 2026-02-28 (sesja 60) - Visual Audit 1.11 + SwitchMode naprawy + Permissions popover
+
+**Sesja z:** Claude Code (Sonnet 4.6)
+**Cel:** Kontynuacja visual audytu (1.11), naprawa krytycznych bugów switch_mode i delegacji, przebudowa uprawnień jako Crystal Soul popover.
+
+**Co zrobiono:**
+
+**Visual Audit 1.11 — Delegation & Mode Change buttons:**
+- `pkm-delegation-proposal` i `pkm-mode-proposal`: pełny Crystal Soul shard-style
+- `border-left: 3px solid rgba(agent-color, 0.25–0.35)`, `border-radius: 2px`
+- `::before` — gradient 1px na górze, `::after` — kryształowy marker 5×5px rotate(45deg)
+- Tło `rgba(agent-color, 0.04–0.05)`, animacja `cs-message-enter`
+- Przyciski: własny styl Crystal Soul (nie `mod-cta`), `border-radius: 2px`, hover z agent-color
+
+**Bug fix — "undefined Praca/undefined [agent]" w przyciskach:**
+- `_renderModeChangeButton`: `data.icon` nie istniał w response SwitchModeTool → teraz pobiera `getModeInfo(data.mode)?.icon`
+- Przycisk używa `btn.innerHTML` zamiast `createEl({text:...})` — SVG renderuje się poprawnie (zamiast raw tekstu)
+- `_renderDelegationButton`: `data.to_emoji` nie istniał w response AgentDelegateTool → usunięty, zostaje samo `data.to_name`
+- Oba przyciski: usunięta klasa `mod-cta` (powodowała czerwone tło)
+
+**SwitchModeTool — naprawa flow agenta:**
+- Agent nie wiedział żeby się zatrzymać po wysłaniu propozycji → używał `ask_user` na własną rękę (duplikacja)
+- `description` narzędzia: dodano "WAŻNE: Po wywołaniu switch_mode ZAKOŃCZ TURĘ. NIE używaj ask_user."
+- `message` przy `proposal: true`: "PROPOZYCJA WYSŁANA. ZATRZYMAJ SIĘ — NIE używaj ask_user ani żadnych innych narzędzi. Odpowiedz i zakończ turę."
+- `message` przy `success: true`: "Tryb zmieniony na: X. Kontynuuj zadanie w nowym trybie."
+- **Auto-kontynuacja po potwierdzeniu**: kliknięcie przycisku trybu auto-wysyła `[System] Tryb zmieniony na "X". Kontynuuj poprzednie zadanie.` — agent wznawia działanie bez dodatkowej akcji usera
+
+**SwitchModeTool — niewidoczny w systemie (fix strukturalny):**
+- `switch_mode` nie było w `TOOL_GROUPS` → niewidoczne w zakładce MCP profilu agenta, brak możliwości włączenia/wyłączenia
+- Dodano `mode: ['switch_mode']` do `TOOL_GROUPS`
+- Dodano grupę `tryb: { label: 'TRYB PRACY', order: 8 }` do `DECISION_TREE_GROUPS`
+- Dodano 2 wpisy do `DECISION_TREE_DEFAULTS`: kiedy wywoływać + proaktywność
+- `MODE_BEHAVIORS`: zamieniono mętne "zaproponuj zmianę trybu" na konkretne `switch_mode(mode:'praca', reason:'...')` we wszystkich 4 trybach
+
+**Permissions — przebudowane jako Crystal Soul popover:**
+- Stary `PermissionsModal` zastąpiony popoverem identycznym w mechanice jak mode popover
+- `_togglePermPopover()`: otwiera się nad przyciskiem 🛡 w toolbarze (fix: `position: relative` na buttonie)
+- **3 presety**: Safe / Standard / Full — małe Crystal Soul przyciski, Full z czerwonym akcentem
+- **8 toggleów**: crystal diamond toggle (28×14px, thumb rotate(45deg)) z auto-save przy każdym kliknięciu
+- Diamond marker `::before` przy każdym wierszu, gradient `::before` na górze popovera
+- Auto-save: `agent.update({ default_permissions })` + `loader.saveAgent(agent)` przy każdej zmianie — bez przycisku "Zapisz"
+- Import `openPermissionsModal` usunięty z chat_view (zastąpiony `PERMISSION_TYPES` import)
+
+**Pliki zmienione:**
+- `src/views/chat_view.js` — _renderDelegationButton, _renderModeChangeButton, _togglePermPopover (nowa metoda), _permBtn fix
+- `src/views/chat_view.css` — pkm-delegation/mode-proposal (shard-style), cs-perm-popover + cs-perm-toggle (nowe)
+- `src/mcp/SwitchModeTool.js` — description, message proposal, message success
+- `src/core/PromptBuilder.js` — TOOL_GROUPS (mode), DECISION_TREE_GROUPS (tryb), DECISION_TREE_DEFAULTS (2 wpisy), MODE_BEHAVIORS (4 tryby)
+
+**Decyzje podjęte:**
+- Permissions jako popover (nie modal) — spójność z mode popoverem, szybszy dostęp
+- Auto-save uprawnień (nie "Zapisz") — mniej kliknięć
+- Auto-kontynuacja po zmianie trybu — agent nie wymaga dodatkowego "przypomnij mi" od usera
+- SwitchModeTool message musi być agresywny ("ZATRZYMAJ SIĘ") — DeepSeek ignoruje subtelne wskazówki
+
+**Następne kroki:**
+- Visual Audit BLOK 2: Input Area (2.1 textarea + send button, 2.2 token counter)
+- Weryfikacja czy switch_mode → delegacja flow działa poprawnie end-to-end
+
+## 2026-02-28 (sesja 61) - Playbook v2 Design — brainstorming + PLAYBOOK_DRAFT.md
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Zaprojektowanie architektury playbook v2 — kto czyta co (system prompt vs playbook), draft pełnego playbooka Jaskiera, weryfikacja schematów 24 MCP narzędzi.
+
+**Co zrobiono:**
+
+**Kluczowe ustalenie architektury:**
+- System prompt → czyta AGENT (tożsamość, zachowanie, narzędzia)
+- Playbook → czyta MINION (encyklopedia ekosystemu pluginu)
+- To dwa RÓŻNE dokumenty, nie mieszać!
+
+**Auto-prep status:**
+- `MinionRunner.runAutoPrep()` istnieje ale NIGDZIE nie jest wywoływane (usunięte v1.1.0, linia 1957 chat_view)
+- Toggle `autoPrepEnabled` w settings nic nie robi — dead code
+
+**PLAYBOOK_DRAFT.md:**
+- Pełny draft playbooka Jaskiera (15 sekcji, ~340 linii)
+- Brief na górze zamiast TOC
+- Sekcje: Jaskier, Obsidian, Vault, Pamięć, Agora, Komunikator, Skille, Artefakty, Delegacja, Tryby, Web, Interakcja, Kondensacja, Dostępy, Vault usera
+
+**Weryfikacja MCP:**
+- Zweryfikowane schematy WSZYSTKICH 24 MCP narzędzi (poprawione nazwy parametrów vs draft)
+
+**Pliki zmienione:**
+- `PLAYBOOK_DRAFT.md` — nowy plik (pełny draft playbooka v2)
+
+**Decyzje podjęte:**
+- Playbook = encyklopedia dla miniona, NIE instrukcja dla agenta
+- Brief na górze zamiast TOC — minion potrzebuje kontekst natychmiast
+- Auto-prep to dead code — do ożywienia w przyszłości
+
+**Następne kroki:**
+- Rozbić PLAYBOOK_DRAFT na generatory w PlaybookManager
+- Playbook Builder UI w AgentProfileView (autoSections pattern)
+- System prompt triage/behavior (osobna praca)
+
+## 2026-02-28 (sesja 62) - Visual Audit: Playbook Builder + HiddenFileEditor + Ekipa tab + Detail Views Crystal Soul
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Implementacja Playbook Builder w profilu agenta, Crystal Soul reskin modali i tabów profilu (Ekipa, Detail Views).
+
+**Co zrobiono:**
+
+**Playbook Builder (tab Umiejętności):**
+- Agent.js: nowe pole `playbookOverrides` (sectionOverrides + customRules)
+- PlaybookManager.js: 6 nowych metod — 4 auto-generatory (rola, narzędzia, skille, delegowanie) + compilePlaybook() + generateCustomRulesSection()
+- AgentProfileView.js: `_renderPlaybookBuilder()` z 4 blokami auto-sekcji (AUTO/EDYTOWANE badge), custom rules "Gdy X → Zrób Y", przycisk Kompiluj, podgląd
+- handleSave() integracja: zapisuje overrides + kompiluje playbook.md
+
+**HiddenFileEditorModal — Crystal Soul reskin:**
+- Nowe style CSS: `.cs-file-editor-modal-container` (85vw/80vh), `.cs-file-editor__header` (agent-color gradient), `.cs-file-editor__shard`, `.cs-file-editor__textarea`, `.cs-file-editor__bar`
+- CSS adoption fix: `document.adoptedStyleSheets` musi być dodane w KAŻDYM modalu osobno (nie tylko w AgentProfileModal)
+- Agent color vars: `--cs-agent-color` + `--cs-agent-color-rgb` na `modalEl` (parent)
+- Crystal header: CrystalGenerator avatar + tytuł + ścieżka + Close X
+- Agent-colored Save button: `.cs-preset-btn--agent`
+
+**Ekipa tab — rewrite na sub-taby + shard grid:**
+- `activeEkipaSubTab` state variable (minions | masters)
+- Sub-tab bar (Miniony | Mastery) jak w Skills/MCP
+- `_renderDelegateGrid()` — shard grid z cs-shard--filled/empty, badges (PREP/DOMYŚLNY/NIEAKTYWNY), click-to-toggle
+- `_showDelegateOverrideForm()` — inline override form z Settings (default, prep, active, prompt_append, behavior_inject, extra_tools, DT groups)
+- Usunięte stare: `renderDelegateSection` (card-based), `renderOverridePanel`
+
+**Override forms Crystal Soul:**
+- `.cs-skill-override`: agent-color border, gradient `::before`, styled h5/h6, compact settings, agent-colored `.mod-cta`, `.cs-btn--danger` (red tint)
+- Spójny styl z resztą profilu agenta
+
+**Detail Views Crystal Soul (skill/minion/master):**
+- Usunięte przyciski "Edytuj" z wszystkich 3 widoków detali
+- Usunięte nieużywane importy (SkillEditorModal, MinionMasterEditorModal, HiddenFileEditorModal)
+- Crystal Soul reskin: `.sidebar-detail-meta` (shard-like border-left + gradient), uppercase labels, agent-color subtitles, shard tool cards (monospace), agent-color prompt blocks, Crystal Soul code, category badges, agent link chips
+
+**Pliki zmienione:**
+- `src/agents/Agent.js` — playbookOverrides pole + serialize
+- `src/core/PlaybookManager.js` — 6 nowych metod generacji + kompilacja
+- `src/views/sidebar/AgentProfileView.js` — formData.playbook_overrides, _renderPlaybookBuilder(), Ekipa tab rewrite (sub-tabs + shard grid), handleSave() integracja
+- `src/views/AgentProfileModal.js` — HiddenFileEditorModal Crystal Soul (CSS adoption, agent color vars, crystal header, styled textarea+bar)
+- `src/views/AgentProfileModal.css` — nowe style .cs-file-editor-* (modal, header, shard, textarea, bar, close-x, actions)
+- `src/views/sidebar/SidebarViews.css` — override form Crystal Soul (.cs-skill-override upgrade), delegate tools grid cleanup, detail views Crystal Soul (meta, labels, tools, prompts, badges, agent links)
+- `src/views/sidebar/DetailViews.js` — usunięte przyciski Edytuj + nieużywane importy
+
+**Decyzje podjęte:**
+- CSS adoption per-modal (każdy modal musi sam adoptować stylesheet)
+- Ekipa tab = identyczny schemat jak Skills/MCP (sub-taby + shard grid) — spójność UX
+- Detail views read-only (edycja w profilu agenta, nie w podglądzie) — uproszczenie
+- Override forms inline w profilu (nie w osobnym modalu) — mniej kliknięć
+
+**Następne kroki:**
+- Visual Audit kontynuacja (Bloki 2-12): Input Area, pozostałe taby profilu
+- System prompt triage/behavior (osobna praca, nie playbook)
+- Skill Creator optymalizacja
+
+---
+
+## 2026-02-28 (sesja 59) - Visual Audit: ToolCallDisplay — Pełna Transparentność Narzędzi
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Przebudowa wyświetlania wywołań narzędzi w chacie — pełna transparentność: co agent wywołał, z jakimi argumentami, co dostał z powrotem.
+
+**Co zrobiono:**
+
+**AskUserTool.js — YOLO bypass usunięty:**
+- ask_user ZAWSZE czeka na usera — nawet w YOLO mode (cały sens toola to "MUSZĘ zapytać")
+- Crystal Soul redesign bloku ask_user w chacie (shard-style, agent-color)
+
+**ToolCallDisplay.js — nowy `formatToolInputDetail()`:**
+- Osobna funkcja do rozwiniętego body (pełne argumenty, nie skrócone)
+- Specyficzne case'y dla WSZYSTKICH 24 narzędzi MCP
+- vault_write: ścieżka + tryb + treść (do 800 zn.)
+- vault_search/memory_search: query + limit
+- memory_update: operacja + klucz + treść
+- skill_execute: nazwa + parametry
+- minion_task/master_task: pełne zadanie
+- agent_message: target + wiadomość
+- chat_todo/plan_action: akcja + dane JSON
+- ask_user: pytanie + opcje
+- agora_read/update/project: sekcja + treść/dane
+- default: pretty-printed JSON (do 500 zn.)
+
+**ToolCallDisplay.js — brakujące case'y w `formatToolInput()` (header):**
+- Dodano: memory_update, memory_status, skill_list, agora_read, agora_update, agora_project
+
+**ToolCallDisplay.js — `formatToolOutput()` rozbudowany:**
+- agora_read: content z liczbą linii (zamiast surowego JSON)
+- agora_update/agora_project: czytelne polskie opisy
+- memory_update: "Pamięć zaktualizowana" + akcja
+- skill_list: lista skilli z numeracją
+- chat_todo: lista zadań ✓/○
+- plan_action: lista kroków z numeracją i statusem
+- ask_user: detail tylko gdy pytanie >100 zn. (fix "podwójnego renderowania")
+- Wszystkie detail sekcje: duże limity (user chce widzieć DUŻO danych)
+
+**createToolCallDisplay() — body section:**
+- Input: `formatToolInputDetail()` zamiast `formatToolInput()`
+- Multi-line input renderowany w `.cs-action-row__pre` (monospace blok)
+- Single-line input renderowany inline
+
+**CSS:**
+- `.cs-action-row__pre`: white-space pre-wrap, font-monospace, 0.66rem, agent-color border-left
+- `.cs-action-row__detail`: max-height 300px, overflow-y auto, word-break
+
+**Pliki zmienione:**
+- `src/components/ToolCallDisplay.js` — major refactor (3 funkcje: header, body input, body output)
+- `src/mcp/AskUserTool.js` — YOLO bypass usunięty
+- `src/views/chat_view.css` — nowe style pre + detail
+
+**Decyzje podjęte:**
+- ask_user NIGDY nie jest auto-odpowiadane (nawet YOLO) — cały sens to zatrzymanie i pytanie
+- Detail sekcje mają DUŻE limity (user chce transparentność, nie oszczędność miejsca)
+- Trzy warstwy formatowania: header (krótki hint), body input (pełne args), body output (summary + detail)
+
+**Następne kroki:**
+- plan_action + chat_todo display (user zapowiedział)
+- Kolejne taby profilu, audyt 1.11 → Bloki 2-12
+
+---
+
+## 2026-02-28 (sesja 58) - Dwufazowa Kompresja Kontekstu (jak Claude Code)
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Przebudowa systemu kompresji kontekstu na dwufazowy model wzorowany na Claude Code — najpierw darmowe skracanie wyników narzędzi, potem pełna sumaryzacja.
+
+**Co zrobiono:**
+
+**RollingWindow.js — dwufazowa kompresja:**
+- 3 progi zamiast 2: toolTrimThreshold (0.7), triggerThreshold (0.9), HARD (100%)
+- Faza 1: `trimOldToolResults()` — skraca stare tool results do 150 zn, zachowuje ostatnie 10 msg, DARMOWE (bez API call)
+- Faza 2: `performSummarization()` — istniejąca sumaryzacja, odpala się TYLKO gdy Faza 1 nie wystarczyła
+- `getCompressionNeeded()` → 'none'|'trim'|'summarize' — inteligentna ocena
+- `performTwoPhaseCompression()` — orkiestracja obu faz
+- `_trimToolResultsAggressive()` — agresywna wersja dla HARD path
+- `_findToolNameForResult()` — szuka nazwy narzędzia po tool_call_id (do szczegółów UI)
+
+**Dokładniejsze liczenie tokenów kontekstu:**
+- `setToolDefinitionsTokens(count)` — cache'owane tokeny definicji narzędzi (tools schema)
+- `getCurrentTokenCount()` teraz liczy też tools defs (wcześniej pomijane)
+- WAŻNE: to NIE jest TokenTracker (in/out API usage) — to osobny system
+
+**chat_view.js — podpięcie:**
+- `send_message()` + `continueWithToolResults()`: ustawia tool definitions tokens przed każdym stream()
+- Soft trigger po tasku: `getCompressionNeeded()` → `performTwoPhaseCompression()`
+- Ręczna kompresja (przycisk + /compress): też dwufazowa
+- Context circle: dynamiczne progi z ustawień zamiast hardcoded 70/90
+
+**UI — blok Fazy 1 w chacie:**
+- Trim block jako user-message-style bubble (cs-message--user)
+- Rozwijalny: "Pokaż szczegóły" → tokeny przed/po, lista skróconych narzędzi z nazwami, oszczędności
+- CSS: `.cs-trim-bubble`, `.cs-trim-details`, `.cs-trim-toggle`
+
+**Settings:**
+- Nowy suwak: "Próg skracania narzędzi (Faza 1)" — domyślnie 0.7 (zakres 0.5-0.9)
+- Istniejący suwak przemianowany: "Próg sumaryzacji (Faza 2)"
+
+**Pliki zmienione:**
+- `src/memory/RollingWindow.js` — pełna przebudowa (Faza 1 + 2, tool defs counting, nowe metody)
+- `src/views/chat_view.js` — podpięcie: tools tokens, soft trigger, ręczna kompresja, trim bubble, context circle
+- `src/views/chat_view.css` — style trim bubble
+- `src/views/obsek_settings_tab.js` — nowy suwak tool trim threshold
+
+**Decyzje podjęte:**
+- Faza 1 skraca do 150 znaków (nie usuwa — OpenAI wymaga tool_call_id match)
+- Tool definitions tokeny cache'owane (nie zmieniają się w trakcie turnu)
+- Trim bubble wygląda jak wiadomość usera (nie jak osobny modal)
+
+**Następne kroki:**
+- Kontynuacja Visual Audit (kolejne taby profilu, Bloki 2-12)
+
+---
+
+## 2026-02-28 (sesja 57) - Visual Audit: Agent Profile — Tab Przegląd + Hero Card + Palette Picker
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** PROMPT_VISUAL_AUDIT.md BLOK 6 — przebudowa taba Przegląd w Agent Profile View. Równolegle z sesją 56 (chat audit w osobnym agencie).
+
+**Co zrobiono:**
+
+**Tab Przegląd — pełna przebudowa:**
+- Hero card: info (nazwa, opis, badge, daty) po lewej + kryształ po prawej
+- Edytowalny opis agenta (inline textarea z ołóweczkiem) — nowe pole `description` w Agent.js
+- Data utworzenia `created_at` w Agent.js + data ostatniej aktywności ze statystyk
+- Crystal Soul Palette picker — popup z 62 kolorami z ColorPalette.js (8 grup × 8 swatchy)
+- Live preview: zmiana koloru aktualizuje kryształ + CSS vars na żywo
+- Shardy: Grid 1 (Sesje, Skille, Miniony, Mastery) + Grid 2 (Model, L1, L2, Brain)
+- Fix: sessionCount bug — teraz z getAgentStats() zamiast nieistniejącego property
+- L1/L2/Brain przeniesione z taba Zaawansowane
+
+**Tab bar — redesign:**
+- Grid 4×2 zamiast horizontal scroll
+- Shard-style: border-left, border-radius 2px, agent-color tło
+- Kompaktowe: 4px 6px padding, 0.62rem font
+
+**Kryształ:**
+- Przeniesiony z globalnego headera do renderOverviewTab (widoczny tylko w Przegląd)
+- Size 100px, overflow hidden
+
+**Agent.js + AgentLoader.js:**
+- Nowe pola: `description`, `createdAt`, `color`
+- `_mergeBuiltInOverrides()`: dodane description, created_at, color do whitelist
+- `update()` allowedFields: dodane color, description, created_at
+- `serialize()`: eksportuje nowe pola
+
+**Obsługa błędów:**
+- renderActiveTab() owinięte w try-catch (async tab nie crashuje cicho)
+- getAgentStats() z try-catch (brak statystyk nie blokuje renderowania)
+
+**Pliki zmienione:**
+- `src/views/sidebar/AgentProfileView.js` — hero card, palette picker, async tabs, formData+handleSave
+- `src/views/sidebar/SidebarViews.css` — hero card CSS, tab grid, palette popup, color picker
+- `src/views/sidebar/AgoraView.js` — focus-folder class rename (z poprzedniej sesji)
+- `src/agents/Agent.js` — description, createdAt, color fields + serialize + update
+- `src/agents/AgentLoader.js` — _mergeBuiltInOverrides whitelist
+
+**Decyzje podjęte:**
+- Paleta kolorów zamiast natywnego color pickera — spójność z Crystal Soul
+- Kryształ tylko w Przegląd — inne taby nie potrzebują wizualu
+- Data utworzenia jako pole agenta, nie filesystem timestamp
+
+**Następne kroki:**
+- Kolejne taby: Persona, Umiejętności, Ekipa...
+- Reszta PROMPT_VISUAL_AUDIT.md bloków
+
+---
+
+## 2026-02-28 (sesja 56) - Visual Audit Chatu — Bugfixy + ToolCallDisplay + SubAgentBlock
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** PROMPT_VISUAL_AUDIT.md — audyt elementow chatu blok po bloku. Bugfixy krytyczne + przerobka czytelnosci tool calli i sub-agentow.
+
+**Co zrobiono:**
+
+**Bugfixy krytyczne:**
+- Wielokrotne crystal headery Jaskiera — flaga `_agentHeaderShown` zamiast DOM inspekcji
+- Bledna kolejnosc thinking/tools — insertBefore wrapper zamiast text
+- Connector line — dynamiczne pozycjonowanie z pozycji krystalu
+- Scroll przy rozwinietym thinking — CSS cap max-height: 200px podczas streaming
+
+**Blok 1.5 ToolCallDisplay — przerobka czytelnosci:**
+- `formatToolOutput()` — 22 case'y, polskie opisy zamiast surowego JSON
+- Body: "Wywolanie:" + "Wynik:" (np. "Odczytano: 70 linii, 2953 znakow")
+- Nowe CSS: `.cs-action-row__detail`, `.cs-action-row__field-label`
+
+**Blok 1.7 SubAgentBlock — ikony + nazwy:**
+- Ikony: UiIcons.robot (minion) + UiIcons.crown (master) zamiast IconGenerator
+- Nazwa agenta w labelu: "Zadanie miniona jaskier-prep — [query]"
+- Przekazywanie nazwy z toolCall.arguments w 4 miejscach chat_view.js
+
+**Audyt bez zmian:** 1.6 ThinkingBlock OK, 1.8 Compression OK, 1.9 Welcome OK, 1.10 Ask User drobne odlozone
+
+**Pliki zmienione:**
+- `src/components/ToolCallDisplay.js` — formatToolInput/Output, body Wywolanie/Wynik
+- `src/components/SubAgentBlock.js` — UiIcons, agentName
+- `src/views/chat_view.js` — _agentHeaderShown, thinking order, connector, agentName extraction
+- `src/views/chat_view.css` — streaming cap, tool call body styles
+- `src/crystal-soul/CrystalGenerator.js` — cofniety do oryginalnych 8 ksztaltow
+
+**Nastepne kroki:**
+- Kontynuacja audytu: 1.11 → Blok 2 (Input) → Blok 3+
+
+---
+
+## 2026-02-28 (sesja 55) - Visual Overhaul IMPL — Weryfikacja + Brakujace elementy + Cleanup
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Weryfikacja pelnej implementacji Visual Overhaul (PLAN_VISUAL_OVERHAUL_IMPL.md) + naprawienie brakow + aktualizacja dokumentacji.
+
+**Co zrobiono:**
+- AUDIT: Pelna weryfikacja 9 faz (0-8) Visual Overhaul — ~95% bylo gotowe, 5% brakow
+- Nowy tab "Ekipa" (team) w AgentProfileView — miniony/mastery wyciagniete z taba Umiejetnosci
+- Redesign taba Umiejetnosci: sub-taby (Skille | MCP) + shard grid layout zamiast flat Setting rows
+- Przeniesienie .cs-root CSS vars z chat_view.css do globalnego styles.css (--cs-border, --cs-border-vis, --cs-soul, --cs-soul-vis, --cs-fg-rgb)
+- Cleanup ~370 linii starego CSS z chat_view.css (pkm-chat-message, pkm-chat-bubble, pkm-chat-avatar, pkm-skill-buttons, pkm-chat-input itd.)
+- AgoraView: zamiana ~12 raw SVG constants na UiIcons (chevronDown, x, check, plus, noEntry, eye, dotGreen/Yellow/Red)
+- Dodanie CSS .cs-shard__icon, .cs-shard__action, .cs-shard__detail w SidebarViews.css
+- Aktualizacja DEVLOG, STATUS, MEMORY
+
+**Pliki zmienione:**
+- `src/views/sidebar/AgentProfileView.js` — 8 tabow (+ Ekipa), renderSkillsTab -> sub-taby + _renderSkillsGrid + _renderMcpSection + renderEkipaTab
+- `src/styles.css` — dodanie .cs-root block z --cs-fg-rgb, --cs-border, --cs-border-vis, --cs-soul, --cs-soul-vis
+- `src/views/chat_view.css` — usuniecie duplikatu .cs-root + ~370 linii starego CSS
+- `src/views/sidebar/SidebarViews.css` — dodanie .cs-shard__icon, .cs-shard__action, .cs-shard__detail
+- `src/views/sidebar/AgoraView.js` — zamiana raw SVG na UiIcons
+- `DEVLOG.md`, `STATUS.md`, `MEMORY.md`
+
+**Decyzje podjete:**
+- Tab Ekipa BEZ editOnly — widoczny rowniez podczas tworzenia agenta (mozna przypisac minionow od razu)
+- Skill grid: klik w shard = toggle assign/unassign, hover = edit/detail buttons
+- Stary CSS usuniety calkowicie (nie komentarze) — JS juz nie uzywa tych klas
+- CommunicatorView CSS prefixing odlozone (kosmetyczne, nie psuje)
+
+**Nastepne kroki:**
+- Testy w Obsidian (dark + light mode)
+- PLAN_VISUAL_OVERHAUL_IMPL.md Faza 8 polish (animacje, responsywnosc, light theme audit)
+- Inline + Sidebar fixy (2.12-2.13)
+
+---
+
+## 2026-02-28 (sesja 52) - Visual Overhaul Faza 1 — PLAN + Generatory + Paleta + CSS v2
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Mega-plan wizualnej przerobki + fundament design systemu (generatory, kolory, CSS).
+
+**Co zrobiono:**
+
+**Planowanie (sesja 51→52, 2 rozmowy):**
+- PLAN_VISUAL_OVERHAUL.md — kompletny plan redesignu UI/UX (sekcje A-K, 420+ linii)
+- 3 rundy feedbacku z userem, wszystkie decyzje oznaczone USTALONE/ITERACYJNE/DO ZAPROJEKTOWANIA
+- Filozofia: "Kazdy agent to krysztal z dusza", shard-style formularze, totalna eliminacja emoji
+- Design concept HTML z Antigravity jako inspiracja + opisy screenow Claude Code (REF-1 do REF-4)
+
+**Faza 1 — Fundament (ta sesja):**
+- `src/crystal-soul/IconGenerator.js` — proceduralne SVG ikony z seedem
+  - 3 kategorie: memory (okragle, 8 szablonow), search (trojkatne, 8), write (kwadratowe, 8)
+  - Seeded PRNG (mulberry32) — deterministyczne (ten sam seed = ta sama ikona)
+  - generate() → pelne SVG, generateInner() → elementy do osadzenia
+  - Opcjonalna rotacja, parametry: size, color, category
+- `src/crystal-soul/CrystalGenerator.js` — proceduralne krysztaly SVG
+  - 8 bazowych ksztaltow: Pryzmat, Diament, Igla, Klaster, Heksagon, Podwojny, Tarcza, Odlamek
+  - Kazdy ksztalt ma parametryczne wariacje (proporcje, katy, fasety, asymetria)
+  - Seed z nazwy agenta → unikalny krysztal ZAWSZE
+  - Opcjonalny glow filter, skalowalne (maly → duzy)
+- `src/crystal-soul/ColorPalette.js` — 62 kolory kamieni szlachetnych
+  - 8 rodzin: fiolety, blekity, turkusy, zielenie, czerwienie, pomarancze, zlota, neutralne
+  - Kazda rodzina 6 stonowanych + 2 wyrazistsze warianty
+  - Helpery: getColorByHex, getColorByName, pickColor(seed)
+- `src/crystal-soul/index.js` — public API (eksport wszystkiego)
+- `Crystal Soul Palette.html` — demo wizualne (kolory z glow hover + input area demo + krysztaly + ikony)
+- `src/styles.css` — CSS Crystal Soul v2
+  - Zamiana starego systemu 8 kolorow HSL → nowy hex z --cs-agent-color
+  - Automatyczne warianty: glow, subtle, faded, strong (via color-mix)
+  - Legacy compat: data-agent-color nadal dziala (mapowane na nowe hexy)
+  - Nowe animacje: cs-crystal-build, cs-glow-pulse
+  - Klasy utility: .cs-agent-accent, .cs-agent-bg, .cs-agent-border, .cs-agent-glow
+
+**Pliki zmienione/utworzone:**
+- `src/crystal-soul/IconGenerator.js` — NOWY
+- `src/crystal-soul/CrystalGenerator.js` — NOWY
+- `src/crystal-soul/ColorPalette.js` — NOWY
+- `src/crystal-soul/index.js` — NOWY
+- `src/styles.css` — zaktualizowany (Crystal Soul v2)
+- `PLAN_VISUAL_OVERHAUL.md` — NOWY (mega-plan)
+- `Crystal Soul Palette.html` — NOWY (demo wizualne, w katalogu Obsek/)
+- `STATUS.md` — zaktualizowany
+- `DEVLOG.md` — ten wpis
+
+**Decyzje podjete:**
+- Kolory: 62 odcienie kamieni szlachetnych (user zatwierdzil po 3 iteracjach — stonowane+wyraziste)
+- Krysztaly: 8 bazowych ksztaltow (user zatwierdzil)
+- Ikony: 3 kategorie (okragle/trojkatne/kwadratowe) (user zatwierdzil)
+- CSS: hex zamiast HSL, color-mix() dla wariantow, inline style preferowane nad data-attr
+- Generatory: seed-based PRNG, deterministyczne, zero zewnetrznych zaleznosci
+
+**Nastepne kroki:**
+- Nowy chat: szczegolowy plan implementacji Fazy 2-5
+- Faza 2: Chat redesign (wiadomosci, expandable bloki, input area, zakladki, slim bar)
+- Faza 3: Profil agenta (8 tabow, shard-style)
+- Faza 4: Sidebar + Zaplecze + Agora + Komunikator
+- Faza 5: Animacje + dark/light audit + settings
+
+---
+
+## 2026-02-28 (sesja 53-54) - Visual Overhaul Fazy 2-5 — Migracja emoji→SVG we WSZYSTKICH widokach
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Wykonanie planu Visual Overhaul Fazy 2-5: zamiana WSZYSTKICH emoji na SVG w calym UI pluginu.
+
+**Co zrobiono:**
+
+**Faza 2 — Chat Redesign:**
+- Zamieniono TOOL_INFO w ToolCallDisplay.js: `{icon: '📖', label}` → `{category: 'write', label}` + nowy helper `getToolIcon()`
+- ToolCallDisplay: statusy (pending/success/error), toggle, copy — wszystko SVG zamiast emoji
+- ThinkingBlock.js: emoji → IconGenerator SVG, dodano timing (startTime + elapsed), SVG chevron
+- SubAgentBlock.js: emoji → IconGenerator SVG, TYPE_CONFIG z categories, pending dots → cs-breathing crystal
+- ConnectorGenerator.js (NOWY): male krysztaly z liniami laczacymi akcje w chacie (wzorem Claude Code dot+line)
+- chat_view.js: ~50 edycji — crystal avatary (CrystalGenerator), kolorowane ramki user bubbles, "Krystalizuje..." typing indicator, SVG na WSZYSTKICH przyciskach (permissions, header, toolbar, send/stop, copy/delete/edit, thumbs up/down, mode popover, artifact panel, ask_user, compression block)
+- chat_view.css: avatar bez background gradient, user bubble z `--cs-agent-color` border+glow, transparent assistant bubble, typing crystal, connector CSS, welcome crystal avatar
+- SvgHelper.js (NOWY): utility do konwersji SVG string→DOM (toElement, crystalAvatar, toolIcon)
+
+**Faza 3 — Agent Profile + Sidebar Home + Backstage:**
+- AgentProfileView.js: ~51 emoji zastapione SVG. Tabs z iconSeed/iconCat, tytul z CrystalGenerator crystal, emoji input usuniety, tool icons z getToolIcon(), delegate items z IconGenerator
+- HomeView.js: ~22 emoji zastapione. Crystal agent cards, SVG sekcje headers, data-driven rows z iconSeed/iconCat
+- BackstageViews.js: ~32 emoji zastapione. TOOL_CATEGORIES z iconSeed, filter chips SVG, getToolIcon() wszedzie
+
+**Faza 4 — Remaining Views:**
+- AgoraView.js: ~42 emoji zastapione. 5 SVG tab icons, crystal agent badges (CrystalGenerator), edit/delete/check/cancel SVG, access legend (SVG dots zamiast emoji dots), folder autocomplete SVG
+- CommunicatorView.js: ~14 emoji zastapione. Crystal agent chips, SVG status dots, SVG headers/buttons
+- Agent.js: CRYSTAL_PALETTE → ALL_COLORS (62 kolorow), deriveColor() → pickColor().hex
+- 5 modali (SkillEditor, MinionMaster, Todo, Plan, AgentCreator): SVG section headers i buttons
+
+**Faza 5 — Polish:**
+- styles.css: 4 nowe animacje (cs-send-pulse, cs-message-enter, cs-connector-pulse, cs-tab-switch) + light theme overrides
+- UiIcons.js (NOWY): ~40+ semantycznych SVG funkcji (trash, edit, clipboard, send, eye, lock, save, etc.)
+- Global sweep ~20 plikow: obsek_settings_tab.js (9 sekcji), ApprovalModal, PermissionsModal, InlineCommentModal, SendToAgentModal, AgentDeleteModal, KomunikatorModal, AgentProfileModal, DetailViews, WorkMode, ChatTodoList, PlanArtifact, AttachmentManager, MentionAutocomplete, SwitchModeTool, main.js
+
+**ZNANY PROBLEM:**
+- Wiele przyciskow i sekcji uzywa `IconGenerator.generate(seed, category)` ktore generuje ABSTRAKCYJNE geometryczne ksztalny (okragle/trojkatne/kwadratowe/organiczne/mistyczne) zamiast rozpoznawalnych ikon
+- UiIcons.js ma semantyczne ikony (trash, edit, save...) ale nie jest jeszcze uzywany WSZEDZIE
+- Potrzebna dodatkowa iteracja: zamiana abstrakcyjnych IconGenerator na semantyczne UiIcons tam gdzie potrzebna rozpoznawalna ikona (przycisk kasowania, edycji, zapisywania itp.)
+
+**Pliki utworzone:**
+- `src/crystal-soul/SvgHelper.js` — NOWY
+- `src/crystal-soul/ConnectorGenerator.js` — NOWY
+- `src/crystal-soul/UiIcons.js` — NOWY
+
+**Pliki zmodyfikowane (~30):**
+- `src/components/ToolCallDisplay.js` — rewrite TOOL_INFO + getToolIcon()
+- `src/components/ThinkingBlock.js` — rewrite (SVG + timing)
+- `src/components/SubAgentBlock.js` — rewrite (SVG + categories)
+- `src/components/ChatTodoList.js` — emoji → SVG
+- `src/components/PlanArtifact.js` — emoji → SVG
+- `src/components/AttachmentManager.js` — emoji → SVG
+- `src/components/MentionAutocomplete.js` — emoji → SVG
+- `src/views/chat_view.js` — ~50 edycji (avatary, buttony, toolbar, typing)
+- `src/views/chat_view.css` — avatar, bubbles, typing, connectors, welcome
+- `src/views/obsek_settings_tab.js` — 9 sekcji headers + provider dots
+- `src/views/sidebar/AgentProfileView.js` — 51 emoji → SVG
+- `src/views/sidebar/HomeView.js` — 22 emoji → SVG
+- `src/views/sidebar/BackstageViews.js` — 32 emoji → SVG
+- `src/views/sidebar/AgoraView.js` — 42 emoji → SVG
+- `src/views/sidebar/CommunicatorView.js` — 14 emoji → SVG
+- `src/views/sidebar/DetailViews.js` — sekcje headers + status ikony
+- `src/views/SkillEditorModal.js` — headers + buttons
+- `src/views/MinionMasterEditorModal.js` — headers + buttons
+- `src/views/TodoEditModal.js` — title icon
+- `src/views/PlanEditModal.js` — title icon
+- `src/views/ApprovalModal.js` — header + action labels + buttons
+- `src/views/PermissionsModal.js` — preset buttons + warning
+- `src/views/InlineCommentModal.js` — title + send button
+- `src/views/SendToAgentModal.js` — title + send button
+- `src/views/AgentDeleteModal.js` — title + warning
+- `src/views/KomunikatorModal.js` — title + status + buttons
+- `src/views/AgentProfileModal.js` — tabs + sections + buttons
+- `src/agents/Agent.js` — deriveColor() + CRYSTAL_PALETTE
+- `src/core/WorkMode.js` — mode icons
+- `src/core/SwitchModeTool.js` — emoji z message strings
+- `src/main.js` — context menu items
+- `src/styles.css` — nowe animacje + light theme
+- `src/crystal-soul/index.js` — eksport SvgHelper + UiIcons
+
+**Emoji celowo ZACHOWANE w:**
+- Stringi promptow AI (PromptBuilder, MinionLoader, SkillLoader, Summarizer, Agent.js inbox)
+- Logger.js konsola (debug/info/warn/error ikony)
+- agent.emoji property (konfiguracja usera)
+- BuiltInRoles/Archetypes emoji (dane ról)
+- SkillEditorModal icon input field (user-facing config)
+
+**Build:** 7.4MB, wersja 1.0.9, 0 bledow
+
+**Nastepne kroki:**
+- Iteracja #2: zamiana abstrakcyjnych IconGenerator na semantyczne UiIcons w buttonach akcji
+- Inline+Sidebar fixy (2.12-13)
+- Docs+Release
+
+---
+
+## 2026-02-27 (sesja 51) - Pamiec fix 2.9 COMPLETE — Strukturalny Summarizer + Dwutryb + UI kompresji
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Zamkniecie Planu 2.9 — naprawa calego systemu pamieci pluginu (5 podsesji w 2 rozmowach).
+
+### Plan 2.9 — co naprawiono (sesje 1-5 z poprzednich rozmow + polish w tej sesji):
+
+**Sesja 1 (Fundamenty):**
+- Fix countTokens() — error handling z fallbackiem na chars/4
+- Progressive summarization — nowe streszczenie buduje na poprzednim
+- reasoning_content — filter z API (widoczne w UI, nie wraca do modelu)
+
+**Sesja 2 (Usuwanie):**
+- RAGRetriever wywalony z system promptu (memory_search/vault_search on-demand)
+- Auto-prep wywalony (agent sam decyduje kiedy uzyc miniona)
+- Konsolidacja opcjonalna (guzik "Zapisz pamiec" zamiast auto)
+
+**Sesja 3 (Storage):**
+- L3 consolidation (10 L2 → 1 mega-podsumowanie)
+- Cleanup po konsolidacji (_cleanupAfterL1/L2/L3)
+- Garbage detection (sesje <3 msg usera = smieci)
+- cleanupBrain() — on-demand deduplikacja brain.md (40% overlap)
+- Podwojny zapis fix — tylko AgentMemory, bez SessionManager
+
+**Sesja 4 (Prompty):**
+- Brain-aware prompty L1/L2/L3 — brain.md w kontekscie, "NIE powtarzaj"
+- L1: 10-20 zdan, fakty+decyzje+otwarte watki, po polsku
+- L2: wzorce+postep+zmiany, maks 250 slow
+- L3: mega-perspektywa ~250 sesji, trendy+osiagniecia
+
+**Sesja 5 (Settings):**
+- Nowe ustawienia: summarizationThreshold, keepRecentSessions, l3Threshold
+- MemorySearchTool + MemoryStatusTool — L3 scope dodany
+
+### Ta sesja — polish na sumaryzacji:
+
+**Strukturalny Summarizer (jak Claude Code compaction):**
+- Nowy prompt z 8 sekcjami: Cel, Przebieg, Wiadomosci usera, Pliki/narzedzia, Problemy, Ustalenia, Stan pracy, Otwarte watki
+- _extractToolNames() — wyciaga nazwy narzedzi z tool_calls
+- _extractUserMessages() — zachowuje tresc wiadomosci usera (do 300 znakow)
+- Maks ~800 slow zamiast 10-20 zdan
+
+**Dwutryb sumaryzacji:**
+- SOFT (prog 0.7-1.0): odpala sie PO ZAKONCZENIU taska (handle_done). Bezpieczna, nie przerywa agenta.
+- HARD (100% maxTokens): awaryjna, w addMessage(). Agent dostaje specjalny system prompt + recovery header.
+- shouldSoftSummarize() — nowa metoda w RollingWindow
+
+**Emergency mode (sekcja 9):**
+- emergencyContextProvider w RollingWindow — chat_view dostarcza pelne TODO + PLAN ze statusami
+- _buildEmergencyTaskContext() — todos (✅/⬜), plan steps (✅/🔄/⬜/⏭️), subtaski, notatki
+- Specjalny prompt: "agent MUSI wiedziec od czego zaczac"
+
+**Session path w summary:**
+- Sesja zapisywana na dysk PRZED sumaryzacja (soft trigger)
+- Sciezka dolaczona do kazdego summary: "Pelna rozmowa zapisana w: {path}"
+- Agent moze pozniej przeczytac pelna rozmowe zeby zweryfikowac szczegoly
+
+**UI kompresji (z poprzedniej rozmowy):**
+- _renderCompressionBlock() — widoczny blok w chacie z expandable summary
+- Emergency: czerwony gradient, ostrzezenie
+- _updateContextCircle() — SVG donut chart od 50%, kolory: normal → warning (70%) → critical (90%)
+
+**Pliki zmienione:**
+- `src/memory/Summarizer.js` — kompletny rewrite, strukturalny prompt, emergency mode, session path
+- `src/memory/RollingWindow.js` — dwutryb (soft/hard), emergencyContextProvider, sessionPath, onSummarized
+- `src/views/chat_view.js` — _buildEmergencyTaskContext, save before soft summarization, compression blocks, context circle
+- `src/views/chat_view.css` — compression block styles + emergency variant + SVG donut
+- `src/memory/AgentMemory.js` — L3, cleanup, garbage detection, brain dedup (z poprzednich sesji)
+- `src/mcp/MemorySearchTool.js` — L3 scope (z poprzednich sesji)
+- `src/mcp/MemoryStatusTool.js` — L3 count (z poprzednich sesji)
+
+**Build:** 7.3MB, 0 bledow.
+
+**Nastepne kroki:**
+- 2.10 UX Chatu
+- Testy end-to-end sumaryzacji w realnej rozmowie z Jaskierem
+
+---
+
+## 2026-02-27 (sesja 50) - Mentions v2 — Inline @[Name] + Bug Fix + Badge UI
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Mentions z sesji 49 nie działały bez załączników + UX redesign na inline @[Name].
+
+### Bug fix: mentions bez załączników
+- **Problem:** W `send_message()` ścieżka bez-attachmentów czyściła mentions PRZED ich odczytaniem
+- **Fix:** `_resolveMentions()` wywołane RAZ na początku, PRZED `resetInputArea()` i `clear()`
+- Osobna separacja: `mentionDisplayText` (UI) vs `mentionContextText` (API) vs `apiContent` (pełna treść)
+
+### Inline @[Name] w textarea
+- `_selectItem()`: zamienia `@query` na `@[item.name] ` (z trailing space) zamiast usuwać
+- `_handleInput()`: guard — jeśli query zaczyna się od `[` → kursor w istniejącym @[Name], nie triggeruj dropdown
+- `removeMention()`: oprócz usunięcia z tablicy, usuwa `@[Name]` z textarea
+
+### Badge w bąbelce usera
+- `_renderUserText(container, text)`: split na `@[...]`, tekst + `pkm-mention-badge` span
+- Użyte w `append_message()` i `render_messages()` dla roli 'user'
+- CSS: `.pkm-mention-badge` (accent na jasnym tle) + `.user .pkm-mention-badge` (biały na accent tle)
+
+### Enter fix
+- **Problem:** Enter przy otwartym dropdownie → select + send (bo `_selectItem` zamyka dropdown → chat_view widzi isOpen=false)
+- **Fix:** `stopImmediatePropagation()` zamiast `stopPropagation()` dla Enter/Tab
+
+### Metadane ukryte w UI
+- **Problem:** "User wskazał następujące pliki..." widoczne w bąbelce usera
+- **Fix:** `append_message(role, apiContent, mentionDisplayText)` — API dostaje kontekst, UI pokazuje czysty tekst
+
+### Decision Tree
+- Nowa instrukcja `search_mention` w grupie SZUKANIE (PromptBuilder.js)
+- Agent wie: @[Name] = mention, ścieżki na początku wiadomości, vault_read ZANIM odpowie
+
+**Pliki zmienione:**
+- `src/views/chat_view.js` — send_message bug fix, _resolveMentions update, _renderUserText helper
+- `src/components/MentionAutocomplete.js` — inline @[Name], guard, removeMention, stopImmediatePropagation
+- `src/views/chat_view.css` — pkm-mention-badge + user override (kontrastowe kolory)
+- `src/core/PromptBuilder.js` — search_mention instruction w Decision Tree
+
+**Build:** 7.3MB, 0 błędów.
+
+**Następne kroki:**
+- 2.9 Pamięć fix (L2 czytane, brain czysty, minion odświeżalny)
+- 2.10 UX Chatu
+
+---
+
+## 2026-02-27 (sesja 49) - Input Chatu v2 — Web Search + ask_user + @ Mentions + Załączniki
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** 4 brakujące core features inputu chatu — standard w AI chatach 2026.
+
+### Faza A: Web Search Tool
+**WebSearchProvider.js — NOWY (~180 LOC):**
+- Multi-provider: Jina AI (darmowy domyślny, bez API key), Tavily, Brave, Serper, SearXNG (self-hosted)
+- `executeWebSearch(query, settings, limit)` — dispatcher po wybranym providerze
+- Obsidian `requestUrl()` zamiast fetch (CORS bypass w Electron)
+- `WEB_SEARCH_PROVIDERS` registry + `PROVIDER_SIGNUP_URLS` (linki do rejestracji)
+
+**WebSearchTool.js — NOWY (~100 LOC):**
+- MCP tool: `{query: string, limit?: number}` → wyniki z tytułami, URL, fragmentami (max 1500 znaków per wynik)
+
+**Integracja:**
+- `obsek_settings_tab.js`: sekcja "Web Search" — toggle, provider dropdown, API key (password), SearXNG URL, signup button
+- `PermissionSystem.js`: `web.search` wymaga approval (destructiveActions), `WEB_SEARCH` permission type
+- `WorkMode.js`: `web_search` we wszystkich 4 trybach
+- `PromptBuilder.js`: TOOL_GROUPS `web`, Decision Tree instruction (szukanie group)
+- `Agent.js`: `web_search: true` w DEFAULT_PERMISSIONS
+- `ToolCallDisplay.js` + `MCPClient.js`: ikona, label, opis
+
+### Faza B: ask_user Tool
+**AskUserTool.js — NOWY (~100 LOC):**
+- Agent pyta usera i CZEKA na odpowiedź (Promise-based)
+- `{question, options[], context?}` → pauzuje execute() → resolve po kliknięciu
+- YOLO mode: auto-wybiera pierwszą opcję (instant return)
+
+**chat_view.js: `_renderAskUserBlock()`:**
+- Inline blok w chacie (nie modal/popup!): pytanie + clickable pill/chip opcje + pole własnej odpowiedzi + submit
+- `.selected` state na opcjach, plugin._askUserResolve() po kliknięciu
+
+**chat_view.css:** ~120 linii — `.ask-user-block`, opcje, custom input, submit, answer
+
+### Faza C: @ Mentions
+**MentionAutocomplete.js — NOWY (~250 LOC):**
+- Custom dropdown na plain `<textarea>` (nie CodeMirror — nie można użyć EditorSuggest)
+- Trigger: `@` → notatki (fuzzy search), `@folder:` → foldery
+- Sortowanie: basename match priority, potem mtime (newest first)
+- Kategorie: "Notatki" / "Foldery" z headerami
+- Nawigacja: ArrowUp/Down, Enter/Tab (select), Escape (close)
+- Pomija ukryte pliki (`.` prefix)
+
+**chat_view.js: `_resolveMentions(text)`:**
+- Regex extraction `@mention` i `@folder:path`
+- AccessGuard No-Go check → blokuje zabronione ścieżki
+- Czytanie treści: notatki max 5000 chars, foldery max 5 plików × 2000 chars
+
+### Faza D: Załączniki (multimodal)
+**AttachmentManager.js — NOWY (~350 LOC):**
+- 📎 file picker, drag & drop na chat area, Ctrl+V paste z clipboard
+- 3 typy: obrazki (png/jpg/gif/webp/svg/bmp → base64), tekst (md/txt/js/json/csv... → text), PDF (→ text extraction)
+- Chip bar: miniatura + nazwa + rozmiar + X
+- `buildMessageContent(text)` → `{content: string|Array, displayText}`
+- Tylko tekst/PDF: string (działa z KAŻDYM modelem)
+- Z obrazkami: content blocks array `[{type:'text'}, {type:'image_url'}]` (multimodal)
+- PDF extraction: Obsidian built-in pdf.js, max 50 stron
+- Limity: max 10 attachments, 10MB per obraz, 100KB per tekst
+
+**RollingWindow.js — zmiany:**
+- `addMessage()`: content jako string LUB tablica
+- `getMessagesForAPI()`: pass-through (content array idzie as-is do adaptera)
+- `getCurrentTokenCount()`: obsługuje tablice (text blocks + ~85 tokens estimate per image)
+
+**chat_view.js — zmiany:**
+- `append_message(role, content, displayText?)` — nowy opcjonalny parametr
+- `_contentBlocksToText(blocks)` — wyciąga tekst z content blocks array
+- `_renderMultimodalUserContent()` — tekst + miniaturki obrazków (klik = fullscreen)
+- `render_messages()` — obsługuje tablice content przy odtwarzaniu sesji
+- Token counting z messages: obsługuje content array
+
+**Adaptery (już istniejące — 0 zmian potrzebnych!):**
+- OpenAI/DeepSeek: pass-through (content array idzie wprost do API)
+- Anthropic: konwertuje image_url → type:image + source:base64
+- Ollama: kolapsuje do text + osobne images field
+
+**Pliki zmienione:**
+- `src/core/WebSearchProvider.js` — NOWY
+- `src/mcp/WebSearchTool.js` — NOWY
+- `src/mcp/AskUserTool.js` — NOWY
+- `src/components/MentionAutocomplete.js` — NOWY
+- `src/components/AttachmentManager.js` — NOWY
+- `src/views/chat_view.js` — import 3 nowych, init, send_message z attachments, append_message multimodal, helpers
+- `src/views/chat_view.css` — ask_user blok, mention dropdown, attachment chipy/thumbs/overlay
+- `src/views/obsek_settings_tab.js` — Web Search settings section
+- `src/main.js` — import + registration WebSearchTool, AskUserTool
+- `src/components/ToolCallDisplay.js` — TOOL_INFO + TOOL_DESCRIPTIONS
+- `src/mcp/MCPClient.js` — ACTION_TYPE_MAP + label
+- `src/core/WorkMode.js` — web_search + ask_user in all modes
+- `src/core/PromptBuilder.js` — TOOL_GROUPS + Decision Tree instructions
+- `src/core/PermissionSystem.js` — WEB_SEARCH permission type + approval
+- `src/agents/Agent.js` — DEFAULT_PERMISSIONS + web_search
+- `src/memory/RollingWindow.js` — multimodal content support
+- `PLAN_v2.md` — section 2.8.5 all checkboxes ✅
+
+**Decyzje podjete:**
+- Jina AI bez klucza = 3 RPM (per user IP). Z kluczem = 100 RPM + 10M tokens/month. Darmowy tier.
+- ask_user INLINE w chacie (nie modal/popup). Agent response → pytanie → user klika → continue
+- PDF: text extraction (działa z każdym modelem). Nie vision (DeepSeek nie obsługuje).
+- Obrazki: content blocks (działa z vision models). Modele bez vision dostaną błąd od API — user sobie poradzi.
+- Adaptery Smart Chat Model już obsługują multimodal — 0 zmian w bibliotece!
+
+**Build:** 7.3MB, 0 błędów, auto-kopia do vaultu.
+
+---
+
+## 2026-02-27 (sesja 49 cont.) - Bugfixy Input Chatu v2 — Drag&Drop, Chipy, Paste, Web Search
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Bugfixy po testowaniu sesji 49 — user przetestował wszystkie 4 feature'y i zgłosił problemy.
+
+### Testy usera — wyniki:
+- ask_user: PASS
+- Web Search (Jina): FAIL — 401 Unauthorized (Jina zmieniło politykę, wymaga klucza API)
+- @ Mentions: PASS ale UX do poprawy (chipy osobne od attachmentów)
+- Attachments: PARTIAL — tekst OK, drag&drop FAIL (Obsidian przechwytuje), paste obrazków FAIL
+
+### Fix 1: Web Search 401
+- Dodano `X-Return-Format: json` header do Jina search
+- Try/catch z dedykowanym 401 error message: link do jina.ai + instrukcja klucza API
+- Status: działa — user widzi komunikat, wymaga wpisania klucza w ustawieniach
+
+### Fix 2: Drag & Drop — document-level handlers
+- **Problem:** `capture: true` na element-level (`dropZone`) nie wystarczy — Obsidian/Electron przechwytuje na document level WCZEŚNIEJ
+- **Fix:** Przeniesione handlery `dragenter/dragover/dragleave/drop` z `this.dropZone` na `document`
+- `_isInDropZone(e)` — sprawdza `dropZone.contains(target) || container.contains(target)`
+- `dragleave` z `relatedTarget` check (nie migająca ramka)
+- `destroy()` zaktualizowany — `document.removeEventListener(..., true)`
+- Status: PASS po teście usera
+
+### Fix 3: Paste obrazków (Ctrl+V)
+- **Problem:** Clipboard-pasted images mogą nie mieć rozszerzenia pliku
+- **Fix:** MIME type fallback — `file.type` check oprócz extension check
+- `_mimeToExt()` helper: image/png→png, image/jpeg→jpeg, etc.
+- `_processFile()`: `isImage = IMAGE_EXTENSIONS.includes(ext) || mime.startsWith('image/')`
+- Status: PASS — user potwierdził (screenshot: DSCF0126.JPG chip z miniaturą)
+
+### Fix 4: Unified chip bar — mentions + attachments razem
+- **Problem:** MentionAutocomplete miał osobny chip bar (`.pkm-mention-chips`), user chciał jedno
+- **Fix:** MentionAutocomplete nie tworzy już chip bara — trzyma tylko dane
+- AttachmentManager: nowy `setMentionChips(mentions, onRemove)` — renderuje oba typy w jednym pasku
+- Mention chipy mają accent tint (CSS: `.pkm-attachment-chip.pkm-mention-chip`)
+- × na mention chipie → `MentionAutocomplete.removeMention(index)`
+- chat_view.js: wire `mentionAutocomplete.onChange → attachmentManager.setMentionChips()`
+- Usunięto: `_buildChipBar()`, `_renderChips()` z MentionAutocomplete, stary CSS `.pkm-mention-chips`
+- Dodano: `removeMention(index)` do MentionAutocomplete
+- Status: PASS — user potwierdził (screenshot: mention + attachment w jednym pasku)
+
+### Znany problem: DeepSeek + obrazki
+- DeepSeek-V3.2 (reasoning) = tekst-only model, nie obsługuje `image_url` bloków
+- Error: `unknown variant 'image_url', expected 'text'`
+- **DO ZROBIENIA:** fallback/placeholder gdy model nie wspiera vision
+
+**Pliki zmienione:**
+- `src/core/WebSearchProvider.js` — Jina 401 handling + header
+- `src/components/AttachmentManager.js` — document-level drag&drop, MIME fallback, unified chip bar, setMentionChips()
+- `src/components/MentionAutocomplete.js` — usunięto chip bar, dodano removeMention()
+- `src/views/chat_view.js` — wire mentionAutocomplete ↔ attachmentManager
+- `src/views/chat_view.css` — usunięto stary mention CSS, dodano .pkm-mention-chip modifier
+
+### Fix 5: @ Mentions — lekkie referencje zamiast pełnej treści
+- **Problem:** Mention czytał pełną treść pliku (5000 znaków/notatka, 5×2000/folder) → zjadał tokeny
+- **Fix:** `_resolveMentions()` v3 — wysyła tylko listę ścieżek + rozmiarów
+- Agent sam decyduje: `vault_read` lub delegacja do miniona
+- Zero tokenów z góry, idealne do masowych mentionów
+
+**Build:** 7.3MB, 0 błędów.
+
+**Następne kroki:**
+- DeepSeek vision fallback (placeholder zamiast base64 dla modeli bez vision)
+- 2.9 Pamięć fix (L2 czytane, brain czysty, minion odświeżalny)
+- 2.10 UX Chatu
+
+---
+
+## 2026-02-26 (sesja 48) - Skills v2 — Pełna implementacja + DeepSeek Concat Fix
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Pełna implementacja Skills v2 (3 fazy: A fundament, B per-agent overrides, C polish) + fix buga DeepSeek'a (sklejone tool call names dla N narzędzi) + profesjonalny skill testowy deep-topic-analysis.
+
+### Faza A: Fundament — Format v2 + SkillLoader + Creator
+
+**SkillLoader.js — rozbudowa:**
+- `_loadSkillFromFolder()` — szuka `SKILL.md` (standard v2) z fallbackiem na `skill.md` (backward compat)
+- Nowe pola frontmatter: `allowed-tools`, `argument-hint`, `disable-model-invocation`, `user-invocable`, `icon`, `tags`, `model`, `pre-questions` (array of {key, question, default, options?})
+- `saveSkill(skillData)` — wzorowane na MinionLoader.saveMinion(), buduje YAML frontmatter + markdown, tworzy folder
+- `deleteSkill(skillName)` — usuwa plik + folder + czyści cache
+- `_slugify()` — obsługuje polskie znaki (ą→a, ś→s etc.)
+
+**SkillEditorModal.js — NOWY (~250 linii):**
+- Unified Creator/Editor dla skilli (wzór: MinionMasterEditorModal)
+- 13 pól: nazwa, opis, ikona, kategoria, tagi, wersja, enabled, model, allowed-tools (grid checkboxów), auto-invoke, widoczny w UI, pre-questions (dynamiczna lista), prompt (duży textarea)
+- Tryby: create (existing=null), edit (existing=skill), override (per-agent, faza B)
+- Save → skillLoader.saveSkill() → callback → close
+- Delete z potwierdzeniem → skillLoader.deleteSkill()
+
+**SkillVariables.js — NOWY (~40 linii):**
+- `substituteVariables(prompt, values)` — zamienia `{{key}}` na wartość z obiektu
+- Regex: `/\{\{(\w+)\}\}/g`, niezastąpione zmienne pozostają
+
+**Chat UI — zmiana zachowania klikania skilli:**
+- BYŁO: auto-send (klik → wysyłka do AI)
+- JEST: klik → prompt w inputcie (user widzi, może edytować, sam Enter)
+- Pre-questions: overlay z mini-formularzem nad inputem (label+input/dropdown, default wartości)
+- Bez pre-questions: bezpośredni inject promptu
+
+**Backstage + DetailViews integracja:**
+- BackstageViews: przycisk "+ Nowy Skill" → SkillEditorModal
+- DetailViews: pełny podgląd nowych pól (icon, tags, tools, pre-questions, flags) + "Edytuj" → SkillEditorModal
+
+### Faza B: Per-Agent Overrides
+
+**Agent.js:**
+- `_normalizeSkillAssignments()` — analogicznie do `_normalizeDelegateAssignments()` (backward compat: string[] → object[])
+- `get skills()` getter — backward compat (zwraca string[])
+- `set skills(value)` setter — normalizuje input (BUG FIX: brak settera powodował "Cannot set property skills")
+- `getSkillAssignment(name)` — pobieranie per-skill overrides
+
+**AgentManager.js:**
+- `resolveSkillConfig(skillName, agent)` — merge base skill z per-agent overrides (prompt_append, model, pre_question_defaults)
+- `getActiveAgentSkills()` — rozwiązuje każdy skill przez resolveSkillConfig
+
+**SkillExecuteTool.js:**
+- Resolve per-agent: `agentManager.resolveSkillConfig(name, activeAgent)` zamiast surowego loadera
+
+**yamlParser.js:**
+- Skills akceptuje `string | {name, overrides?}` (jak minions/masters)
+
+### Faza C: Polish + Auto-invoke
+
+**PromptBuilder.js:**
+- `_injectGroupDynamics()` dla grupy 'skille': pełne opisy skilli (nazwa + opis + kategoria) zamiast samych nazw
+- Nowa instrukcja DT: "Jeśli zadanie usera pasuje do opisu skilla — użyj go bez pytania"
+- Respektuje `disable-model-invocation` — nie pokazuje w DT jeśli true
+
+**SkillListTool.js:**
+- Dodane pola: `icon`, `tags`, `allowedTools`, `has_pre_questions`
+- Filtrowanie po tagach
+
+**SkillLoader.js — pliki pomocnicze:**
+- Awareness `template.md`, `references/`, `examples/` w folderze skilla
+
+### DeepSeek Concatenation Fix (N tool calls)
+
+**Problem:** DeepSeek Reasoner skleja nazwy N równoległych tool calls w jeden string (np. `minion_taskminion_taskminion_task`). Stary splitter obsługiwał max 2.
+
+**MCPClient.js — rewrite `_trySplitConcatenatedToolCall()`:**
+- Nowa `_decomposeToolName(str, knownNames)` — rekurencyjna dekompozycja z backtrackingiem (obsługuje N sklejonych nazw)
+- `_splitConcatenatedJSON(str)` — rozdziela `{...}{...}{...}` śledząc głębokość nawiasów
+
+**streamHelper.js — nowa ochrona dla minion/master runner:**
+- `_splitConcatenatedToolCalls()` — standalone helper (wcześniej minion/master NIE miał żadnej ochrony)
+- `_decomposeToolName()` + `_splitConcatenatedJSON()` — kopie logiki z MCPClient
+
+**chat_view.js — safety net:**
+- Po fallback `response.tool_calls` processing: dodatkowy split pass przez MCPClient
+
+### Profesjonalny skill testowy: deep-topic-analysis
+
+**Plik:** `.pkm-assistant/skills/deep-topic-analysis/SKILL.md`
+- 3 pre-questions: temat (text), głębokość (dropdown: pobieżnie/średnio/bardzo głęboko), folder_wynik (text)
+- 6 allowed-tools: vault_search, vault_read, memory_search, minion_task, master_task, vault_write
+- Pipeline: 2 miniony parallel (szukacz + notatnik) → wstępne wyniki → user wybiera kierunek → master strateg → vault_write raport
+- Dodany do Jaskiera (+ szukacz jako minion, strateg jako master)
+
+### Bug fixy
+- **"Cannot set property skills"** — Agent.js miał getter bez settera (dodany setter)
+- **DeepSeek N-concat** — obsługuje dowolną liczbę sklejonych tool call names (nie tylko 2)
+
+### Testy E2E (2 rundy)
+1. **Runda 1:** skill uruchomiony, 2 miniony ruszyły parallel, DeepSeek skleił 3 nazwy → fix wdrożony
+2. **Runda 2 (po fixie):** Pełny pipeline sukces — 2 miniony (szukacz+notatnik) → pytanie do usera → master strateg (6812 znaków raportu) → vault_write → zero błędów
+
+### Nowe pliki (3)
+- `src/views/SkillEditorModal.js` (~250 LOC) — Creator/Editor skilli
+- `src/skills/SkillVariables.js` (~40 LOC) — substituteVariables()
+- `.pkm-assistant/skills/deep-topic-analysis/SKILL.md` — profesjonalny skill testowy
+
+### Pliki zmienione (10)
+- `src/skills/SkillLoader.js` — rozbudowa: SKILL.md, saveSkill, deleteSkill, pliki pomocnicze
+- `src/agents/Agent.js` — _normalizeSkillAssignments, get/set skills, getSkillAssignment
+- `src/core/AgentManager.js` — resolveSkillConfig, getActiveAgentSkills update
+- `src/core/PromptBuilder.js` — rich skill descriptions w DT, auto-invoke
+- `src/mcp/SkillExecuteTool.js` — resolve per-agent
+- `src/mcp/SkillListTool.js` — rich metadata, tag filter
+- `src/mcp/MCPClient.js` — recursive N-decompose tool names
+- `src/memory/streamHelper.js` — concat split protection for minion/master
+- `src/views/chat_view.js` — pre-questions overlay, prompt inject, safety net concat
+- `src/views/sidebar/BackstageViews.js` — "+ Nowy Skill" button
+- `src/views/sidebar/DetailViews.js` — SkillEditorModal integration, rich detail view
+- `src/utils/yamlParser.js` — skills validation update
+
+### Decyzje podjęte
+- **Skills v2 format: SKILL.md (uppercase)** z fallbackiem na skill.md — standard zgodny z agentskills.io
+- **Per-agent overrides przez prompt_append** — agent dostaje bazowy prompt + swoje dopiski (nie kopia całego skilla)
+- **Rekurencyjny decompose zamiast regex** — backtracking gwarantuje poprawny split dla dowolnej kombinacji nazw narzędzi
+- **3 punkty ochrony przed DeepSeek concat** — MCPClient (main), streamHelper (minion/master), chat_view (safety net)
+
+### Następne kroki
+- UI poprawki odłożone: skill override form pod skillem (nie na dole), agent switching refresh
+- Crystal Soul weryfikacja wizualna w Obsidianie
+- Pamięć fix (2.9)
+- UX Chatu (2.10)
+
+---
+
+## 2026-02-26 (sesja 47) - Crystal Soul Design System
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Wprowadzenie kryształowej estetyki UI do pluginu na bazie HTML mockupu ("Design concept"). Implementacja jako INSPIRACJA (nie literalna kopia), z zachowaniem kompatybilności z każdym Obsidianowym themem.
+
+### Źródło inspiracji
+- HTML mockup `c:/Users/jdziu/Desktop/Obsek/Design concept` (~2630 linii)
+- Stworzony przez inny chat (bez widoku kodu, na podstawie screenów pluginu)
+- Estetyka: kryształy, diamenty, shard borders, geometryczne kształty, breathing animations
+- Kolory Gruvbox w mockupie = theme usera, NIE hardcoded — plugin musi działać z każdym themem
+
+### Faza 1: CSS Variables Foundation (`src/styles.css`, +70 linii)
+- ~30 zmiennych `--cs-*` (Crystal Soul) mapujących na Obsidianowe CSS vars
+- Kategorie: shard, border, diamond, surface, text, animation
+- 8 predefiniowanych kolorów agentów jako HSL components (amber, aqua, purple, blue, rose, emerald, slate, coral)
+- Selektory `[data-agent-color="amber"]` itd. ustawiające `--cs-agent-h/s/l`
+- Keyframes: `cs-breathing` (opacity pulsing), `cs-shimmer` (gradient slide)
+- Kluczowe odkrycie: Obsidian auto-obsługuje dark/light mode — NIE trzeba osobnych reguł
+
+### Faza 2: Reskin komponentów (CSS, ~130 linii łącznie)
+- **AgentSidebar.css**: shard border-left (3px) na aktywnej karcie, diamond indicator (rotate 45deg + glow) zamiast `●`, crystal hover effects
+- **chat_view.css**: gradient accent line na headerze (::after), shard border na assistant bubbles, diamond ::before na thinking/subagent headers, crystal shimmer na streaming
+- **SidebarViews.css**: diamond ::before na section titles, shard hover na kartach, crystal border na unread messages
+- Fix: hardcoded `rgba(255,255,255,0.2)` → `var(--cs-shard-subtle)`, hardcoded `#9b59b6` → `color-mix`
+
+### Faza 3: Agent Colors + Crystal Toggles
+- **Agent.js**: `CRYSTAL_PALETTE` (8 kolorów), `deriveColor(name)` (deterministyczny hash), `crystalColor` getter, pole `color` w serialize()
+- **HomeView.js**: `card.setAttribute('data-agent-color', agent.crystalColor)` na kartach
+- **chat_view.js**: `data-agent-color` na avatarach w 4 miejscach (typing, streaming, render, restore)
+- **CSS**: Per-agent tinting (background, borders, diamond), diamond-shaped checkboxes (appearance:none + rotate 45deg)
+
+### Faza 4: Theme Customization
+- **main.js**: `_loadCrystalSoulTheme()` — czyta `.pkm-assistant/theme.css`, tworzy CSSStyleSheet, dodaje do adoptedStyleSheets (nadpisuje defaults)
+- **main.js**: `generateCrystalSoulTemplate()` — generuje plik z zakomentowanymi zmiennymi + komentarzami po polsku
+- **obsek_settings_tab.js**: sekcja "Crystal Soul" z przyciskami "Generuj plik motywu" / "Przeładuj motyw"
+
+### Pliki zmienione (10)
+- `src/styles.css` — +70 linii (CSS vars + keyframes + agent color selectors)
+- `src/views/AgentSidebar.css` — ~50 linii zmienionych/dodanych (crystal cards + agent color CSS)
+- `src/views/chat_view.css` — ~120 linii dodanych (header, bubbles, thinking, toggles, agent colors)
+- `src/views/sidebar/SidebarViews.css` — ~25 linii dodanych (diamond titles, shard cards, crystal unread)
+- `src/agents/Agent.js` — +20 linii (CRYSTAL_PALETTE, deriveColor, crystalColor, color field)
+- `src/views/sidebar/HomeView.js` — +3 linii (import Agent, setAttribute data-agent-color)
+- `src/views/chat_view.js` — +10 linii (import Agent, data-agent-color w 4 miejscach)
+- `src/main.js` — +45 linii (_loadCrystalSoulTheme, generateCrystalSoulTemplate)
+- `src/views/obsek_settings_tab.js` — +12 linii (Crystal Soul settings section)
+- `MEMORY.md` — zaktualizowana o sesję 47
+
+### Decyzje podjęte
+- **NIE kopiujemy mockupu 1:1** — bierzemy estetykę (diamenty, shardy, gradient linie), nie layout (sidebar+main tabs nie istnieje w Obsidianie)
+- **Wszystkie kolory przez CSS vars** → żaden hardcoded kolor, działa z każdym themem
+- **`--cs-*` mapują na `--obsidian-*`** → automatyczna adaptacja dark/light
+- **Agent color = hash nazwy** → deterministyczny, nie wymaga konfiguracji, ale pole `color` pozwala override
+- **Theme customization via .pkm-assistant/theme.css** → agent może edytować przez vault_write, user przez plik
+- **Faza 5 (SVG crystal icons) odłożona** — emoji działają, estetyka osiągalna bez SVG
+
+### Uwagi
+- User zauważył, że zmiany widoczne głównie w sidebarze — chat/profile/komunikator wymagają weryfikacji wizualnej w Obsidianie
+- Brak file watchera na theme.css (planowany, nie zaimplementowany) — reload ręczny przez Settings
+- Build: 7.2MB, 0 błędów
+
+### Następne kroki
+- Zweryfikować wizualnie w Obsidianie: chat bubbles, thinking blocks, profile, komunikator
+- Jeśli CSS nie łapie — mogą być problemy z adoptedStyleSheets order lub selector specificity
+- Ewentualnie faza 5 (SVG icons) w przyszłości
+
+---
+
+## 2026-02-26 (sesja 46) - MasterRunner + MasterLoader + Multi-Delegate + Creator + Pipeline Debug
+
+**Sesja z:** Claude Code (Opus 4.6)
+**Cel:** Pełny ekosystem mastera (MasterLoader, MasterRunner, MasterTaskTool rewrite), multi-delegate arrays w Agent.js, unified Minion/Master Creator+Editor, Backstage Masters view, oraz debug pipeline'u multi-agent z 3 krytycznymi bug fixami.
+
+### Nowe pliki (4)
+- `src/core/MasterLoader.js` (344 LOC) — ładowanie masterów z .pkm-assistant/masters/, cache, walidacja, hot-reload, 2 starter mastery (strateg + redaktor), wzorowany na MinionLoader
+- `src/core/MasterRunner.js` (199 LOC) — pełna pętla tool-calling dla mastera (streamToCompleteWithTools), work mode cascade, routing przez MCPClient (permissions), graceful error handling
+- `src/views/MinionMasterEditorModal.js` (229 LOC) — unified Creator/Editor dla minionów I masterów (tryb 'minion'/'master'), formularz: nazwa, opis, model, iteracje, tools picker z checkboxami, instrukcje (textarea), save/delete
+- `src/views/AgentCreatorModal.js` (16 LOC) — deprecated redirect do AgentProfileModal
+
+### Zmiany w istniejących plikach (6 plików)
+
+**Agent.js — Multi-delegate arrays:**
+- MAX_DELEGATES = 20 (zamiast 5)
+- `minions[]` / `masters[]` jako tablice obiektów: `[{name, role?, default?, active?, overrides?}]`
+- Backward compat: stary format `minion: 'szukacz'` → auto-migracja do `minions: [{name: 'szukacz', default: true}]`
+- Nowe gettery: `activeMinions`, `activeMasters`, `defaultMinion`, `defaultMaster`, `prepMinion`
+- `getMinionAssignment(name)`, `getMasterAssignment(name)` — pobieranie per-assignment
+- `getMinionNames()` / `getMasterNames()` — aktywne only, `getAllMinionNames()` / `getAllMasterNames()` — wszystkie
+- Per-delegate overrides: `{prompt_append, extra_tools, max_iterations}`
+- `_normalizeDelegateAssignments()` — statyczny helper migracji + walidacji
+- Serialize zapisuje pełne tablice z active, overrides
+
+**AgentManager.js — Master init + resolve:**
+- Import i init `MasterLoader` obok MinionLoader
+- `resolveMinionConfig(minionName, agent)` — merge minion config z per-agent overrides (prompt_append, extra_tools, max_iterations)
+- `resolveMasterConfig(masterName, agent)` — analogicznie dla masterów
+- `_buildBaseContext()` — buduje minionList + masterList z `agent.getMinionNames()` / `getMasterNames()`
+- `reloadMasters()` metoda
+
+**MasterTaskTool.js — kompletny rewrite z MasterRunner:**
+- 3-fazowy flow: minion gathers context → master analyzes → return
+- Input: task (required), master (optional name), context (extra), skip_minion (boolean), minion_instructions (custom)
+- Resolve: args.master > agent.defaultMaster > fallback
+- MasterRunner z pętlą tool-calling (nie jednorazowe wywołanie jak wcześniej)
+- Return: success, result, tools_used, tool_call_details, duration_ms, usage, context_gathered, source
+
+**BackstageViews.js — Masters view + filtr:**
+- `renderMastersView()` — nowy widok: karty masterów, przycisk "Nowy Master", search, filter by tool/agent/status
+- `renderFilterBar()` — shared UI component dla chip filtrów (reused w minionach i masterach)
+- `agentHasMinion()` / `agentHasMaster()` — multi-delegate compatible checks
+
+**DetailViews.js — Master detail:**
+- `renderMasterDetailView()` — meta info, tools, agenty, prompt (markdown rendering), edit button
+- Minion detail: teraz używa MinionMasterEditorModal do edycji
+
+**AgentSidebar.js — routing:**
+- Nowe routy: `masters`, `master-detail`
+
+### 3 krytyczne bug fixy (debug pipeline'u)
+
+**Bug 1: Parallel minion infinite hang (KRYTYCZNY)**
+- Oba miniony resolvowały do tego samego cache'owanego SmartChatModel → callbacki się nadpisywały
+- Fix: `modelResolver.js` skip cache dla role=minion/master (każde wywołanie = świeża instancja)
+
+**Bug 2: 400 Bad Request po parallel tools**
+- DeepSeek Reasoner skleja tool calls: "minion_taskminion_task" → parser rozdziela → ID niespójne z raw response
+- Fix: `chat_view.js` zapisuje PARSOWANE toolCalls (nie raw z API)
+
+**Bug 3: Safety timeout 60s**
+- Fix: `streamHelper.js` Promise.race na wszystkich model calls
+
+### Starter mastery
+- **strateg** — planowanie strategiczne, tools: plan_action + chat_todo + vault_write, max 5 iteracji
+- **redaktor** — weryfikacja jakości, tools: plan_action + vault_write + chat_todo, max 4 iteracji
+
+### Weryfikacja — pełny pipeline E2E!
+Log sesji `2026-02-26_09-31-54.md`:
+1. Auto-prep (minion) → kontekst
+2. Main (DeepSeek Reasoner) → delegacja 2 tasków
+3. 2x Minion parallel (DeepSeek Chat) → oba DONE
+4. Master (Claude Sonnet 4.5) → analiza + plan_action
+5. Final response z pełnym kontekstem
+
+### Kluczowe decyzje architektoniczne
+- Multi-delegate arrays (nie single strings) — backward compat via auto-migration
+- Per-delegate overrides (prompt_append, extra_tools, max_iterations) — merge w resolveMinionConfig/resolveMasterConfig
+- Master NIGDY nie szuka sam — dostaje przygotowany kontekst od Main+Minion
+- SmartChatModel.stream() NOT concurrent-safe → fresh instance per parallel call
+- Unified MinionMasterEditorModal dla obu typów (DRY)
+
+### Build
+- 7.1MB, 0 błędów
+
+---
+
 ## 2026-02-26 (sesja 45) - Delegacja v2 — Parallel + Multi-Minion + Decision Tree Overhaul
 
 **Sesja z:** Claude Code (Opus 4.6)

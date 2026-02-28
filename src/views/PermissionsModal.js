@@ -4,6 +4,7 @@
  */
 import { Modal, Setting } from 'obsidian';
 import { PERMISSION_TYPES, PermissionSystem } from '../core/PermissionSystem.js';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class PermissionsModal extends Modal {
     /**
@@ -25,7 +26,7 @@ export class PermissionsModal extends Modal {
 
         // Header
         contentEl.createEl('h2', {
-            text: `Uprawnienia: ${this.agent.emoji} ${this.agent.name}`
+            text: `Uprawnienia: ${this.agent.name}`
         });
 
         // Presets section
@@ -35,18 +36,19 @@ export class PermissionsModal extends Modal {
         const presetButtons = presetContainer.createDiv('preset-buttons');
 
         const safeBtn = presetButtons.createEl('button', {
-            text: '🔒 Safe',
             cls: 'mod-cta'
         });
+        safeBtn.innerHTML = `${UiIcons.lock(14)} Safe`;
         safeBtn.onclick = () => this.applyPreset('safe');
 
-        const stdBtn = presetButtons.createEl('button', { text: '⚖️ Standard' });
+        const stdBtn = presetButtons.createEl('button');
+        stdBtn.innerHTML = `${UiIcons.scales(14)} Standard`;
         stdBtn.onclick = () => this.applyPreset('standard');
 
         const yoloBtn = presetButtons.createEl('button', {
-            text: '🚀 Full',
             cls: 'mod-warning'
         });
+        yoloBtn.innerHTML = `${UiIcons.rocket(14)} Full`;
         yoloBtn.onclick = () => this.applyPreset('yolo');
 
         // Active permissions
@@ -167,7 +169,7 @@ export class PermissionsModal extends Modal {
         const notice = document.createElement('div');
         notice.className = 'yolo-warning';
         notice.innerHTML = `
-            <strong>⚠️ YOLO Mode</strong><br>
+            <strong>${UiIcons.warning(16)} YOLO Mode</strong><br>
             Agent będzie automatycznie zatwierdzał wszystkie akcje bez pytania.
             Używaj ostrożnie!
         `;

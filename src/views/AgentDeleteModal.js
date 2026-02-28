@@ -3,6 +3,7 @@
  * Confirmation dialog for deleting an agent with optional memory archiving.
  */
 import { Modal, Setting, Notice } from 'obsidian';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class AgentDeleteModal extends Modal {
     /**
@@ -25,21 +26,18 @@ export class AgentDeleteModal extends Modal {
         contentEl.addClass('agent-delete-modal');
 
         // Header
-        contentEl.createEl('h2', {
-            text: `🗑️ Usunąć agenta?`
-        });
+        const h2 = contentEl.createEl('h2');
+        h2.innerHTML = `${UiIcons.trash(20)} Usunąć agenta?`;
 
         // Agent info
         const info = contentEl.createDiv({ cls: 'agent-delete-info' });
         info.createEl('p', {
-            text: `Czy na pewno chcesz usunąć agenta ${this.agent.emoji} ${this.agent.name}?`
+            text: `Czy na pewno chcesz usunąć agenta ${this.agent.name}?`
         });
 
         if (this.agent.isBuiltIn) {
-            info.createEl('p', {
-                text: '⚠️ To jest wbudowany agent. Zostanie odtworzony przy następnym uruchomieniu pluginu.',
-                cls: 'agent-delete-warning'
-            });
+            const warnP = info.createEl('p', { cls: 'agent-delete-warning' });
+            warnP.innerHTML = `${UiIcons.warning(14)} To jest wbudowany agent. Zostanie odtworzony przy następnym uruchomieniu pluginu.`;
         }
 
         // Archive option
@@ -78,7 +76,7 @@ export class AgentDeleteModal extends Modal {
             // Delete agent
             await agentManager.deleteAgent(this.agent.name);
 
-            new Notice(`Agent ${this.agent.emoji} ${this.agent.name} usunięty.`);
+            new Notice(`Agent ${this.agent.name} usunięty.`);
 
             if (this.onConfirm) this.onConfirm();
             this.close();

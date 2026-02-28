@@ -53,6 +53,8 @@ import { createAgoraReadTool } from "./mcp/AgoraReadTool.js";
 import { createAgoraUpdateTool } from "./mcp/AgoraUpdateTool.js";
 import { createAgoraProjectTool } from "./mcp/AgoraProjectTool.js";
 import { createSwitchModeTool } from "./mcp/SwitchModeTool.js";
+import { createWebSearchTool } from "./mcp/WebSearchTool.js";
+import { createAskUserTool } from "./mcp/AskUserTool.js";
 import { AgoraManager } from "./core/AgoraManager.js";
 import { registerAgentSidebar, openAgentSidebar } from "./views/AgentSidebar.js";
 import { SendToAgentModal } from "./views/SendToAgentModal.js";
@@ -252,6 +254,8 @@ export default class ObsekPlugin extends PKMPlugin {
       this.toolRegistry.registerTool(createAgoraUpdateTool(this.app));
       this.toolRegistry.registerTool(createAgoraProjectTool(this.app));
       this.toolRegistry.registerTool(createSwitchModeTool(this.app));
+      this.toolRegistry.registerTool(createWebSearchTool(this.app));
+      this.toolRegistry.registerTool(createAskUserTool(this.app));
 
       this.toolLoader = new ToolLoader(this.app.vault);
       const customTools = await this.toolLoader.loadAllTools();
@@ -272,7 +276,7 @@ export default class ObsekPlugin extends PKMPlugin {
         const selection = editor.getSelection();
         if (selection && selection.trim().length > 0) {
           menu.addItem((item) => {
-            item.setTitle('📨 Wyślij do asystenta')
+            item.setTitle('Wyślij do asystenta')
               .setIcon('message-square')
               .onClick(() => {
                 const filePath = view?.file?.path || '';
@@ -280,7 +284,7 @@ export default class ObsekPlugin extends PKMPlugin {
               });
           });
           menu.addItem((item) => {
-            item.setTitle('✏️ Komentarz do Asystenta')
+            item.setTitle('Komentarz do Asystenta')
               .setIcon('edit')
               .onClick(() => {
                 const filePath = view?.file?.path || '';
@@ -292,8 +296,75 @@ export default class ObsekPlugin extends PKMPlugin {
     );
 
     await this.check_for_updates();
+
+    // Crystal Soul: load custom theme overrides
+    await this._loadCrystalSoulTheme();
+
     log.timing('Plugin', 'PEŁNA INICJALIZACJA', initStart);
     log.info('Plugin', `=== PKM Assistant v${this.manifest.version} GOTOWY ===`);
+  }
+
+  /**
+   * Crystal Soul: Load custom theme CSS from .pkm-assistant/theme.css
+   * This file can be edited by user or written by agents via vault_write.
+   * It overrides Crystal Soul --cs-* variables.
+   */
+  async _loadCrystalSoulTheme() {
+    const THEME_PATH = '.pkm-assistant/theme.css';
+    try {
+      const exists = await this.app.vault.adapter.exists(THEME_PATH);
+      if (!exists) return;
+
+      const css = await this.app.vault.adapter.read(THEME_PATH);
+      if (!css.trim()) return;
+
+      if (this._crystalSoulSheet) {
+        this._crystalSoulSheet.replaceSync(css);
+      } else {
+        this._crystalSoulSheet = new CSSStyleSheet();
+        this._crystalSoulSheet.replaceSync(css);
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, this._crystalSoulSheet];
+      }
+      log.info('Plugin', 'Crystal Soul custom theme loaded');
+    } catch (e) {
+      log.warn('Plugin', 'Crystal Soul theme load failed:', e);
+    }
+  }
+
+  /**
+   * Crystal Soul: Generate default theme.css template
+   */
+  async generateCrystalSoulTemplate() {
+    const THEME_PATH = '.pkm-assistant/theme.css';
+    const template = `/* Crystal Soul — Personalizacja motywu
+ * Odkomentuj zmienne żeby zmienić wygląd.
+ * Zmiany działają po przeładowaniu pluginu.
+ * Agent może też edytować ten plik przez vault_write.
+ */
+
+.theme-dark, .theme-light {
+  /* Główny kolor akcentu kryształu */
+  /* --cs-shard-color: var(--interactive-accent); */
+
+  /* Rozmiar diamentu (domyślnie: 5px) */
+  /* --cs-diamond-size: 5px; */
+
+  /* Szerokość bordera akcentu (domyślnie: 3px) */
+  /* --cs-border-accent-width: 3px; */
+
+  /* Szybkość animacji oddychania (domyślnie: 3s) */
+  /* --cs-breathing-duration: 3s; */
+
+  /* Kolory agentów (HSL) — odkomentuj i zmień */
+  /* --cs-agent-amber-h: 37; --cs-agent-amber-s: 77%; --cs-agent-amber-l: 49%; */
+  /* --cs-agent-aqua-h: 131; --cs-agent-aqua-s: 21%; --cs-agent-aqua-l: 51%; */
+  /* --cs-agent-purple-h: 330; --cs-agent-purple-s: 29%; --cs-agent-purple-l: 46%; */
+  /* --cs-agent-blue-h: 182; --cs-agent-blue-s: 33%; --cs-agent-blue-l: 40%; */
+}
+`;
+    await this.app.vault.adapter.write(THEME_PATH, template);
+    log.info('Plugin', 'Crystal Soul template wygenerowany');
+    return THEME_PATH;
   }
 
   /**

@@ -4,6 +4,7 @@
  * Polish UI, content preview, deny reason field.
  */
 import { Modal } from 'obsidian';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class ApprovalModal extends Modal {
     /**
@@ -30,7 +31,8 @@ export class ApprovalModal extends Modal {
 
         // Header with warning icon
         const header = contentEl.createDiv('approval-header');
-        header.createEl('h2', { text: '⚠️ Wymagane zatwierdzenie' });
+        const h2 = header.createEl('h2');
+        h2.innerHTML = `${UiIcons.warning(20)} Wymagane zatwierdzenie`;
 
         // Agent action description (human-readable)
         const agentInfo = contentEl.createDiv('approval-agent');
@@ -45,12 +47,13 @@ export class ApprovalModal extends Modal {
         const typeBadge = details.createEl('span', {
             cls: `action-badge action-${this._getActionSeverity()}`
         });
-        typeBadge.textContent = this._getActionLabel();
+        typeBadge.innerHTML = this._getActionLabel();
 
         // Target path
         if (this.action.targetPath) {
             const pathEl = details.createDiv('action-path');
-            pathEl.createEl('span', { text: '📁 ' });
+            const folderIcon = pathEl.createEl('span');
+            folderIcon.innerHTML = UiIcons.folder(14) + ' ';
             pathEl.createEl('code', { text: this.action.targetPath });
         }
 
@@ -92,14 +95,14 @@ export class ApprovalModal extends Modal {
         // Deny button — first click shows reason field, second confirms
         let denyClicked = false;
         const denyBtn = buttonContainer.createEl('button', {
-            text: '❌ Odrzuć',
             cls: 'mod-warning'
         });
+        denyBtn.innerHTML = `${UiIcons.cross(14)} Odrzuć`;
         denyBtn.onclick = () => {
             if (!denyClicked) {
                 denyClicked = true;
                 denyReasonDiv.style.display = 'block';
-                denyBtn.textContent = '❌ Potwierdź odmowę';
+                denyBtn.innerHTML = `${UiIcons.cross(14)} Potwierdź odmowę`;
                 denyReasonInput.focus();
             } else {
                 this._resolve({ result: 'deny', reason: denyReasonInput.value.trim() });
@@ -108,16 +111,16 @@ export class ApprovalModal extends Modal {
 
         // Approve button
         const approveBtn = buttonContainer.createEl('button', {
-            text: '✅ Zatwierdź',
             cls: 'mod-cta'
         });
+        approveBtn.innerHTML = `${UiIcons.check(14)} Zatwierdź`;
         approveBtn.onclick = () => this._resolve({ result: 'approve', reason: '' });
 
         // Always approve button
         const alwaysBtn = buttonContainer.createEl('button', {
-            text: '🔄 Zawsze zatwierdzaj to',
             cls: 'mod-muted'
         });
+        alwaysBtn.innerHTML = `${UiIcons.refresh(14)} Zawsze zatwierdzaj to`;
         alwaysBtn.onclick = () => this._resolve({ result: 'always', reason: '' });
     }
 
@@ -136,11 +139,11 @@ export class ApprovalModal extends Modal {
 
     _getActionLabel() {
         const labels = {
-            'vault.write': '📝 Zapis pliku',
-            'vault.delete': '🗑️ Usuwanie pliku',
-            'vault.create': '📄 Tworzenie pliku',
-            'command.execute': '⚡ Komenda systemowa',
-            'mcp.call': '🔧 Wywołanie MCP'
+            'vault.write': `${UiIcons.edit(14)} Zapis pliku`,
+            'vault.delete': `${UiIcons.trash(14)} Usuwanie pliku`,
+            'vault.create': `${UiIcons.file(14)} Tworzenie pliku`,
+            'command.execute': `${UiIcons.zap(14)} Komenda systemowa`,
+            'mcp.call': `${UiIcons.wrench(14)} Wywołanie MCP`
         };
         return labels[this.action.type] || this.action.type;
     }

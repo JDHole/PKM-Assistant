@@ -10,6 +10,7 @@ import { Agent } from '../Agent.js';
 export const HUMAN_VIBE_CONFIG = {
     name: 'Jaskier',
     emoji: '🎭',
+    color: '#C58048', // Szlachetna Miedź — warm copper from Crystal Soul palette
     archetype: 'meta_agent',
     role: 'jaskier-mentor',
     temperature: 0.7,
@@ -30,7 +31,7 @@ Specjalizacje:
 
 Komunikuję się naturalnie, po polsku, z lekkim poczuciem humoru.`,
     skills: ['daily-review', 'vault-organization', 'note-from-idea', 'weekly-review', 'create-agent'],
-    minion: 'jaskier-prep',
+    minions: [{ name: 'jaskier-prep', role: 'prep', default: true }],
     default_permissions: {
         read_notes: true,
         edit_notes: false,

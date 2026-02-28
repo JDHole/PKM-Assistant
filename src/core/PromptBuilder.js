@@ -31,6 +31,9 @@ export const TOOL_GROUPS = {
     communication: ['agent_message', 'agent_delegate'],
     artifacts: ['chat_todo', 'plan_action'],
     agora: ['agora_read', 'agora_update', 'agora_project'],
+    web: ['web_search'],
+    interaction: ['ask_user'],
+    mode: ['switch_mode'],
 };
 
 // ═══════════════════════════════════════════
@@ -43,24 +46,26 @@ const MODE_BEHAVIORS = {
         'NIE proponuj zmian w plikach — nie masz do nich dostępu.',
         'NIE oferuj "mogę to zrobić" gdy dotyczy edycji vault.',
         'Możesz przeszukiwać pamięć (memory_search) żeby odwołać się do wcześniejszych rozmów.',
-        'Jeśli temat wymaga pracy z plikami, zaproponuj zmianę trybu na Planowanie lub Praca.',
+        'Jeśli temat wymaga pracy z plikami → switch_mode(mode:"praca", reason:"Potrzebuję edytować pliki").',
+        'Jeśli temat wymaga analizy lub planowania → switch_mode(mode:"planowanie", reason:"Czas na analizę").',
     ],
     planowanie: [
         'Analizujesz i planujesz. Czytaj, przeszukuj, projektuj — NIE edytuj plików.',
         'Twórz plany (plan_action), listy zadań (chat_todo), analizuj vault.',
-        'Jeśli potrzebujesz napisać lub edytować pliki, zaproponuj zmianę trybu na Praca.',
+        'Jeśli potrzebujesz napisać lub edytować pliki → switch_mode(mode:"praca", reason:"Muszę edytować vault").',
         'Odpowiadaj wyczerpująco — dawaj konkretne rekomendacje i szczegółowe plany.',
     ],
     praca: [
         'Masz pełny dostęp do wszystkich narzędzi. Wykonuj zadania, edytuj pliki, deleguj.',
         'Działaj konkretnie — nie pytaj o pozwolenie na każdy krok, wykonuj zadanie.',
         'Korzystaj z minionów do zbierania kontekstu i ciężkiej pracy.',
+        'Jeśli user chce tylko porozmawiać bez pracy z plikami → switch_mode(mode:"rozmowa").',
     ],
     kreatywny: [
         'Tworzysz nowe treści — notatki, dokumenty, artykuły, pomysły.',
         'Pisz, generuj, buduj — NIE kasuj istniejących plików.',
         'Skup się na jakości treści, nie na zarządzaniu vault.',
-        'Jeśli potrzebujesz kasować lub reorganizować, zaproponuj zmianę trybu na Praca.',
+        'Jeśli potrzebujesz kasować lub reorganizować → switch_mode(mode:"praca", reason:"Potrzebuję usuwać pliki").',
     ],
 };
 
@@ -98,8 +103,8 @@ Folder .obsidian/ — konfiguracja Obsidiana — NIE RUSZAJ bez prośby usera.`,
     /** @deprecated v2 — use DECISION_TREE_DEFAULTS + DECISION_TREE_GROUPS instead */
     decision_tree: '',
 
-    minion_guide: `## Minion — Twój asystent do ciężkiej roboty
-Twój minion to "{minion_name}" — tańszy model z dostępem do narzędzi.
+    minion_guide: `## Miniony — Twoi asystenci do ciężkiej roboty
+Domyślny minion: "{minion_name}" — tańszy model z dostępem do narzędzi.
 Minion NIE podejmuje decyzji. Ty decydujesz, minion zbiera dane i wykonuje robotę.
 Szczegóły delegacji w drzewie decyzyjnym powyżej.
 
@@ -108,12 +113,17 @@ Formuluj zadania KONKRETNIE:
 ✅ minion_task(task:"Przeczytaj notatkę X i wyciągnij wszystkie daty", minion:"reader")
 ❌ minion_task(task:"Sprawdź coś w vaultcie")
 
+MULTI-MINION — równoległe wysyłanie:
+Możesz wysłać KILKU minionów NA RAZ w jednym turnie! Wywołaj kilka minion_task jednocześnie:
+✅ minion_task(task:"Szukaj w Projekty/", minion:"szukacz") + minion_task(task:"Szukaj w Notatki/", minion:"czytelnik")
+Wyniki wrócą razem — oszczędność czasu przy zbieraniu danych z wielu źródeł.
+
 Jeśli masz kilku minionów, wybierz po nazwie: minion_task(task:"...", minion:"nazwa")
 
 Playbook: .pkm-assistant/agents/{agent_safe_name}/playbook.md
 Vault map: .pkm-assistant/agents/{agent_safe_name}/vault_map.md`,
 
-    master_guide: `## Master — delegacja W GÓRĘ
+    master_guide: `## Mastery — delegacja W GÓRĘ
 Mocniejszy model AI do głębokiej analizy i ekspertyzy.
 Master NIE szuka sam — dostarczaj mu bogaty kontekst (sam lub przez miniona).
 
@@ -121,6 +131,11 @@ Master NIE szuka sam — dostarczaj mu bogaty kontekst (sam lub przez miniona).
 1. DOMYŚLNY: master_task(task:"pytanie") → minion zbiera kontekst → Master analizuje
 2. Z INSTRUKCJAMI: master_task(task:"pytanie", minion_instructions:"Szukaj w X...") → minion szuka wg wskazówek → Master analizuje
 3. BEZ MINIONA: master_task(task:"pytanie", context:"dane od Ciebie/miniona", skip_minion:true) → Master dostaje gotowy kontekst
+
+MULTI-MASTER — różni eksperci:
+Jeśli masz kilku masterów, wybierz po nazwie: master_task(task:"...", master:"nazwa")
+Możesz wysłać do KILKU masterów NA RAZ (równolegle) — np. jeden analizuje treść, drugi recenzuje jakość.
+✅ master_task(task:"Analiza strategii", master:"strateg", skip_minion:true, context:"...") + master_task(task:"Recenzja jakości", master:"redaktor", skip_minion:true, context:"...")
 
 WAŻNE: Nie przerabiaj odpowiedzi Mastera — przekaż ją userowi bez zmian.`,
 
@@ -150,13 +165,14 @@ KOMENTARZ INLINE:
  */
 export const DECISION_TREE_GROUPS = {
     delegacja:   { label: 'DELEGACJA',     order: 0, requiredGroups: ['delegation'] },
-    szukanie:    { label: 'SZUKANIE',      order: 1, requiredGroups: ['vault', 'memory'] },
+    szukanie:    { label: 'SZUKANIE',      order: 1, requiredGroups: ['vault', 'memory', 'web'] },
     pamiec:      { label: 'PAMIĘĆ',        order: 2, requiredGroups: ['memory'] },
     pliki:       { label: 'PLIKI',         order: 3, requiredGroups: ['vault'] },
     artefakty:   { label: 'ARTEFAKTY',     order: 4, requiredGroups: ['artifacts'] },
     skille:      { label: 'SKILLE',        order: 5, requiredGroups: ['skills'] },
-    komunikacja: { label: 'KOMUNIKACJA',   order: 6, requiredGroups: ['communication'] },
+    komunikacja: { label: 'KOMUNIKACJA',   order: 6, requiredGroups: ['communication', 'interaction'] },
     agora:       { label: 'AGORA',         order: 7, requiredGroups: ['agora'] },
+    tryb:        { label: 'TRYB PRACY',    order: 8, requiredGroups: ['mode'] },
 };
 
 /**
@@ -169,16 +185,22 @@ export const DECISION_TREE_GROUPS = {
 export const DECISION_TREE_DEFAULTS = [
     // ─── DELEGACJA (na górze — ogólna info o pomocnikach) ───
     { id: 'deleg_minion_info', group: 'delegacja', tool: 'minion_task',
-      text: 'Masz miniona — tańszy model do zbierania danych i ciężkiej roboty. Formułuj zadania PRECYZYJNIE!' },
+      text: 'Masz minionów — tańsze modele do zbierania danych. Możesz wysłać KILKU NA RAZ (równolegle w jednym turnie). Formułuj zadania PRECYZYJNIE, podawaj minion:"nazwa".' },
     { id: 'deleg_master_info', group: 'delegacja', tool: 'master_task',
-      text: 'Masz mastera — mocniejszy model do analizy i ekspertyzy. Zawsze dostarczaj bogaty kontekst (sam lub przez miniona)!' },
+      text: 'Masz masterów — mocniejsze modele do analizy i ekspertyzy. Możesz wysłać do KILKU NA RAZ (równolegle). Dostarczaj bogaty kontekst (sam lub przez miniona), podawaj master:"nazwa".' },
+    { id: 'deleg_parallel', group: 'delegacja', tool: null,
+      text: 'RÓWNOLEGŁOŚĆ: Wywołaj kilka minion_task i/lub master_task w JEDNYM turnie — system wykona je równolegle. Idealne do zbierania danych z wielu źródeł naraz.' },
+    { id: 'deleg_context_gathering', group: 'delegacja', tool: 'minion_task',
+      text: 'PROAKTYWNE ZBIERANIE KONTEKSTU: Gdy user zaczyna nowy temat, potrzebujesz kontekstu lub nie jesteś pewien odpowiedzi — WYŚLIJ MINIONA po informacje (memory_search, vault_search, vault_read). Nie czekaj aż user poprosi. Sam zdecyduj kiedy kontekst jest potrzebny. Twój minion zna playbook, vault_map i ma dostęp do pełnej pamięci.' },
 
     // ─── SZUKANIE ───
+    { id: 'search_mention',       group: 'szukanie', tool: 'vault_read',    text: 'Wiadomość usera zawiera @[NazwaNotatki] → to jest MENTION — user wskazał konkretny plik/folder. Ścieżki plików podane na początku wiadomości. Przeczytaj wskazane pliki vault_read(path) ZANIM odpowiesz, lub oddeleguj minionowi gdy jest ich dużo.' },
     { id: 'search_vault_read',    group: 'szukanie', tool: 'vault_read',    text: 'User pyta o konkretną notatkę → vault_read(path)' },
     { id: 'search_vault_search',  group: 'szukanie', tool: 'vault_search',  text: 'Szybkie pytanie o vault → vault_search(query)' },
     { id: 'search_memory',        group: 'szukanie', tool: 'memory_search', text: 'User pyta "co o mnie wiesz?" / "pamiętasz?" → memory_search(query)' },
     { id: 'search_minion_multi',  group: 'szukanie', tool: 'minion_task',   text: 'Przeszukanie WIELU źródeł/notatek naraz → minion_task' },
     { id: 'search_minion_reader', group: 'szukanie', tool: 'minion_task',   text: 'Wyciągnięcie info z długiego tekstu → minion_task' },
+    { id: 'search_web',          group: 'szukanie', tool: 'web_search',   text: 'User pyta o aktualne informacje, nowości, rzeczy spoza vaulta → web_search(query). Pisz zapytanie po angielsku dla lepszych wyników (chyba że szukasz polskich źródeł). Cytuj źródła URL w odpowiedzi.' },
 
     // ─── PAMIĘĆ ───
     { id: 'mem_update', group: 'pamiec', tool: 'memory_update', text: '"zapamiętaj że..." → memory_update(operation:"update_brain", content: fakt w 3. osobie)' },
@@ -200,15 +222,23 @@ export const DECISION_TREE_DEFAULTS = [
 
     // ─── SKILLE ───
     { id: 'skill_use',   group: 'skille', tool: 'skill_execute', text: 'User chce procedurę (przegląd, organizacja) → skill_execute(name)' },
+    { id: 'skill_auto',  group: 'skille', tool: 'skill_execute', text: 'Jeśli zadanie usera pasuje do opisu skilla — użyj go bez pytania (auto-invoke)' },
     { id: 'skill_known', group: 'skille', tool: null,            text: 'Znasz swoje skille — nie musisz wołać skill_list' },
 
     // ─── KOMUNIKACJA ───
     { id: 'comms_delegate', group: 'komunikacja', tool: 'agent_delegate', text: 'Temat poza kompetencjami → agent_delegate (ZAWSZE podaj context_summary!)' },
     { id: 'comms_message',  group: 'komunikacja', tool: 'agent_message',  text: 'Poinformuj innego agenta → agent_message' },
+    { id: 'comms_ask_user', group: 'komunikacja', tool: 'ask_user',       text: 'Nie jesteś pewien intencji użytkownika lub potrzebujesz wyboru → ask_user(question, options). NIE zgaduj — zapytaj. User dostanie klikalne opcje.' },
 
     // ─── AGORA ───
     { id: 'agora_update',    group: 'agora', tool: 'agora_update', text: 'Na KOŃCU ważnych sesji → agora_update(section:"activity", summary:"co zrobiłeś")' },
     { id: 'agora_knowledge', group: 'agora', tool: null,           text: 'Nowe fakty o userze → zapytaj "Czy zaktualizować Bazę Wiedzy?"' },
+
+    // ─── TRYB PRACY ───
+    { id: 'mode_switch', group: 'tryb', tool: 'switch_mode',
+      text: 'Gdy zadanie NIE PASUJE do aktualnego trybu → WYWOŁAJ switch_mode(mode, reason). NIE pisz o tym w tekście — użyj narzędzia.\nPrzykłady: user prosi o edycję plików a jesteś w trybie rozmowa → switch_mode(mode:"praca", reason:"Potrzebuję edytować pliki"). User chce pogadać a jesteś w trybie praca → switch_mode(mode:"rozmowa").\nDostępne tryby: rozmowa (bez vault), planowanie (vault read-only), praca (pełny dostęp), kreatywny (pisanie bez kasowania).' },
+    { id: 'mode_proactive', group: 'tryb', tool: 'switch_mode',
+      text: 'Proponuj zmianę trybu PROAKTYWNIE — nie czekaj aż user sam to zrobi. Jeśli widzisz że potrzebujemy innych narzędzi, zaproponuj od razu.' },
 ];
 
 // ═══════════════════════════════════════════
@@ -322,6 +352,19 @@ export class PromptBuilder {
                     this._buildMasterGuide(agent, context)),
                 { category: 'behavior' }
             );
+        }
+
+        // Delegate behavior_inject sections (sesja 46c)
+        const delegates = context.delegateAssignments || [];
+        for (const d of delegates) {
+            if (d.overrides?.behavior_inject) {
+                this._add(
+                    `delegate_behavior_${d.name}`,
+                    `Zachowanie: ${d.name}`,
+                    d.overrides.behavior_inject,
+                    { category: 'behavior' }
+                );
+            }
         }
 
         this._add('rules', 'Zasady',
@@ -461,7 +504,7 @@ export class PromptBuilder {
     // ─── A1: identity ───
 
     _buildIdentity(agent, ctx) {
-        return `Jesteś ${agent.name} ${agent.emoji}
+        return `Jesteś ${agent.name}
 Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Date().toLocaleDateString('pl-PL')}`;
     }
 
@@ -471,7 +514,7 @@ Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Dat
         const archetype = getArchetype(agent.archetype);
         if (!archetype || !archetype.behavior_rules?.length) return null;
 
-        const lines = [`## Typ: ${archetype.name} ${archetype.emoji}`];
+        const lines = [`## Typ: ${archetype.name}`];
         lines.push(archetype.description);
         lines.push('');
         lines.push('Zasady tego typu:');
@@ -487,7 +530,7 @@ Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Dat
         const roleData = ctx.roleData;
         if (!roleData || !roleData.behavior_rules?.length) return null;
 
-        const lines = [`## Rola: ${roleData.name} ${roleData.emoji || ''}`];
+        const lines = [`## Rola: ${roleData.name}`];
         if (roleData.description) {
             lines.push(roleData.description);
         }
@@ -644,6 +687,18 @@ Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Dat
 
         for (const [groupId, groupDef] of sortedGroups) {
             lines.push(`${groupDef.label}:`);
+
+            // Delegate coverage: if active delegates cover this DT group, add delegation note
+            const covering = ctx.delegateAssignments?.filter(
+                d => d.overrides?.dt_covered_groups?.includes(groupId)
+            ) || [];
+            if (covering.length > 0) {
+                const names = covering.map(d =>
+                    `${d.delegateType === 'minion' ? 'minion' : 'master'} "${d.name}" (${d.delegateType}_task)`
+                ).join(', ');
+                lines.push(`💡 Deleguj zadania z tej kategorii do: ${names}`);
+            }
+
             for (const instr of grouped[groupId]) {
                 lines.push(`- ${instr.text}`);
             }
@@ -754,14 +809,43 @@ Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Dat
         }
 
         if (groupId === 'skille' && ctx.skills?.length > 0) {
-            const names = ctx.skills.map(s => s.name).join(', ');
-            lines.push(`- Znasz: ${names}`);
+            // Rich skill descriptions for auto-invoke
+            const visibleSkills = ctx.skills.filter(s => !s.disableModelInvocation);
+            if (visibleSkills.length > 0) {
+                lines.push('- Twoje skille (jeśli zadanie pasuje do opisu — użyj bez pytania):');
+                for (const s of visibleSkills) {
+                    lines.push(`  ${s.icon || '⚡'} ${s.name}: ${s.description || 'brak opisu'} [${s.category || 'general'}]`);
+                }
+            }
+            const hiddenSkills = ctx.skills.filter(s => s.disableModelInvocation);
+            if (hiddenSkills.length > 0) {
+                lines.push(`- Skille tylko manualne: ${hiddenSkills.map(s => s.name).join(', ')}`);
+            }
         }
 
         if (groupId === 'delegacja') {
             if (ctx.minionList?.length > 0) {
-                const desc = ctx.minionList.map(m => `${m.name} (${m.description})`).join(', ');
-                lines.push(`- Dostępni minioni: ${desc}`);
+                const delegates = ctx.delegateAssignments || [];
+                const desc = ctx.minionList.map(m => {
+                    const da = delegates.find(d => d.name === m.name && d.delegateType === 'minion');
+                    const groups = da?.overrides?.dt_covered_groups;
+                    const tag = groups?.length > 0 ? ` [→ ${groups.join(', ')}]` : '';
+                    return `${m.name} (${m.description})${tag}`;
+                }).join(', ');
+                lines.push(`- Twoi minioni: ${desc}`);
+                if (ctx.defaultMinionName) {
+                    lines.push(`- Domyślny minion: ${ctx.defaultMinionName}`);
+                }
+            }
+            if (ctx.masterList?.length > 0) {
+                const delegates = ctx.delegateAssignments || [];
+                const desc = ctx.masterList.map(m => {
+                    const da = delegates.find(d => d.name === m.name && d.delegateType === 'master');
+                    const groups = da?.overrides?.dt_covered_groups;
+                    const tag = groups?.length > 0 ? ` [→ ${groups.join(', ')}]` : '';
+                    return `${m.name} (${m.description})${tag}`;
+                }).join(', ');
+                lines.push(`- Twoi mastery: ${desc}`);
             }
         }
 
@@ -791,7 +875,10 @@ Vault: ${ctx.vaultName || 'Obsidian Vault'} | Data: ${ctx.currentDate || new Dat
     // ─── C2: minion_guide (merged with playbook pointer) ───
 
     _buildMinionGuide(agent, ctx) {
-        const minionName = agent.minion || 'minion';
+        // No-default case: if one minion → use its name, else generic "minion"
+        const defaultName = agent.defaultMinion?.name;
+        const allNames = ctx.minionList?.map(m => m.name) || [];
+        const minionName = defaultName || (allNames.length === 1 ? allNames[0] : 'minion');
         const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
         // Apply placeholders to factory default or return directly
         return FACTORY_DEFAULTS.minion_guide

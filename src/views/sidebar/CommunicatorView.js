@@ -3,6 +3,9 @@
  * Adapted from KomunikatorModal.js with vertical layout.
  */
 import { Notice } from 'obsidian';
+import { UiIcons } from '../../crystal-soul/UiIcons.js';
+import { CrystalGenerator } from '../../crystal-soul/CrystalGenerator.js';
+import { pickColor } from '../../crystal-soul/ColorPalette.js';
 
 /**
  * Render the communicator view inline in sidebar.
@@ -12,6 +15,7 @@ import { Notice } from 'obsidian';
  * @param {Object} params - { agentName?: string }
  */
 export function renderCommunicatorView(container, plugin, nav, params) {
+    container.classList.add('cs-root');
     const agentManager = plugin.agentManager;
     if (!agentManager) {
         container.createEl('p', { text: 'AgentManager nie jest zainicjalizowany', cls: 'agent-error' });
@@ -27,7 +31,8 @@ export function renderCommunicatorView(container, plugin, nav, params) {
     }
 
     // Header
-    container.createEl('h3', { text: '💬 Komunikator', cls: 'sidebar-section-title' });
+    const headerEl = container.createDiv({ cls: 'cs-section-title' });
+    headerEl.innerHTML = UiIcons.chat(12) + ' Komunikator';
 
     // Agent strip (horizontal, scrollable)
     const agentStrip = container.createDiv({ cls: 'communicator-inline-agents' });
@@ -71,7 +76,10 @@ export function renderCommunicatorView(container, plugin, nav, params) {
                 cls: `communicator-agent-chip ${isSelected ? 'selected' : ''}`
             });
 
-            badge.createSpan({ text: `${agent.emoji} ${agent.name}` });
+            const agentColor = pickColor(agent.name).hex;
+            const chipIconSpan = badge.createSpan({ cls: 'cs-inline-icon' });
+            chipIconSpan.innerHTML = CrystalGenerator.generate(agent.name, { size: 16, color: agentColor, glow: false });
+            badge.createSpan({ text: ` ${agent.name}` });
 
             // Unread count
             if (komunikator) {
@@ -103,16 +111,26 @@ export function renderCommunicatorView(container, plugin, nav, params) {
         if (!komunikator) return;
 
         const agent = agentManager.getAgent(selectedAgent);
-        const agentLabel = agent ? `${agent.emoji} ${agent.name}` : selectedAgent;
 
         // Header with mark-all-read
         const header = inboxEl.createDiv({ cls: 'communicator-inline-header' });
-        header.createEl('h4', { text: `Inbox: ${agentLabel}` });
+        const inboxTitle = header.createEl('h4');
+        inboxTitle.createSpan({ text: 'Inbox: ' });
+        if (agent) {
+            const inboxAgentColor = pickColor(agent.name).hex;
+            const inboxIconSpan = inboxTitle.createSpan({ cls: 'cs-inline-icon' });
+            inboxIconSpan.innerHTML = CrystalGenerator.generate(agent.name, { size: 16, color: inboxAgentColor, glow: false });
+            inboxTitle.createSpan({ text: ` ${agent.name}` });
+        } else {
+            inboxTitle.createSpan({ text: selectedAgent });
+        }
 
         const markReadBtn = header.createEl('button', {
-            cls: 'communicator-inline-mark-read',
-            text: '✓ Wszystkie'
+            cls: 'communicator-inline-mark-read'
         });
+        const markReadIconSpan = markReadBtn.createSpan({ cls: 'cs-inline-icon' });
+        markReadIconSpan.innerHTML = UiIcons.check(14);
+        markReadBtn.createSpan({ text: ' Wszystkie' });
         markReadBtn.addEventListener('click', async () => {
             await komunikator.markAllAsUserRead(selectedAgent);
             agentManager._emit('communicator:message_read');
@@ -147,14 +165,19 @@ export function renderCommunicatorView(container, plugin, nav, params) {
 
         // Status dots
         const statusDiv = header.createDiv({ cls: 'communicator-inline-msg-status' });
-        statusDiv.createDiv({
+        const userDot = statusDiv.createDiv({
             cls: `communicator-status-dot ${userRead ? 'read' : 'unread'}`,
-            attr: { title: userRead ? '👤 Przeczytana' : '👤 Nowa' }
+            attr: { title: userRead ? 'Uzytkownik: Przeczytana' : 'Uzytkownik: Nowa' }
         });
-        statusDiv.createDiv({
+        const userDotIcon = userDot.createSpan({ cls: 'cs-inline-icon cs-status-icon' });
+        userDotIcon.innerHTML = UiIcons.user(10);
+
+        const aiDot = statusDiv.createDiv({
             cls: `communicator-status-dot ${aiRead ? 'ai-read' : 'ai-unread'}`,
-            attr: { title: aiRead ? '🤖 AI przeczytał' : '🤖 Nie czytał' }
+            attr: { title: aiRead ? 'AI: Przeczytane' : 'AI: Nie czytane' }
         });
+        const aiDotIcon = aiDot.createSpan({ cls: 'cs-inline-icon cs-status-icon' });
+        aiDotIcon.innerHTML = UiIcons.robot(10);
 
         header.createSpan({ cls: 'communicator-inline-msg-from', text: msg.from });
         header.createSpan({ cls: 'communicator-inline-msg-subject', text: msg.subject });
@@ -167,8 +190,15 @@ export function renderCommunicatorView(container, plugin, nav, params) {
         }
 
         const statusLabels = body.createDiv({ cls: 'communicator-inline-msg-labels' });
-        statusLabels.createSpan({ text: userRead ? '👤 Przeczytana' : '👤 Nowa' });
-        statusLabels.createSpan({ text: aiRead ? '🤖 AI przeczytał' : '🤖 Nie czytał' });
+        const userLabel = statusLabels.createSpan();
+        const userLabelIcon = userLabel.createSpan({ cls: 'cs-inline-icon' });
+        userLabelIcon.innerHTML = UiIcons.user(12);
+        userLabel.createSpan({ text: userRead ? ' Przeczytana' : ' Nowa' });
+
+        const aiLabel = statusLabels.createSpan();
+        const aiLabelIcon = aiLabel.createSpan({ cls: 'cs-inline-icon' });
+        aiLabelIcon.innerHTML = UiIcons.robot(12);
+        aiLabel.createSpan({ text: aiRead ? ' AI przeczytane' : ' AI nie czytane' });
 
         // Toggle expand on header click
         header.addEventListener('click', async () => {
@@ -188,24 +218,23 @@ export function renderCommunicatorView(container, plugin, nav, params) {
     function renderComposeForm(container, komunikator) {
         const form = container.createDiv({ cls: 'communicator-inline-compose' });
 
-        form.createEl('h5', { text: '✉️ Nowa wiadomość' });
+        const composeHeader = form.createDiv({ cls: 'cs-section-head' });
+        composeHeader.innerHTML = UiIcons.edit(12) + ' Nowa wiadomość';
 
         const subjectInput = form.createEl('input', {
             type: 'text',
             placeholder: 'Temat...',
-            cls: 'communicator-inline-input'
+            cls: 'cs-search-input'
         });
 
         const contentArea = form.createEl('textarea', {
             placeholder: 'Treść wiadomości...',
-            cls: 'communicator-inline-textarea'
+            cls: 'cs-shard__textarea'
         });
         contentArea.rows = 3;
 
-        const sendBtn = form.createEl('button', {
-            text: '📨 Wyślij',
-            cls: 'communicator-inline-send mod-cta'
-        });
+        const sendBtn = form.createEl('button', { cls: 'cs-create-btn' });
+        sendBtn.innerHTML = UiIcons.send(11) + ' Wyślij';
 
         sendBtn.addEventListener('click', async () => {
             const subject = subjectInput.value.trim();

@@ -5,6 +5,7 @@
  * Agent receives formatted message and edits the file directly via vault_write.
  */
 import { Modal, Notice } from 'obsidian';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class InlineCommentModal extends Modal {
     /**
@@ -25,7 +26,8 @@ export class InlineCommentModal extends Modal {
         contentEl.empty();
         contentEl.style.maxWidth = '480px';
 
-        contentEl.createEl('h3', { text: '✏️ Komentarz do Asystenta' });
+        const h3 = contentEl.createEl('h3');
+        h3.innerHTML = `${UiIcons.edit(18)} Komentarz do Asystenta`;
 
         // Selection preview (read-only)
         const preview = contentEl.createDiv();
@@ -61,9 +63,9 @@ export class InlineCommentModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const sendBtn = buttons.createEl('button', {
-            text: '✏️ Edytuj',
             cls: 'mod-cta'
         });
+        sendBtn.innerHTML = `${UiIcons.edit(14)} Edytuj`;
 
         sendBtn.addEventListener('click', () => {
             const comment = commentArea.value.trim();

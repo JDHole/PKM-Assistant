@@ -1,0 +1,308 @@
+# Plan: Sekcja 2.8.5 — Input Chatu v2 (Web Search + @ Mentions + Załączniki + ask_user)
+
+> Nowa sekcja w PLAN_v2.md, między 2.8 (Skills v2) a 2.9 (Pamięć).
+> Szacunek: 4-5 sesji. Priorytet: WYSOKI (core features brakujące w pluginie).
+
+---
+
+## Co robimy (4 duże rzeczy)
+
+### A. Web Search Tool — agent szuka w necie
+### B. ask_user Tool — agent pyta usera i CZEKA na odpowiedź (inline w chacie)
+### C. @ Mentions — @notatka i @folder: w chacie
+### D. Załączniki — obrazki, pliki tekstowe, PDF (drag & drop, paste, przycisk)
+
+---
+
+## FAZA A: Web Search Tool (sesja ~1)
+
+### A1. Nowy plik: `src/mcp/WebSearchTool.js`
+- Narzędzie MCP jak każde inne (name, description, inputSchema, execute)
+- inputSchema: `{ query: string, limit?: number }` (limit = ile wyników, default 5)
+- execute():
+  1. Pobiera provider z ustawień pluginu (domyślnie Jina AI)
+  2. Wywołuje `requestUrl()` z Obsidian API (omija CORS)
+  3. Parsuje wyniki → zwraca `{ success, query, results: [{title, url, content}] }`
+
+### A2. Multi-provider architecture w `src/core/WebSearchProvider.js`
+- Klasa bazowa z metodą `search(query, limit)`
+- Implementacje:
+  - **JinaProvider** (default): `https://s.jina.ai/?q=...` — działa BEZ klucza API
+  - **TavilyProvider**: `https://api.tavily.com/search` — wymaga klucza
+  - **BraveProvider**: `https://api.search.brave.com/res/v1/web/search` — wymaga klucza
+  - **SearXNGProvider**: `${userUrl}/search?q=...&format=json` — user podaje URL
+- Fabryka: `createProvider(settings)` → zwraca odpowiedni provider na podstawie ustawień
+
+### A3. Ustawienia w UI
+- Nowa sekcja "Web Search" w ustawieniach pluginu
+- Dropdown: provider (Jina AI / Tavily / Brave / Serper / SearXNG)
+- Pole na klucz API (widoczne tylko gdy provider tego wymaga)
+- Pole na URL SearXNG (widoczne tylko gdy SearXNG wybrany)
+- Link/guzik "Załóż darmowe konto" przekierowujący na stronę providera
+- Toggle: "Web Search włączony" (globalnie)
+
+### A4. Rejestracja + filtrowanie
+- Rejestracja w main.js (tak jak pozostałe 21 narzędzi)
+- Dodanie do TOOL_INFO w ToolCallDisplay.js: `{ icon: '🌐', label: 'Wyszukiwanie w internecie' }`
+- Dodanie do ACTION_TYPE_MAP w MCPClient.js → nowy typ: `web.search`
+- requiresApproval: TAK (chyba że YOLO mode)
+- Dodanie do WorkMode.js — dostępne we wszystkich trybach
+- Dodanie do Decision Tree: nowa instrukcja w grupie `szukanie` — "Gdy potrzebujesz aktualnych informacji z internetu, użyj web_search"
+
+### A5. Approval inline w chacie (nie modal Obsidiana!)
+- Zamiast ApprovalModal (który wyskakuje jako popup) → renderujemy blok approval WEWNĄTRZ chatu
+- Wygląda jak kolejna część odpowiedzi agenta:
+  ```
+  🌐 Agent chce wyszukać w internecie:
+  "Obsidian 2.0 nowe funkcje 2026"
+
+  [Szukaj]  [Anuluj]
+  ```
+- Klik "Szukaj" → kontynuuje wykonanie narzędzia
+- Klik "Anuluj" → zwraca agentowi info o odmowie
+- YOLO mode → blok się nie pojawia, leci automatycznie
+- UWAGA: To jest zmiana TYLKO dla web_search na razie. Reszta narzędzi dalej używa ApprovalModal. Ujednolicenie approval flow to temat na 2.10 (UX Chatu).
+
+### A6. Renderowanie wyników w chacie
+- Blok tool call jak inne narzędzia (zwijany)
+- Ale z ładniejszym formatem: lista wyników z tytułami, linkami, fragmentami
+- Link klikalny (otwiera w przeglądarce)
+
+### Pliki do stworzenia/zmiany (Faza A):
+- NOWY: `src/mcp/WebSearchTool.js` (~80 LOC)
+- NOWY: `src/core/WebSearchProvider.js` (~150 LOC — bazowa + 4 providery)
+- ZMIANA: `src/main.js` — rejestracja narzędzia + ustawienia UI
+- ZMIANA: `src/components/ToolCallDisplay.js` — TOOL_INFO + custom renderowanie wyników
+- ZMIANA: `src/mcp/MCPClient.js` — ACTION_TYPE_MAP + inline approval dla web_search
+- ZMIANA: `src/views/chat_view.js` — inline approval block (renderowanie + obsługa kliknięć)
+- ZMIANA: `src/core/WorkMode.js` — dodanie web_search do MODE_TOOLS
+- ZMIANA: `src/core/PromptBuilder.js` — instrukcja DT w grupie szukanie
+
+---
+
+## FAZA B: ask_user Tool (sesja ~0.5, razem z A lub C)
+
+### B1. Nowy plik: `src/mcp/AskUserTool.js`
+- Narzędzie MCP: agent wywołuje gdy chce zapytać usera o zdanie
+- inputSchema:
+  ```json
+  {
+    "question": "string — treść pytania",
+    "options": ["string[] — sugerowane odpowiedzi (opcjonalne)"],
+    "context": "string — dlaczego pyta (opcjonalne)"
+  }
+  ```
+- execute(): NIE wykonuje się normalnie — zamiast tego sygnalizuje chat_view żeby pokazał blok pytania
+
+### B2. Inline question block w chacie
+- Renderowany WEWNĄTRZ chatu (nie modal):
+  ```
+  ❓ Agent pyta:
+  "Który folder przeszukać?"
+
+  ○ Projekty/
+  ○ Notatki/
+  ○ Cały vault
+  [Wpisz własną odpowiedź...]
+
+  [Odpowiedz]
+  ```
+- Klik na opcję → zaznacza
+- Klik "Odpowiedz" → zwraca wybraną odpowiedź jako wynik tool calla
+- Agent dostaje odpowiedź i kontynuuje
+- YOLO mode → automatycznie wybiera pierwszą opcję
+
+### B3. Rejestracja
+- Rejestracja w main.js
+- TOOL_INFO: `{ icon: '❓', label: 'Pytanie do użytkownika' }`
+- Dostępne we WSZYSTKICH trybach pracy
+- NIE wymaga approval (sam w sobie jest pytaniem)
+- Decision Tree: instrukcja "Gdy nie jesteś pewien intencji użytkownika, użyj ask_user zamiast zgadywać"
+
+### Pliki do stworzenia/zmiany (Faza B):
+- NOWY: `src/mcp/AskUserTool.js` (~50 LOC)
+- ZMIANA: `src/main.js` — rejestracja
+- ZMIANA: `src/views/chat_view.js` — renderowanie inline question block + obsługa odpowiedzi
+- ZMIANA: `src/components/ToolCallDisplay.js` — TOOL_INFO
+- ZMIANA: `src/core/PromptBuilder.js` — instrukcja DT
+
+---
+
+## FAZA C: @ Mentions (sesja ~1)
+
+### C1. Nowy plik: `src/components/MentionAutocomplete.js`
+- Klasa podpinana do textarea w chat_view
+- Nasłuchuje na event `input` — wykrywa `@` w tekście
+- Pokazuje dropdown (absolutnie pozycjonowany div) pod/nad textarea
+- Fuzzy search po nazwie pliku/folderu
+- Nawigacja: strzałki góra/dół, Enter/Tab = wybierz, Escape = zamknij
+
+### C2. Dwa typy mentions
+- `@` + wpisywanie → filtruje notatki z vaultu (app.vault.getMarkdownFiles())
+- `@folder:` + wpisywanie → filtruje foldery z vaultu
+- Dropdown z kategorią (nagłówek "Notatki" / "Foldery") i ikonami
+- Max 10 sugestii na raz
+
+### C3. Resolving at send time
+- Przy wysyłce wiadomości (send_message):
+  1. Wykryj @mention w tekście (regex)
+  2. Dla @note: czytaj treść pliku via app.vault.read()
+  3. Dla @folder: czytaj treść plików w folderze (max 5 plików, z ostrzeżeniem)
+  4. Dołącz treść jako kontekst do wiadomości (przed tekstem usera)
+  5. Sprawdź AccessGuard — No-Go pliki/foldery ZABLOKOWANE
+- W chacie: @mention wyświetlone jako klikalny chip (otwiera notatkę w Obsidianie)
+
+### C4. Integracja z chat_view.js
+- W handle_input_keydown(): gdy dropdown otwarty → przechwytuj ArrowUp/Down/Enter/Escape
+- Dropdown zamyka się na blur (klik poza) z małym opóźnieniem (200ms)
+- Po wybraniu sugestii: wstawia `@NazwaNotatki` do textarea, zamyka dropdown
+
+### Pliki do stworzenia/zmiany (Faza C):
+- NOWY: `src/components/MentionAutocomplete.js` (~200 LOC)
+- ZMIANA: `src/views/chat_view.js` — inicjalizacja MentionAutocomplete, _resolveMentions() w send_message
+- ZMIANA: `src/views/chat_view.css` — style dropdowna, chipów @mention
+- (Brak zmian w MCP/narzędziach — to feature UI, nie narzędzie agenta)
+
+---
+
+## FAZA D: Załączniki — obrazki, tekst, PDF (sesja ~1.5-2)
+
+### D1. Nowy plik: `src/components/AttachmentManager.js`
+- Zarządza listą pendingAttachments[]
+- Metody:
+  - addFile(file) — z systemu plików (drag & drop, file picker)
+  - addVaultFile(tFile) — z vault Obsidiana (drag z file explorera)
+  - remove(id) — usuwa załącznik
+  - clear() — czyści po wysłaniu
+  - buildContentBlocks(userText) — buduje tablicę content blocks dla API
+
+### D2. Obsługiwane typy plików
+- **Obrazki** (png, jpg, gif, webp): base64 encode → content block `image_url`
+- **Tekst** (md, txt, js, ts, css, json, py, csv, log): czysty tekst → dołączony przed wiadomością
+- **PDF**: ekstrakcja tekstu via pdfjs-dist → czysty tekst
+  - Lazy-load biblioteki (dynamic import) — nie obciąża bundla
+  - Limit: max 50 stron (powyżej → ostrzeżenie + pierwsze 50)
+
+### D3. Trzy wejścia do załączania
+1. **Przycisk 📎** obok send button → natywny file picker (input type="file")
+2. **Drag & drop** na obszar inputa → event listeners dragover/drop na input_container
+3. **Ctrl+V paste** obrazka z clipboard → event listener paste na textarea
+
+### D4. UI — chipy załączników
+- Nowy div `.pkm-attachment-chips` MIĘDZY skill buttons a textarea (w input_container)
+- Każdy załącznik = chip: [ikona typu] [nazwa pliku] [rozmiar] [X usuń]
+- Ukryty gdy brak załączników, widoczny gdy są
+- Dla obrazków: mini thumbnail (opcjonalnie, w v2)
+
+### D5. Modyfikacja RollingWindow
+- `addMessage()` musi akceptować content jako string LUB tablicę content blocks
+- `getMessagesForAPI()` musi przepuszczać tablicę bez konwersji na string
+- WAŻNE: adaptery (Anthropic, OpenAI) JUŻ obsługują tablice content blocks — zero zmian w adapterach!
+
+### D6. Modyfikacja send_message()
+- Po resolving @mentions:
+  1. Pobierz content blocks z AttachmentManager.buildContentBlocks(text)
+  2. Jeśli string → normalna ścieżka (bez zmian)
+  3. Jeśli tablica → dodaj do rolling window jako tablicę
+  4. Wyczyść załączniki po wysłaniu
+
+### D7. Renderowanie w chacie
+- Wiadomość usera z załącznikami: chipy załączników wyświetlone w bąbelku usera
+- Obrazki: miniatura (max 200px szerokości) klikalna (pełny rozmiar)
+- Pliki tekstowe: chip z nazwą pliku
+- PDF: chip z nazwą + info "(X stron)"
+
+### D8. Sprawdzenie kompatybilności z modelami
+- Vision (obrazki): Claude Sonnet/Opus ✅, GPT-4o ✅, Gemini ✅, DeepSeek ❌
+- Jeśli model nie ma vision a user załącza obrazek → Notice: "Ten model nie obsługuje obrazków. Zmień model lub usuń załącznik."
+- Sprawdzenie via adapter capabilities (do zbadania w kodzie adapterów)
+
+### Pliki do stworzenia/zmiany (Faza D):
+- NOWY: `src/components/AttachmentManager.js` (~200 LOC)
+- ZMIANA: `src/memory/RollingWindow.js` — obsługa content jako tablica
+- ZMIANA: `src/views/chat_view.js` — przycisk 📎, drag&drop, paste, chipy, modyfikacja send_message
+- ZMIANA: `src/views/chat_view.css` — style chipów, drag-over, thumbnails
+- ZMIANA: `src/main.js` — (ewentualnie) lazy-load pdfjs-dist
+- ZMIANA: `src/components/ToolCallDisplay.js` — (ewentualnie) TOOL_INFO update
+
+---
+
+## Kolejność implementacji
+
+```
+Sesja 49:  Faza A (Web Search) + A5 (inline approval)
+Sesja 50:  Faza B (ask_user) + Faza C (@ Mentions)
+Sesja 51:  Faza D (Załączniki — tekst + obrazki)
+Sesja 52:  Faza D kontynuacja (PDF + polish + testy)
+```
+
+Fazy B+C razem bo obie dotyczą interakcji z inputem chatu i są mniejsze.
+Faza D rozbita na 2 sesje bo wymaga zmian w RollingWindow + testowania z różnymi modelami.
+
+---
+
+## Wpis do PLAN_v2.md
+
+Nowa sekcja `2.8.5 INPUT CHATU v2` z checkboxami:
+
+```markdown
+## 2.8.5 INPUT CHATU v2 — WEB SEARCH + @ MENTIONS + ZAŁĄCZNIKI
+
+> **Cel:** Chat ma pełne możliwości: szukanie w necie, dołączanie notatek przez @, wrzucanie plików/obrazków.
+> **Wymaga:** 2.8 (Skills v2 — gotowe)
+> **Szacunek:** 4-5 sesji
+> **Odniesienie:** Brakujące core features, standard w AI chatach 2026
+
+### 2.8.5a Web Search Tool
+- [ ] WebSearchTool.js — narzędzie MCP (query → wyniki)
+- [ ] WebSearchProvider.js — multi-provider (Jina default, Tavily, Brave, SearXNG)
+- [ ] Jina AI jako domyślny (działa bez klucza API, za darmo)
+- [ ] Ustawienia: wybór providera, klucz API, link do założenia konta
+- [ ] Inline approval w chacie (nie popup modal) — blok z pytaniem "Szukaj? / Anuluj"
+- [ ] YOLO mode: szuka bez pytania
+- [ ] Renderowanie wyników: tytuły + linki + fragmenty (zwijany blok)
+- [ ] Instrukcja w Decision Tree (grupa: szukanie)
+- [ ] Rejestracja w ToolRegistry, WorkMode, ACTION_TYPE_MAP
+
+### 2.8.5b ask_user Tool
+- [ ] AskUserTool.js — narzędzie MCP (agent pyta usera, czeka na odpowiedź)
+- [ ] Inline question block w chacie (opcje do kliknięcia + pole własnej odpowiedzi)
+- [ ] YOLO mode: auto-wybór pierwszej opcji
+- [ ] Instrukcja w Decision Tree
+- [ ] Rejestracja w ToolRegistry, WorkMode
+
+### 2.8.5c @ Mentions
+- [ ] MentionAutocomplete.js — dropdown autocomplete na @ w textarea
+- [ ] @notatka — fuzzy search po plikach vaultu, dołączenie treści przy wysyłce
+- [ ] @folder: — fuzzy search po folderach, dołączenie treści plików (max 5)
+- [ ] Sprawdzenie AccessGuard (No-Go = zablokowane)
+- [ ] Klikalne chipy @mention w bąbelku wiadomości
+- [ ] Nawigacja klawiaturą (strzałki, Enter, Escape)
+
+### 2.8.5d Załączniki (pliki + obrazki + PDF)
+- [ ] AttachmentManager.js — zarządzanie pendingAttachments
+- [ ] Przycisk 📎 obok send button (file picker)
+- [ ] Drag & drop plików na input area
+- [ ] Ctrl+V paste obrazka z clipboard
+- [ ] Chipy załączników (nazwa + typ + rozmiar + X)
+- [ ] Obsługa obrazków: base64 → vision content blocks
+- [ ] Obsługa tekstu: (md/txt/js/json/csv) → plain text w kontekście
+- [ ] Obsługa PDF: pdfjs-dist lazy-load → ekstrakcja tekstu
+- [ ] Modyfikacja RollingWindow: content jako string LUB tablica
+- [ ] Sprawdzenie vision capability modelu (brak → Notice z ostrzeżeniem)
+- [ ] Renderowanie w chacie: miniatura obrazka, chip pliku, chip PDF
+```
+
+---
+
+## Ryzyka i uwagi
+
+1. **Jina AI rate limit (3 RPM bez klucza)** — może być za wolne dla power userów. Rozwiązanie: zachęcanie do założenia darmowego konta (100 RPM).
+
+2. **pdfjs-dist zwiększa bundle** (~700KB). Rozwiązanie: lazy-load (dynamic import). Ładuje się tylko gdy user wrzuca PDF.
+
+3. **Vision nie działa na DeepSeek** — user może być zdziwiony. Rozwiązanie: jasne ostrzeżenie + sugestia modelu z vision.
+
+4. **Inline approval vs ApprovalModal** — na razie inline TYLKO dla web_search. Reszta narzędzi dalej popup. Ujednolicenie to temat na 2.10 (UX Chatu).
+
+5. **@ Mentions + duże pliki** — user może dołączyć 10MB notatkę przez @. Rozwiązanie: limit tokenów per attachment + ostrzeżenie.

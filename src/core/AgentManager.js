@@ -6,6 +6,7 @@ import { AgentLoader } from '../agents/AgentLoader.js';
 import { AgentMemory } from '../memory/AgentMemory.js';
 import { SkillLoader } from '../skills/SkillLoader.js';
 import { MinionLoader } from './MinionLoader.js';
+import { MasterLoader } from './MasterLoader.js';
 import { PlaybookManager } from './PlaybookManager.js';
 import { KomunikatorManager } from './KomunikatorManager.js';
 import { RoleLoader } from '../agents/roles/RoleLoader.js';
@@ -25,6 +26,7 @@ export class AgentManager {
         this.loader = new AgentLoader(vault);
         this.skillLoader = new SkillLoader(vault);
         this.minionLoader = new MinionLoader(vault);
+        this.masterLoader = new MasterLoader(vault);
         this.playbookManager = new PlaybookManager(vault);
         this.komunikatorManager = new KomunikatorManager(vault);
         this.roleLoader = new RoleLoader(vault);
@@ -81,6 +83,11 @@ export class AgentManager {
             await this.minionLoader.ensureStarterMinions();
             await this.minionLoader.loadAllMinions();
             log.debug('AgentManager', `Minions: ${this.minionLoader.cache?.size || 0} załadowanych`);
+
+            // Load masters
+            await this.masterLoader.ensureStarterMasters();
+            await this.masterLoader.loadAllMasters();
+            log.debug('AgentManager', `Masters: ${this.masterLoader.cache?.size || 0} załadowanych`);
 
             // Ensure playbook.md + vault_map.md for all agents
             await this.playbookManager.ensureStarterFiles(allAgents);
@@ -224,12 +231,45 @@ export class AgentManager {
     }
 
     /**
-     * Get skills assigned to the active agent
+     * Get skills assigned to the active agent (with per-agent overrides resolved).
      * @returns {Object[]} Array of skill objects
      */
     getActiveAgentSkills() {
         if (!this.activeAgent) return [];
-        return this.skillLoader.getSkillsForAgent(this.activeAgent.skills);
+        const skillNames = this.activeAgent.skills; // backward compat getter returns string[]
+        return skillNames
+            .map(name => this.resolveSkillConfig(name, this.activeAgent))
+            .filter(Boolean);
+    }
+
+    /**
+     * Resolve skill config with per-agent overrides merged.
+     * @param {string} skillName - Skill name
+     * @param {Object} agent - Agent instance
+     * @returns {Object|null} Merged skill config or null
+     */
+    resolveSkillConfig(skillName, agent) {
+        const base = this.skillLoader.getSkill(skillName);
+        if (!base) return null;
+
+        const assignment = agent?.getSkillAssignment?.(skillName);
+        if (!assignment?.overrides) return base;
+
+        const merged = { ...base };
+        const ovr = assignment.overrides;
+
+        if (ovr.prompt_append) {
+            merged.prompt = (base.prompt || '') + '\n\n--- Instrukcje per-agent (' + agent.name + ') ---\n' + ovr.prompt_append;
+        }
+        if (ovr.model) merged.model = ovr.model;
+        if (ovr.pre_question_defaults && merged.preQuestions?.length > 0) {
+            merged.preQuestions = merged.preQuestions.map(pq => ({
+                ...pq,
+                default: ovr.pre_question_defaults[pq.key] ?? pq.default
+            }));
+        }
+
+        return merged;
     }
 
     /**
@@ -249,12 +289,85 @@ export class AgentManager {
     }
 
     /**
-     * Get minion config for the active agent
+     * Reload all masters from disk
+     * @returns {Promise<void>}
+     */
+    async reloadMasters() {
+        await this.masterLoader.reloadMasters();
+    }
+
+    /**
+     * Get master config for the active agent (with per-agent overrides)
+     * @returns {Object|null} Master config or null
+     */
+    getActiveMasterConfig() {
+        const name = this.activeAgent?.defaultMaster?.name;
+        if (!name) return null;
+        return this.resolveMasterConfig(name, this.activeAgent);
+    }
+
+    /**
+     * Get minion config for the active agent (with per-agent overrides)
      * @returns {Object|null} Minion config or null
      */
     getActiveMinionConfig() {
-        if (!this.activeAgent?.minion) return null;
-        return this.minionLoader.getMinion(this.activeAgent.minion);
+        const name = this.activeAgent?.defaultMinion?.name;
+        if (!name) return null;
+        return this.resolveMinionConfig(name, this.activeAgent);
+    }
+
+    /**
+     * Resolve minion config with per-agent overrides merged.
+     * @param {string} minionName - Universal minion name
+     * @param {Object} agent - Agent instance
+     * @returns {Object|null} Merged config or null
+     */
+    resolveMinionConfig(minionName, agent) {
+        const base = this.minionLoader.getMinion(minionName);
+        if (!base) return null;
+
+        const assignment = agent?.getMinionAssignment?.(minionName);
+        if (!assignment?.overrides) return base;
+
+        const merged = { ...base };
+        const ovr = assignment.overrides;
+
+        if (ovr.prompt_append) {
+            merged.prompt = (base.prompt || '') + '\n\n--- Instrukcje per-agent (' + agent.name + ') ---\n' + ovr.prompt_append;
+        }
+        if (ovr.extra_tools?.length > 0) {
+            merged.tools = [...new Set([...(base.tools || []), ...ovr.extra_tools])];
+        }
+        if (ovr.max_iterations) merged.max_iterations = ovr.max_iterations;
+
+        return merged;
+    }
+
+    /**
+     * Resolve master config with per-agent overrides merged.
+     * @param {string} masterName - Universal master name
+     * @param {Object} agent - Agent instance
+     * @returns {Object|null} Merged config or null
+     */
+    resolveMasterConfig(masterName, agent) {
+        const base = this.masterLoader?.getMaster(masterName);
+        if (!base) return null;
+
+        const assignment = agent?.getMasterAssignment?.(masterName);
+        if (!assignment?.overrides) return base;
+
+        const merged = { ...base };
+        const ovr = assignment.overrides;
+
+        if (ovr.prompt_append) {
+            merged.prompt = (base.prompt || '') + '\n\n--- Instrukcje per-agent (' + agent.name + ') ---\n' + ovr.prompt_append;
+        }
+        if (ovr.extra_tools?.length > 0) {
+            merged.tools = [...new Set([...(base.tools || []), ...ovr.extra_tools])];
+        }
+        if (ovr.max_iterations) merged.max_iterations = ovr.max_iterations;
+
+        return merged;
     }
 
     /**
@@ -288,17 +401,32 @@ export class AgentManager {
         // Agent list for communicator
         const agentList = this.getAllAgents().map(a => a.name);
 
-        // Minion list for PromptBuilder dynamic inject
-        const minionList = this.minionLoader.getAllMinions()
-            .map(m => ({ name: m.name, description: m.description }));
+        // Minion list: only agent's assigned minions (multi-delegate)
+        const agentMinionNames = agent.getMinionNames?.() || [];
+        const minionList = agentMinionNames.length > 0
+            ? agentMinionNames
+                .map(name => this.minionLoader.getMinion(name))
+                .filter(Boolean)
+                .map(m => ({ name: m.name, description: m.description }))
+            : []; // no minions assigned
 
-        // Minion availability
-        const minionConfig = agent.minion ? this.minionLoader.getMinion(agent.minion) : null;
-        const hasMinion = agent.minionEnabled !== false && !!minionConfig;
+        // Master list: only agent's assigned masters (multi-delegate)
+        const agentMasterNames = agent.getMasterNames?.() || [];
+        const masterList = agentMasterNames.length > 0
+            ? agentMasterNames
+                .map(name => this.masterLoader.getMaster(name))
+                .filter(Boolean)
+                .map(m => ({ name: m.name, description: m.description }))
+            : [];
 
-        // Master availability (global setting)
+        // Minion availability (multi-delegate)
+        const hasMinion = agent.minionEnabled !== false && agentMinionNames.length > 0;
+        const defaultMinionName = agent.defaultMinion?.name || null;
+
+        // Master availability: per-agent assignment OR global config
         const obsek = this.settings?.obsek || {};
-        const hasMaster = !!(obsek.masterModel && obsek.masterPlatform);
+        const hasMaster = (agent.masterEnabled !== false && agentMasterNames.length > 0) ||
+                          !!(obsek.masterModel && obsek.masterPlatform);
 
         // Disabled prompt sections from settings
         const disabledPromptSections = obsek.disabledPromptSections || [];
@@ -309,17 +437,30 @@ export class AgentManager {
         // Role data for PromptBuilder (sesja 41)
         const roleData = agent.role ? this.roleLoader.getRole(agent.role) : null;
 
+        // Delegate assignments with DT overrides / behavior_inject (sesja 46c)
+        const delegateAssignments = [
+            ...(agent.activeMinions || [])
+                .filter(m => m.overrides?.dt_covered_groups?.length > 0 || m.overrides?.behavior_inject)
+                .map(m => ({ ...m, delegateType: 'minion' })),
+            ...(agent.activeMasters || [])
+                .filter(m => m.overrides?.dt_covered_groups?.length > 0 || m.overrides?.behavior_inject)
+                .map(m => ({ ...m, delegateType: 'master' }))
+        ];
+
         return {
             vaultName: this.vault?.getName?.() || 'Unknown Vault',
             currentDate: new Date().toLocaleDateString('pl-PL'),
             skills,
             agentList,
             minionList,
+            masterList,
             hasMinion,
             hasMaster,
+            defaultMinionName,
             promptDefaults,
             ...(roleData && { roleData }),
             ...(disabledPromptSections.length > 0 && { disabledPromptSections }),
+            ...(delegateAssignments.length > 0 && { delegateAssignments }),
         };
     }
 
@@ -457,6 +598,16 @@ export class AgentManager {
     async createAgent(config) {
         const { Agent } = await import('../agents/Agent.js');
         const agent = new Agent(config);
+
+        // Auto-create prep minion if agent has delegation enabled and no prep minion
+        if (agent.minionEnabled !== false && !agent.prepMinion) {
+            try {
+                const prepName = await this.minionLoader.createPrepMinion(agent.name);
+                agent._minions.unshift({ name: prepName, role: 'prep', default: agent._minions.length === 0 });
+            } catch (e) {
+                console.warn('[AgentManager] Could not auto-create prep minion:', e.message);
+            }
+        }
 
         // Save to file
         await this.loader.saveAgent(agent);

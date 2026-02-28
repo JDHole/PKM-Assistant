@@ -10,9 +10,13 @@ export function countTokens(text, model = 'gpt-4') {
     if (!text) {
         return 0;
     }
-    const enc = encodingForModel(model);
-    const tokens = enc.encode(text);
-    return tokens.length;
+    try {
+        const enc = encodingForModel(model);
+        const tokens = enc.encode(text);
+        return tokens.length;
+    } catch (e) {
+        return countTokensSimple(text);
+    }
 }
 
 /**

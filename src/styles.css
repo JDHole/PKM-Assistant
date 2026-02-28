@@ -1,3 +1,145 @@
+/* ═══════════════════════════════════════════════════════════════
+   CRYSTAL SOUL DESIGN SYSTEM v2 — Foundation
+   All variables use --cs- prefix (Crystal Soul)
+   Agent color: set --cs-agent-color via inline style or data-agent-color attr
+   Inherits Obsidian theme → works with ANY theme
+   Override via .pkm-assistant/theme.css
+   ═══════════════════════════════════════════════════════════════ */
+
+.theme-dark, .theme-light {
+
+  /* ── Agent color (primary accent — set per element) ── */
+  --cs-agent-color: var(--interactive-accent);
+
+  /* ── Derived agent color variants (auto-calculated from --cs-agent-color) ── */
+  --cs-agent-glow: color-mix(in srgb, var(--cs-agent-color) 35%, transparent);
+  --cs-agent-subtle: color-mix(in srgb, var(--cs-agent-color) 12%, transparent);
+  --cs-agent-faded: color-mix(in srgb, var(--cs-agent-color) 50%, transparent);
+  --cs-agent-strong: color-mix(in srgb, var(--cs-agent-color) 85%, white);
+
+  /* ── Shard decorations (use agent color) ── */
+  --cs-shard-color: var(--cs-agent-color);
+  --cs-shard-glow: var(--cs-agent-glow);
+  --cs-shard-subtle: var(--cs-agent-subtle);
+
+  /* ── Border accent (left border on cards/messages) ── */
+  --cs-border-accent-width: 3px;
+  --cs-border-accent-color: var(--cs-agent-color);
+  --cs-border-accent-faded: var(--cs-agent-faded);
+
+  /* ── Crystal marker (replaces diamond marker) ── */
+  --cs-crystal-size: 5px;
+  --cs-crystal-color: var(--cs-agent-color);
+  --cs-crystal-empty-color: var(--text-faint);
+
+  /* ── Surface layers (inherit from Obsidian) ── */
+  --cs-surface-primary: var(--background-primary);
+  --cs-surface-secondary: var(--background-secondary);
+  --cs-surface-elevated: var(--background-primary-alt);
+  --cs-surface-border: var(--background-modifier-border);
+
+  /* ── Text layers ── */
+  --cs-text-primary: var(--text-normal);
+  --cs-text-secondary: var(--text-muted);
+  --cs-text-tertiary: var(--text-faint);
+
+  /* ── Animation ── */
+  --cs-transition-fast: 0.12s ease;
+  --cs-transition-normal: 0.25s ease;
+  --cs-transition-slow: 0.4s ease;
+  --cs-breathing-duration: 3s;
+
+  /* ── Glow intensity ── */
+  --cs-glow-spread: 12px;
+  --cs-glow-blur: 24px;
+}
+
+/* ── Agent color: set via inline style or data attribute ──
+   Preferred: style="--cs-agent-color: #7B5EA7"
+   Legacy compat: data-agent-color="amber" (old 8 presets)
+   ────────────────────────────────────────────────────────── */
+[data-agent-color="amber"]   { --cs-agent-color: #B09548; }
+[data-agent-color="aqua"]    { --cs-agent-color: #3D8B8A; }
+[data-agent-color="purple"]  { --cs-agent-color: #7B5EA7; }
+[data-agent-color="blue"]    { --cs-agent-color: #4A6FA5; }
+[data-agent-color="rose"]    { --cs-agent-color: #9E5565; }
+[data-agent-color="emerald"] { --cs-agent-color: #3A8B6E; }
+[data-agent-color="slate"]   { --cs-agent-color: #6B7B8A; }
+[data-agent-color="coral"]   { --cs-agent-color: #A87450; }
+
+/* ── Animations ── */
+@keyframes cs-breathing {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes cs-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes cs-crystal-build {
+  0% { transform: scale(0.3); opacity: 0; filter: blur(4px); }
+  50% { transform: scale(1.1); opacity: 0.8; filter: blur(1px); }
+  100% { transform: scale(1); opacity: 1; filter: blur(0); }
+}
+@keyframes cs-glow-pulse {
+  0%, 100% { box-shadow: 0 0 var(--cs-glow-spread) var(--cs-agent-glow); }
+  50% { box-shadow: 0 0 var(--cs-glow-blur) var(--cs-agent-faded); }
+}
+/* Message send animation */
+@keyframes cs-send-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.98); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* Crystal grow-in for new messages */
+@keyframes cs-message-enter {
+  0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Connector crystal pulse while loading */
+@keyframes cs-connector-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+/* Tab switch fade */
+@keyframes cs-tab-switch {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ── Utility classes ── */
+.cs-agent-accent { color: var(--cs-agent-color); }
+.cs-agent-bg { background-color: var(--cs-agent-subtle); }
+.cs-agent-border { border-color: var(--cs-agent-color); }
+.cs-agent-glow { box-shadow: 0 0 var(--cs-glow-spread) var(--cs-agent-glow); }
+.cs-breathing { animation: cs-breathing var(--cs-breathing-duration) ease-in-out infinite; }
+.cs-crystal-enter { animation: cs-crystal-build 0.5s var(--cs-transition-normal) forwards; }
+.cs-send-pulse { animation: cs-send-pulse 0.3s ease; }
+.cs-message-enter { animation: cs-message-enter 0.25s ease-out; }
+.cs-connector-pulse { animation: cs-connector-pulse 1.2s ease-in-out infinite; }
+
+/* ── Light theme overrides ── */
+.theme-light {
+  --cs-glow-spread: 8px;
+  --cs-glow-blur: 16px;
+}
+
+/* ── CS Root — contextual foreground-based vars ── */
+.cs-root {
+  --cs-fg-rgb: 180, 170, 155;
+  --cs-border: rgba(var(--cs-fg-rgb), 0.08);
+  --cs-border-vis: rgba(var(--cs-fg-rgb), 0.14);
+  --cs-soul: rgba(var(--cs-fg-rgb), 0.04);
+  --cs-soul-vis: rgba(var(--cs-fg-rgb), 0.08);
+}
+.theme-light .cs-root {
+  --cs-fg-rgb: 40, 40, 40;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   END CRYSTAL SOUL FOUNDATION v2
+   ═══════════════════════════════════════════════════════════════ */
+
 /* ── Obsek Status Bar ── */
 .obsek-status-bar-item {
   display: flex;

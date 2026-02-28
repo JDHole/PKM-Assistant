@@ -1,152 +1,137 @@
-import { TOOL_INFO } from './ToolCallDisplay.js';
+import { TOOL_INFO, getToolIcon } from './ToolCallDisplay.js';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 const TYPE_CONFIG = {
-    'auto-prep':   { icon: '🤖', label: 'Przygotowanie kontekstu', cls: 'type-minion' },
-    'minion_task': { icon: '🔧', label: 'Zadanie miniona',        cls: 'type-minion' },
-    'master_task': { icon: '👑', label: 'Konsultacja z Masterem',  cls: 'type-master' },
+    'auto-prep':   { label: 'Przygotowanie kontekstu', iconFn: () => UiIcons.brain(14) },
+    'minion_task': { label: 'Zadanie miniona',         iconFn: () => UiIcons.robot(14) },
+    'master_task': { label: 'Konsultacja z Masterem',  iconFn: () => UiIcons.crown(14) },
 };
 
 /**
- * Creates a collapsible sub-agent activity block for the chat UI.
- * Full transparency: shows query, response, tools used, files accessed, tokens.
+ * Creates a Crystal Soul .cs-action-row for a sub-agent (minion/master) result.
+ * Expandable: header (icon + label + duration + status + arrow) → body (query, response, tools, tokens).
  *
  * @param {Object} opts
  * @param {'auto-prep'|'minion_task'|'master_task'} opts.type
- * @param {string} [opts.query] - Human-readable task/query sent to the sub-agent
- * @param {string} [opts.response] - Full response text from the sub-agent
- * @param {string[]} [opts.toolsUsed] - Tool names used
- * @param {Array} [opts.toolCallDetails] - Detailed tool call info [{name, args, resultPreview}]
- * @param {number} [opts.duration] - Duration in ms
+ * @param {string} [opts.agentName] - Name of the minion/master (e.g. "jaskier-prep", "strateg")
+ * @param {string} [opts.query]
+ * @param {string} [opts.response]
+ * @param {string[]} [opts.toolsUsed]
+ * @param {Array} [opts.toolCallDetails]
+ * @param {number} [opts.duration] - ms
  * @param {{ prompt_tokens: number, completion_tokens: number }|null} [opts.usage]
- * @param {string} [opts.summary] - Brief context summary (fallback if no response)
+ * @param {string} [opts.summary]
  * @returns {HTMLElement}
  */
 export function createSubAgentBlock(opts) {
     const cfg = TYPE_CONFIG[opts.type] || TYPE_CONFIG['minion_task'];
 
-    const container = document.createElement('div');
-    container.addClass('pkm-subagent-block');
-    container.addClass(cfg.cls);
+    const row = document.createElement('div');
+    row.className = 'cs-action-row';
 
-    // Header (always visible)
-    const header = container.createDiv({ cls: 'pkm-subagent-header' });
-    header.createSpan({ cls: 'pkm-subagent-icon', text: cfg.icon });
+    // ── HEAD ──
+    const head = row.createDiv({ cls: 'cs-action-row__head' });
 
-    const durationStr = opts.duration ? `${(opts.duration / 1000).toFixed(1)}s` : '';
-    const labelText = durationStr ? `${cfg.label} · ${durationStr}` : cfg.label;
-    header.createSpan({ cls: 'pkm-subagent-label', text: labelText });
+    // Icon (semantic: robot for minion, crown for master)
+    const iconEl = head.createDiv({ cls: 'cs-action-row__icon' });
+    iconEl.innerHTML = cfg.iconFn();
 
-    const toggle = document.createElement('button');
-    toggle.addClass('pkm-subagent-toggle');
-    toggle.textContent = '▼';
-    header.appendChild(toggle);
+    // Label: "Zadanie miniona [nazwa] — [query snippet]"
+    const nameTag = opts.agentName ? ` ${opts.agentName}` : '';
+    const querySnippet = opts.query ? opts.query.slice(0, 80) : '';
+    const labelText = querySnippet ? `${cfg.label}${nameTag} — ${querySnippet}` : `${cfg.label}${nameTag}`;
+    head.createSpan({ cls: 'cs-action-row__label', text: labelText });
 
-    // Body (collapsed by default)
-    const body = container.createDiv({ cls: 'pkm-subagent-body collapsed' });
-
-    // Query (what was asked)
-    if (opts.query) {
-        const queryRow = body.createDiv({ cls: 'pkm-subagent-section' });
-        queryRow.createDiv({ cls: 'pkm-subagent-section-label', text: 'Zapytanie:' });
-        const queryText = queryRow.createDiv({ cls: 'pkm-subagent-section-content pkm-subagent-query' });
-        queryText.textContent = opts.query;
+    // Duration
+    if (opts.duration) {
+        head.createSpan({ cls: 'cs-action-row__time', text: `${(opts.duration / 1000).toFixed(1)}s` });
     }
 
-    // Response (full, scrollable)
+    // Status crystal
+    const hasError = opts.response?.startsWith('Błąd');
+    const statusCls = hasError ? 'cs-action-row__status--error' : 'cs-action-row__status--done';
+    head.createDiv({ cls: `cs-action-row__status ${statusCls}` });
+
+    // Arrow
+    const arrow = head.createDiv({ cls: 'cs-action-row__arrow' });
+    arrow.innerHTML = UiIcons.chevronDown(12);
+
+    // ── BODY ──
+    const body = row.createDiv({ cls: 'cs-action-row__body' });
+
+    // Query
+    if (opts.query) {
+        const qDiv = body.createDiv({ cls: 'cs-action-row__input' });
+        qDiv.textContent = `Zapytanie: ${opts.query}`;
+    }
+
+    // Response
     const responseText = opts.response || opts.summary || '';
     if (responseText) {
-        const responseRow = body.createDiv({ cls: 'pkm-subagent-section' });
-        responseRow.createDiv({ cls: 'pkm-subagent-section-label', text: 'Odpowiedź:' });
-        const responseContent = responseRow.createDiv({ cls: 'pkm-subagent-section-content pkm-subagent-response' });
-        responseContent.textContent = responseText;
+        const rDiv = body.createDiv({ cls: 'cs-action-row__output' });
+        rDiv.textContent = responseText;
+        if (hasError) rDiv.style.color = 'var(--text-error)';
     }
 
-    // Tool call details (which files were accessed)
+    // Tool call details
     if (opts.toolCallDetails?.length > 0) {
-        const detailsRow = body.createDiv({ cls: 'pkm-subagent-section' });
-        detailsRow.createDiv({ cls: 'pkm-subagent-section-label', text: 'Użyte narzędzia:' });
-        const detailsList = detailsRow.createDiv({ cls: 'pkm-subagent-tool-details' });
-
-        for (const detail of opts.toolCallDetails) {
-            const info = TOOL_INFO[detail.name] || { icon: '🔧', label: detail.name };
-            const row = detailsList.createDiv({ cls: 'pkm-subagent-tool-detail-row' });
-
-            // Tool name + icon
-            row.createSpan({ cls: 'pkm-subagent-tool-detail-name', text: `${info.icon} ${info.label}` });
-
-            // Extract key info from args (path, query, etc.)
-            const argHint = _extractArgHint(detail.name, detail.args);
-            if (argHint) {
-                row.createSpan({ cls: 'pkm-subagent-tool-detail-hint', text: argHint });
-            }
-
-            // Error indicator
-            if (detail.error) {
-                row.createSpan({ cls: 'pkm-subagent-tool-detail-error', text: '✗' });
-            }
-        }
-    } else if (opts.toolsUsed?.length > 0) {
-        // Fallback: just tool names (no details)
-        const toolsRow = body.createDiv({ cls: 'pkm-subagent-row' });
-        toolsRow.createSpan({ cls: 'pkm-subagent-row-label', text: 'Narzędzia: ' });
-        const toolNames = opts.toolsUsed.map(t => {
-            const info = TOOL_INFO[t];
-            return info ? `${info.icon} ${info.label}` : t;
+        const detailDiv = body.createDiv({ cls: 'cs-action-row__content' });
+        const lines = opts.toolCallDetails.map(d => {
+            const info = TOOL_INFO[d.name] || { label: d.name };
+            const hint = _extractArgHint(d.name, d.args);
+            return hint ? `${info.label}: ${hint}` : info.label;
         });
-        toolsRow.createSpan({ text: toolNames.join(', ') });
+        detailDiv.textContent = lines.join('\n');
+    } else if (opts.toolsUsed?.length > 0) {
+        const toolDiv = body.createDiv({ cls: 'cs-action-row__content' });
+        const names = opts.toolsUsed.map(t => (TOOL_INFO[t]?.label) || t);
+        toolDiv.textContent = `Narzędzia: ${names.join(', ')}`;
     }
 
     // Token usage
     if (opts.usage && (opts.usage.prompt_tokens || opts.usage.completion_tokens)) {
-        const tokRow = body.createDiv({ cls: 'pkm-subagent-row' });
-        tokRow.createSpan({ cls: 'pkm-subagent-row-label', text: 'Tokeny: ' });
+        const tokDiv = body.createDiv({ cls: 'cs-action-row__content' });
         const inp = (opts.usage.prompt_tokens || 0).toLocaleString('pl-PL');
         const out = (opts.usage.completion_tokens || 0).toLocaleString('pl-PL');
-        tokRow.createSpan({ text: `${inp} wejść / ${out} wyjść` });
+        tokDiv.textContent = `Tokeny: ${inp} wejść / ${out} wyjść`;
     }
 
-    // Toggle logic
-    header.addEventListener('click', () => {
-        const isCollapsed = body.classList.contains('collapsed');
-        if (isCollapsed) {
-            body.classList.remove('collapsed');
-            toggle.classList.add('expanded');
-        } else {
-            body.classList.add('collapsed');
-            toggle.classList.remove('expanded');
-        }
+    // Toggle
+    head.addEventListener('click', () => {
+        row.classList.toggle('open');
     });
 
-    return container;
+    return row;
 }
 
 /**
- * Creates a pending (loading) sub-agent block.
+ * Creates a pending (loading) sub-agent .cs-action-row.
  * @param {'minion_task'|'master_task'} type
+ * @param {string} [agentName] - Name of the minion/master
  * @returns {HTMLElement}
  */
-export function createPendingSubAgentBlock(type) {
+export function createPendingSubAgentBlock(type, agentName) {
     const cfg = TYPE_CONFIG[type] || TYPE_CONFIG['minion_task'];
 
-    const container = document.createElement('div');
-    container.addClass('pkm-subagent-block');
-    container.addClass(cfg.cls);
-    container.addClass('pending');
+    const row = document.createElement('div');
+    row.className = 'cs-action-row';
 
-    const header = container.createDiv({ cls: 'pkm-subagent-header' });
-    header.createSpan({ cls: 'pkm-subagent-icon', text: cfg.icon });
-    header.createSpan({ cls: 'pkm-subagent-label', text: `${cfg.label}...` });
+    const head = row.createDiv({ cls: 'cs-action-row__head' });
 
-    // Animated dots
-    const dots = header.createSpan({ cls: 'pkm-subagent-dots' });
-    dots.textContent = '●●●';
+    const iconEl = head.createDiv({ cls: 'cs-action-row__icon' });
+    iconEl.innerHTML = cfg.iconFn();
 
-    return container;
+    const nameTag = agentName ? ` ${agentName}` : '';
+    head.createSpan({ cls: 'cs-action-row__label', text: `${cfg.label}${nameTag}...` });
+
+    // Pending status (animated)
+    head.createDiv({ cls: 'cs-action-row__status cs-action-row__status--pending' });
+
+    return row;
 }
 
 /**
  * Extract a human-readable hint from tool call arguments.
- * e.g. vault_read({path: "foo.md"}) → "foo.md"
  */
 function _extractArgHint(toolName, args) {
     if (!args) return '';

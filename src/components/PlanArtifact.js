@@ -16,6 +16,8 @@
  *   onOpenModal(id)
  */
 
+import { UiIcons } from '../crystal-soul/UiIcons.js';
+
 const STATUS_ICONS = {
     pending: '○',
     in_progress: '◉',
@@ -38,7 +40,8 @@ export function createPlanArtifact(planData, options = {}) {
 
     // Header: title + progress
     const header = container.createDiv({ cls: 'pkm-plan-header' });
-    header.createSpan({ cls: 'pkm-plan-title', text: `📋 ${planData.title}` });
+    const titleSpan = header.createSpan({ cls: 'pkm-plan-title' });
+    titleSpan.innerHTML = `${UiIcons.clipboard(16)} ${planData.title}`;
 
     const doneSteps = planData.steps.filter(s => s.status === 'done').length;
     const total = planData.steps.length;
@@ -82,9 +85,9 @@ export function createPlanArtifact(planData, options = {}) {
 
     if (!planData.approved && pct < 100) {
         const approveBtn = footer.createEl('button', {
-            text: '✅ Zatwierdź plan',
             cls: 'mod-cta pkm-plan-approve-btn'
         });
+        approveBtn.innerHTML = `${UiIcons.check(14)} Zatwierdź plan`;
         approveBtn.addEventListener('click', () => {
             options.onApprove?.(planData.id);
         });
@@ -93,13 +96,14 @@ export function createPlanArtifact(planData, options = {}) {
     if (options.onOpenModal) {
         const modalBtn = footer.createEl('button', {
             cls: 'pkm-plan-modal-btn',
-            text: '🔲 Pełny widok'
         });
+        modalBtn.innerHTML = `${UiIcons.expand(14)} Pełny widok`;
         modalBtn.addEventListener('click', () => options.onOpenModal(planData.id));
     }
 
     if (pct === 100) {
-        footer.createSpan({ cls: 'pkm-plan-done', text: '✅ Plan wykonany!' });
+        const doneSpan = footer.createSpan({ cls: 'pkm-plan-done' });
+        doneSpan.innerHTML = `${UiIcons.check(14)} Plan wykonany!`;
     }
 
     return container;
@@ -237,9 +241,9 @@ function _renderSteps(stepsDiv, planData, options, rootContainer) {
         // Comment button
         const commentBtn = actions.createEl('button', {
             cls: 'pkm-plan-step-action-btn',
-            text: '💬',
             attr: { title: 'Komentarz do kroku' }
         });
+        commentBtn.innerHTML = UiIcons.chat(14);
         commentBtn.addEventListener('click', () => {
             // Toggle inline comment input
             let commentRow = stepRow.querySelector('.pkm-plan-step-comment-row');

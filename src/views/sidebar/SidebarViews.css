@@ -32,10 +32,24 @@
 
 /* ========== COMMON ========== */
 
+/* Crystal Soul: diamond marker before section titles */
 .sidebar-section-title {
     margin: 0 0 12px 0;
     font-size: 1em;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-section-title::before {
+    content: '';
+    display: inline-block;
+    width: var(--cs-diamond-size, 5px);
+    height: var(--cs-diamond-size, 5px);
+    background: var(--cs-diamond-color, var(--interactive-accent));
+    transform: rotate(45deg);
+    flex-shrink: 0;
 }
 
 .sidebar-empty-text {
@@ -182,14 +196,16 @@
 }
 
 /* Message card */
+/* Crystal Soul: communicator messages */
 .communicator-inline-msg {
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid var(--background-modifier-border);
     overflow: hidden;
+    transition: border-color var(--cs-transition-normal, 0.25s ease);
 }
 
 .communicator-inline-msg.unread {
-    border-left: 3px solid var(--interactive-accent);
+    border-left: var(--cs-border-accent-width, 3px) solid var(--cs-border-accent-color, var(--interactive-accent));
 }
 
 .communicator-inline-msg-header {
@@ -437,17 +453,19 @@
     gap: 6px;
 }
 
+/* Crystal Soul: shard hover on item cards */
 .sidebar-item-card {
     padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid var(--background-modifier-border);
+    border-left: var(--cs-border-accent-width, 3px) solid transparent;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--cs-transition-normal, 0.25s ease);
 }
 
 .sidebar-item-card:hover {
     background: var(--background-modifier-hover);
-    border-color: var(--interactive-accent);
+    border-left-color: var(--cs-border-accent-faded, var(--interactive-accent));
 }
 
 .sidebar-item-top {
@@ -463,13 +481,15 @@
 }
 
 .sidebar-category-badge {
-    background: var(--background-secondary);
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 8%, var(--background-secondary));
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 12%, var(--background-modifier-border));
     padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.7em;
+    border-radius: 3px;
+    font-size: 0.64rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
+    font-weight: 500;
 }
 
 .sidebar-item-desc {
@@ -494,16 +514,20 @@
 }
 
 .sidebar-agent-link {
-    color: var(--interactive-accent);
+    color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 50%, var(--text-normal));
     cursor: pointer;
-    padding: 1px 4px;
+    padding: 2px 8px;
     border-radius: 3px;
-    transition: background 0.15s;
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 10%, var(--background-modifier-border));
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 4%, transparent);
+    font-size: 0.74rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
 }
 
 .sidebar-agent-link:hover {
-    background: var(--background-modifier-hover);
-    text-decoration: underline;
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 10%, transparent);
+    border-color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 20%, var(--background-modifier-border));
 }
 
 /* ========== TOOL BROWSER ========== */
@@ -618,29 +642,44 @@
 
 /* ========== DETAIL VIEWS ========== */
 
+/* ─── Detail Views — Crystal Soul ─── */
+
 .sidebar-detail-meta {
-    background: var(--background-secondary);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 3%, var(--background-secondary));
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 10%, var(--background-modifier-border));
+    border-left: 3px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 20%, transparent);
+    border-radius: var(--cs-radius, 4px);
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    position: relative;
+}
+.sidebar-detail-meta::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 3px; right: 0; height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 12%, transparent), transparent 60%);
 }
 
 .sidebar-detail-row {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 8px;
     padding: 3px 0;
-    font-size: 0.85em;
+    font-size: 0.76rem;
 }
 
 .sidebar-detail-label {
-    color: var(--text-muted);
-    font-weight: 500;
+    color: var(--text-faint);
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     flex-shrink: 0;
 }
 
 .sidebar-detail-value {
     color: var(--text-normal);
+    font-size: 0.76rem;
 }
 
 .status-active {
@@ -652,14 +691,19 @@
 }
 
 .sidebar-detail-section {
-    margin-top: 12px;
+    margin-top: 14px;
 }
 
 .sidebar-detail-subtitle {
     margin: 0 0 6px 0;
-    font-size: 0.9em;
+    font-size: 0.78rem;
     font-weight: 600;
+    color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 30%, var(--text-normal));
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
+.sidebar-detail-subtitle svg { opacity: 0.7; }
 
 .sidebar-detail-agents {
     display: flex;
@@ -670,7 +714,7 @@
 .sidebar-detail-tools {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 
 .sidebar-tool-mini-card {
@@ -678,26 +722,41 @@
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    border-radius: 4px;
-    background: var(--background-secondary);
-    font-size: 0.85em;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 8%, var(--background-modifier-border));
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 2%, var(--background-secondary));
+    font-size: 0.74rem;
+}
+.sidebar-tool-mini-card svg { opacity: 0.6; }
+
+.sidebar-tool-label {
+    color: var(--text-normal);
+}
+.sidebar-tool-name {
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    font-size: 0.64rem;
+    margin-left: auto;
 }
 
 .sidebar-detail-prompt {
-    background: var(--background-secondary);
-    border-radius: 6px;
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 2%, var(--background-secondary));
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 8%, var(--background-modifier-border));
+    border-left: 3px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 15%, transparent);
+    border-radius: var(--cs-radius, 4px);
     padding: 10px 12px;
     max-height: 400px;
     overflow-y: auto;
-    font-size: 0.85em;
-    line-height: 1.5;
+    font-size: 0.76rem;
+    line-height: 1.55;
 }
 
 .sidebar-detail-prompt h1,
 .sidebar-detail-prompt h2,
 .sidebar-detail-prompt h3 {
-    font-size: 1em;
+    font-size: 0.88rem;
     margin: 8px 0 4px 0;
+    color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 25%, var(--text-normal));
 }
 
 .sidebar-detail-prompt ul,
@@ -707,37 +766,22 @@
 }
 
 .sidebar-detail-prompt code {
-    font-size: 0.9em;
+    font-size: 0.85em;
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 5%, var(--background-primary));
+    padding: 1px 4px;
+    border-radius: 2px;
 }
 
 .sidebar-detail-pre {
-    background: var(--background-secondary);
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 2%, var(--background-secondary));
+    border-left: 3px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 15%, transparent);
     padding: 10px;
-    border-radius: 6px;
-    font-size: 0.8em;
+    border-radius: var(--cs-radius, 4px);
+    font-size: 0.72rem;
     font-family: var(--font-monospace);
     white-space: pre-wrap;
     overflow-x: auto;
-}
-
-.sidebar-detail-actions {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--background-modifier-border);
-}
-
-.sidebar-detail-btn {
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 0.85em;
-    background: var(--background-modifier-border);
-    border: none;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.sidebar-detail-btn:hover {
-    background: var(--background-modifier-hover);
+    color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 15%, var(--text-normal));
 }
 
 /* ========== AGORA ========== */
@@ -1426,11 +1470,11 @@
 
 /* ========== FOCUS FOLDERS — WHITELIST AUTOCOMPLETE ========== */
 
-.focus-folder-section {
+.cs-focus-section {
     margin: 12px 0;
 }
 
-.focus-folder-chips {
+.cs-focus-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -1438,110 +1482,111 @@
     min-height: 28px;
 }
 
-.focus-folder-chip {
+.cs-focus-chip {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 12px;
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
     font-size: 0.85em;
     line-height: 1.4;
 }
 
-.focus-folder-chip-name {
+.cs-focus-chip__name {
     color: var(--text-normal);
 }
 
-.focus-folder-chip-access {
+.cs-focus-chip__access {
     cursor: pointer;
     padding: 0 2px;
-    border-radius: 4px;
+    border-radius: 2px;
     transition: background 0.15s;
 }
 
-.focus-folder-chip-access:hover {
-    background: var(--background-modifier-hover);
+.cs-focus-chip__access:hover {
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
 }
 
-.focus-folder-chip-remove {
+.cs-focus-chip__remove {
     cursor: pointer;
     color: var(--text-muted);
     font-weight: bold;
     padding: 0 3px;
     margin-left: 2px;
-    border-radius: 4px;
+    border-radius: 2px;
     transition: color 0.15s, background 0.15s;
 }
 
-.focus-folder-chip-remove:hover {
+.cs-focus-chip__remove:hover {
     color: var(--text-error);
-    background: var(--background-modifier-error);
+    background: rgba(220, 80, 80, 0.08);
 }
 
-.focus-folder-empty {
+.cs-focus-empty {
     color: var(--text-muted);
     font-size: 0.85em;
     font-style: italic;
 }
 
-.focus-folder-input-row {
+.cs-focus-input-row {
     display: flex;
     gap: 4px;
     margin-bottom: 4px;
 }
 
-.focus-folder-input {
+.cs-focus-input {
     flex: 1;
     padding: 4px 8px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 4px;
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
     background: var(--background-primary);
     color: var(--text-normal);
     font-size: 0.85em;
 }
 
-.focus-folder-input:focus {
-    border-color: var(--interactive-accent);
+.cs-focus-input:focus {
+    border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
     outline: none;
 }
 
-.focus-folder-add-btn {
+.cs-focus-add-btn {
     padding: 4px 10px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 4px;
-    background: var(--background-secondary);
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
+    background: transparent;
     color: var(--text-normal);
     cursor: pointer;
     font-weight: bold;
-    transition: background 0.15s;
+    transition: all 0.2s;
 }
 
-.focus-folder-add-btn:hover {
-    background: var(--background-modifier-hover);
+.cs-focus-add-btn:hover {
+    border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.25);
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
 }
 
-.focus-folder-dropdown {
+.cs-focus-dropdown {
     position: relative;
     background: var(--background-primary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 4px;
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
     max-height: 200px;
     overflow-y: auto;
     z-index: 10;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.focus-folder-suggestion {
+.cs-focus-suggestion {
     padding: 6px 10px;
     cursor: pointer;
     font-size: 0.85em;
     transition: background 0.1s;
 }
 
-.focus-folder-suggestion:hover {
-    background: var(--background-modifier-hover);
+.cs-focus-suggestion:hover {
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
 }
 
 /* ========== AGORA FOLDER BADGES ========== */
@@ -1597,4 +1642,1635 @@
 
 .agora-nogo-section h4 {
     color: var(--text-error);
+}
+
+/* ========== SEARCH INPUT (Zbrojownia) ========== */
+
+.sidebar-search-input {
+    width: 100%;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.85em;
+}
+.sidebar-search-input::placeholder {
+    color: var(--text-muted);
+}
+.sidebar-search-input:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+}
+
+/* ========== CREATE BUTTON (Zbrojownia) ========== */
+
+.sidebar-create-btn {
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    border: 1px dashed var(--background-modifier-border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    transition: all 0.15s;
+}
+.sidebar-create-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-color: var(--interactive-accent);
+}
+
+/* ========== EDITOR MODAL (Minion/Master Creator) ========== */
+
+.minion-master-editor-modal .editor-tools-grid .setting-item {
+    border-bottom: none;
+    padding: 2px 0;
+}
+.minion-master-editor-modal .editor-tools-grid .setting-item-info {
+    flex: 1;
+}
+.minion-master-editor-modal .editor-modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: flex-end;
+}
+
+/* ========== FILTER CHIP BAR (Zaplecze) ========== */
+
+.sidebar-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0 8px;
+    padding: 0;
+}
+
+.sidebar-filter-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    font-size: 0.75em;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.sidebar-filter-chip:hover {
+    opacity: 1;
+    border-color: var(--text-accent);
+}
+
+.sidebar-filter-chip.active {
+    background: var(--text-accent);
+    color: var(--text-on-accent);
+    border-color: var(--text-accent);
+    opacity: 1;
+    font-weight: 600;
+}
+
+/* ========== AGENT DELEGATE CARDS (Profile: multi-minion/master) ========== */
+
+.cs-delegate-add-row {
+    margin-bottom: 4px;
+}
+.cs-delegate-add-row .sidebar-create-btn {
+    width: 100%;
+    margin-bottom: 8px;
+}
+.cs-delegate-add-row .dropdown {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.cs-delegate-card {
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-left: 3px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+    border-radius: 2px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+    position: relative;
+    transition: all 0.3s;
+}
+.cs-delegate-card:hover {
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+}
+
+.cs-delegate-card__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+.cs-delegate-card__title {
+    font-weight: 600;
+    font-size: 0.82em;
+}
+
+.cs-delegate-card__header .cs-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 0.65em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+.cs-delegate-card__header .cs-badge--prep {
+    background: rgba(100, 180, 100, 0.12);
+    color: rgba(100, 180, 100, 0.85);
+    border: 1px solid rgba(100, 180, 100, 0.2);
+}
+.cs-delegate-card__header .cs-badge--default {
+    background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
+    color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.8);
+    border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+.cs-delegate-card__header .cs-badge--inactive {
+    background: rgba(220, 80, 80, 0.12);
+    color: rgba(220, 80, 80, 0.8);
+    border: 1px solid rgba(220, 80, 80, 0.2);
+}
+
+.cs-delegate-card__desc {
+    margin: 2px 0 4px;
+}
+
+.cs-delegate-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.cs-delegate-card__actions .clickable-icon {
+    font-size: 0.78em;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+/* ─── Delegate Override — Tools Grid (reused in inline forms) ─── */
+.cs-delegate-overrides__tools-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-top: 6px;
+}
+.cs-delegate-overrides__tool-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    padding: 2px 0;
+    color: var(--text-muted);
+}
+.cs-delegate-overrides__tool-row input[type="checkbox"] { margin: 0; }
+.cs-delegate-overrides__tool-row svg { opacity: 0.6; }
+
+/* ─── DT Grid ─── */
+.cs-dt-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 4px;
+}
+.cs-dt-grid label {
+    font-size: 0.8em;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+}
+
+/* ─── Prompt Tab (textarea + DT rows) ─── */
+.cs-prompt-textarea {
+    width: 100%;
+    min-height: 100px;
+    font-family: monospace;
+    font-size: 0.82em;
+    resize: vertical;
+    margin-bottom: 4px;
+    padding: 6px;
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    box-sizing: border-box;
+}
+.cs-prompt-textarea:focus {
+    border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+    outline: none;
+}
+
+.cs-dt-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 3px;
+    padding: 1px 0;
+}
+.cs-dt-input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.82em;
+    padding: 3px 5px;
+    border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+    border-radius: 2px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+.cs-dt-input:focus {
+    border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+    outline: none;
+}
+.cs-dt-input:disabled {
+    opacity: 0.4;
+}
+.cs-dt-badge {
+    font-size: 0.65em;
+    opacity: 0.4;
+    white-space: nowrap;
+    font-family: monospace;
+}
+.cs-dt-clear {
+    flex-shrink: 0;
+    font-size: 0.85em;
+    padding: 1px 4px;
+}
+.cs-dt-add {
+    font-size: 0.75em;
+    margin-bottom: 8px;
+    opacity: 0.6;
+}
+
+/* ─── Override Form (Skills + Delegates) — Crystal Soul ─── */
+.cs-skill-override {
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 12%, var(--background-modifier-border));
+    border-left: 3px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 25%, transparent);
+    border-radius: var(--cs-radius, 4px);
+    padding: 12px 14px;
+    margin: 10px 0;
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 3%, var(--background-primary));
+    position: relative;
+}
+.cs-skill-override::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 3px;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 15%, transparent), transparent 60%);
+}
+.cs-skill-override h5 {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 40%, var(--text-normal));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.cs-skill-override h5 svg { opacity: 0.7; }
+.cs-skill-override h6 {
+    margin: 10px 0 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.cs-skill-override .setting-item {
+    border-top: none;
+    padding: 6px 0;
+}
+.cs-skill-override .setting-item-name { font-size: 0.74rem; }
+.cs-skill-override .setting-item-description { font-size: 0.62rem; }
+.cs-skill-override textarea {
+    font-family: var(--font-monospace);
+    font-size: 0.72rem;
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 10%, var(--background-modifier-border));
+    border-radius: 2px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+.cs-skill-override textarea:focus {
+    border-color: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 25%, var(--background-modifier-border));
+    outline: none;
+}
+.cs-skill-override__buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 8%, var(--background-modifier-border));
+    justify-content: flex-end;
+}
+.cs-skill-override__buttons button {
+    font-size: 0.72rem;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.cs-skill-override__buttons .mod-cta {
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 15%, var(--background-secondary));
+    border: 1px solid color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 25%, var(--background-modifier-border));
+    color: var(--text-normal);
+    font-weight: 500;
+}
+.cs-skill-override__buttons .mod-cta:hover {
+    background: color-mix(in srgb, var(--cs-agent-color, var(--interactive-accent)) 22%, var(--background-secondary));
+}
+.cs-skill-override__buttons .cs-btn--danger {
+    background: color-mix(in srgb, #e74c3c 8%, var(--background-secondary));
+    border: 1px solid color-mix(in srgb, #e74c3c 20%, var(--background-modifier-border));
+    color: color-mix(in srgb, #e74c3c 50%, var(--text-normal));
+}
+.cs-skill-override__buttons .cs-btn--danger:hover {
+    background: color-mix(in srgb, #e74c3c 15%, var(--background-secondary));
+}
+
+/* ════════════════════════════════════════════════════════════
+   CRYSTAL SOUL — PROFILE & SHARD SYSTEM (Faza 5)
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── PROFILE HEADER ─── */
+.cs-profile__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px 6px;
+}
+/* ─── HERO CARD (overview tab) ─── */
+.cs-profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.10);
+  border-left: 3px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+  border-radius: 2px;
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+  position: relative;
+  overflow: hidden;
+}
+.cs-profile-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 3px; right: 0; height: 1px;
+  background: linear-gradient(90deg, rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15), transparent 60%);
+}
+.cs-profile-hero__info {
+  flex: 1;
+  min-width: 0;
+}
+.cs-profile-hero__name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-normal);
+  margin: 0 0 2px;
+}
+.cs-profile-hero__desc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.cs-profile-hero__desc {
+  flex: 1;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.cs-profile-hero__desc--empty {
+  color: var(--text-faint);
+  font-style: italic;
+  opacity: 0.6;
+}
+.cs-profile-hero__edit {
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+  padding: 2px;
+}
+.cs-profile-hero__edit:hover { opacity: 0.7; }
+.cs-profile-hero__desc-input {
+  width: 100%;
+  font-size: 0.66rem;
+  color: var(--text-normal);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+  border-radius: 2px;
+  padding: 4px 6px;
+  line-height: 1.4;
+  resize: vertical;
+  font-family: inherit;
+}
+.cs-profile-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-profile-hero__badge {
+  font-size: 0.58rem;
+  color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.8);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
+}
+.cs-profile-hero__date {
+  font-size: 0.54rem;
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+.cs-profile-hero__color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.cs-profile-hero__color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-profile-hero__color-hex {
+  font-size: 0.54rem;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.cs-palette-popup {
+  margin-top: 6px;
+  padding: 6px;
+  background: var(--background-secondary);
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cs-palette-popup__row {
+  display: flex;
+  gap: 3px;
+}
+.cs-palette-popup__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.cs-palette-popup__swatch:hover {
+  transform: scale(1.3);
+  border-color: rgba(255,255,255,0.3);
+  z-index: 1;
+}
+.cs-palette-popup__swatch--active {
+  border-color: white;
+  box-shadow: 0 0 4px rgba(255,255,255,0.4);
+}
+
+.cs-profile__crystal {
+  width: 100px;
+  overflow: hidden;
+  animation: cs-breathing 4s ease-in-out infinite;
+  flex-shrink: 0;
+  margin-right: 12%;
+}
+@keyframes cs-breathing {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+.cs-profile__name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 0;
+  text-align: center;
+}
+.cs-profile__role {
+  font-size: 0.64rem;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* ─── PROFILE TABS (shard-style grid) ─── */
+.cs-profile-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin: 0 0 10px 0;
+  padding: 0 4px;
+}
+
+.cs-profile-tab {
+  padding: 4px 6px;
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.03);
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.cs-profile-tab:hover {
+  color: var(--text-muted);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+}
+.cs-profile-tab--active {
+  color: var(--text-normal);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.10);
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.5);
+}
+.cs-profile-tab--active::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 2px; right: 0; height: 1px;
+  background: linear-gradient(90deg, rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15), transparent 60%);
+}
+.cs-profile-tab svg { opacity: 0.4; flex-shrink: 0; }
+.cs-profile-tab--active svg { opacity: 0.8; }
+
+/* ─── SHARD SYSTEM ─── */
+.cs-shards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.cs-shard {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  padding: 12px;
+  position: relative;
+  transition: all 0.3s;
+  overflow: hidden;
+}
+
+.cs-shard--filled {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+.cs-shard--filled:hover {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+}
+
+.cs-shard--empty {
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.cs-shard--filled::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 20px;
+  width: 5px;
+  height: 5px;
+  clip-path: polygon(30% 0%, 100% 20%, 80% 100%, 0% 70%);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
+}
+
+.cs-shard--filled::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(var(--cs-agent-color-rgb, 150,130,100), 0.1), transparent 60%);
+}
+
+.cs-shard--big { grid-column: 1 / -1; }
+
+/* Compact grid for tools/skills — 4 columns */
+.cs-shards--compact {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.cs-shards--compact .cs-shard {
+  padding: 6px 4px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.cs-shards--compact .cs-shard__icon {
+  margin: 0;
+}
+.cs-shards--compact .cs-shard__main-label {
+  font-size: 0.54rem;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+}
+.cs-shards--compact .cs-shard__sub-label {
+  display: none;
+}
+
+.cs-shard__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.cs-shard__main-label {
+  font-size: 0.72rem;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.cs-shard__sub-label {
+  font-size: 0.58rem;
+  color: var(--text-faint);
+}
+
+.cs-shard__value {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+.cs-shard__value--has {
+  color: var(--text-normal);
+}
+
+.cs-shard__input {
+  width: 100%;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  color: var(--text-normal);
+  font-size: 0.74rem;
+  outline: none;
+  box-sizing: border-box;
+}
+.cs-shard__input:focus {
+  border-bottom-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+}
+
+.cs-shard__textarea {
+  width: 100%;
+  padding: 6px;
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.02);
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  color: var(--text-normal);
+  font-size: 0.72rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  box-sizing: border-box;
+}
+.cs-shard__textarea:focus {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+
+.cs-shard__select {
+  width: 100%;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  color: var(--text-normal);
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.cs-shard__slider {
+  width: 100%;
+  accent-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.5);
+}
+
+/* Shard icon (skills grid) */
+.cs-shard__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.cs-shard__icon svg {
+  opacity: 0.6;
+}
+.cs-shard--filled .cs-shard__icon svg {
+  opacity: 0.9;
+}
+
+/* Shard action buttons (absolute positioned) */
+.cs-shard__action,
+.cs-shard__detail {
+  position: absolute;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.cs-shard:hover .cs-shard__action,
+.cs-shard:hover .cs-shard__detail {
+  opacity: 0.6;
+}
+.cs-shard:hover .cs-shard__action:hover,
+.cs-shard:hover .cs-shard__detail:hover {
+  opacity: 1;
+}
+.cs-shard__action {
+  top: 4px;
+  right: 4px;
+}
+.cs-shard__detail {
+  bottom: 4px;
+  right: 4px;
+}
+
+/* ─── CRYSTAL TOGGLE ─── */
+.cs-toggle {
+  width: 38px;
+  height: 18px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cs-toggle__track {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  transition: all 0.35s;
+  background: transparent;
+}
+.cs-toggle__thumb {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: 50%;
+  left: 3px;
+  transform: translateY(-50%) rotate(45deg);
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 1px;
+  transition: all 0.35s;
+  background: var(--background-primary);
+}
+.cs-toggle--on .cs-toggle__track {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+}
+.cs-toggle--on .cs-toggle__thumb {
+  left: 23px;
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.5);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+}
+
+/* ─── PERMISSION ROW ─── */
+.cs-perm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+}
+.cs-perm-row:last-child { border-bottom: none; }
+.cs-perm-row::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  clip-path: polygon(30% 0%, 100% 20%, 80% 100%, 0% 70%);
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  flex-shrink: 0;
+  margin-right: 10px;
+  opacity: 0.3;
+}
+.cs-perm-row--on::before {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+  opacity: 0.7;
+}
+.cs-perm-row__info { flex: 1; }
+.cs-perm-row__name { font-size: 0.76rem; color: var(--text-normal); }
+.cs-perm-row__desc { font-size: 0.6rem; color: var(--text-faint); margin-top: 1px; }
+
+/* ─── MEMORY CARDS ─── */
+.cs-mem-card {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  overflow: hidden;
+  transition: all 0.4s ease;
+  margin-bottom: 6px;
+}
+.cs-mem-card--has {
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+.cs-mem-card__head {
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+.cs-mem-card__head:hover {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+}
+.cs-mem-card__icon { width: 14px; height: 14px; opacity: 0.5; flex-shrink: 0; }
+.cs-mem-card__title { flex: 1; font-size: 0.72rem; color: var(--text-muted); }
+.cs-mem-card__arrow { width: 10px; height: 10px; opacity: 0.3; transition: transform 0.3s; }
+.cs-mem-card.open .cs-mem-card__arrow { transform: rotate(180deg); }
+.cs-mem-card__body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.cs-mem-card.open .cs-mem-card__body { max-height: 600px; }
+.cs-mem-card__content {
+  padding: 8px 14px 12px;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.cs-mem-card__actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+}
+.cs-mem-card__actions button {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  background: transparent;
+  border-radius: 2px;
+  padding: 3px 8px;
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cs-mem-card__actions button:hover {
+  color: var(--text-muted);
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+
+/* ─── SECTION HEADER ─── */
+.cs-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.cs-section-head svg { opacity: 0.5; }
+
+/* ─── PROFILE BUTTONS (bottom bar) ─── */
+.cs-profile-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  margin-top: 12px;
+}
+.cs-profile-buttons button {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  padding: 6px 16px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: transparent;
+  color: var(--text-muted);
+}
+.cs-profile-buttons button:hover {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.25);
+  color: var(--text-normal);
+}
+.cs-profile-buttons .cs-btn--primary {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+}
+.cs-profile-buttons .cs-btn--danger {
+  border-color: rgba(220, 80, 80, 0.2);
+  color: rgba(220, 80, 80, 0.7);
+}
+.cs-profile-buttons .cs-btn--danger:hover {
+  border-color: rgba(220, 80, 80, 0.4);
+  color: rgba(220, 80, 80, 0.9);
+  background: rgba(220, 80, 80, 0.06);
+}
+
+/* ─── PRESET BUTTONS ─── */
+.cs-preset-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.cs-preset-btn {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  padding: 5px 12px;
+  font-size: 0.66rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: transparent;
+  color: var(--text-faint);
+}
+.cs-preset-btn:hover {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.25);
+  color: var(--text-muted);
+}
+
+/* ─── TAB CONTENT SCROLL ─── */
+.cs-profile-content {
+  padding: 0 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ════════════════════════════════════════════════════════════
+   CRYSTAL SOUL — SIDEBAR HOME & BACKSTAGE (Faza 6)
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── SECTION TITLE (uppercase, crystal marker) ─── */
+.cs-section-title {
+  font-size: 0.68rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  margin: 0 0 10px 0;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cs-section-title svg { opacity: 0.5; }
+.cs-section-title__count {
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+/* ─── AGENT GRID (crystal cards) ─── */
+.cs-agent-grid {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 14px;
+}
+.cs-agent-grid--2col { grid-template-columns: repeat(2, 1fr); }
+.cs-agent-grid--3col { grid-template-columns: repeat(3, 1fr); }
+
+.cs-agent-card {
+  padding: 10px 10px 8px;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s;
+  position: relative;
+  background: transparent;
+}
+.cs-agent-card:hover {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.14);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+}
+.cs-agent-card--active {
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.4);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.03);
+}
+.cs-agent-card--active::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  clip-path: polygon(30% 0%, 100% 20%, 80% 100%, 0% 70%);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.5);
+}
+
+.cs-agent-card__crystal {
+  width: 32px;
+  height: 38px;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+.cs-agent-card:hover .cs-agent-card__crystal { opacity: 0.9; }
+.cs-agent-card__name {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-normal);
+  text-align: center;
+  line-height: 1.2;
+}
+.cs-agent-card__role {
+  font-size: 0.56rem;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* Hover actions overlay */
+.cs-agent-card__actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.cs-agent-card:hover .cs-agent-card__actions { opacity: 1; }
+.cs-agent-card__action {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--text-faint);
+  padding: 0;
+  transition: all 0.2s;
+}
+.cs-agent-card__action:hover {
+  color: var(--text-normal);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+}
+.cs-agent-card__action--danger:hover {
+  color: rgba(220, 80, 80, 0.8);
+  background: rgba(220, 80, 80, 0.1);
+}
+
+/* New agent — dashed */
+.cs-agent-card--add {
+  border-style: dashed;
+  opacity: 0.5;
+  justify-content: center;
+  min-height: 60px;
+}
+.cs-agent-card--add:hover {
+  opacity: 0.8;
+}
+.cs-agent-card--add svg { opacity: 0.4; }
+
+/* ─── HOME SECTIONS (communicator, agora, zaplecze) ─── */
+.cs-home-section {
+  padding: 10px 16px;
+  border-top: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+}
+
+.cs-home-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cs-home-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  gap: 8px;
+}
+.cs-home-row:hover {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+  color: var(--text-normal);
+}
+.cs-home-row svg { opacity: 0.5; flex-shrink: 0; }
+.cs-home-row__left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.cs-home-row__count {
+  font-size: 0.64rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* Communicator agent rows with badges */
+.cs-comm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+.cs-comm-row:hover {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.04);
+  color: var(--text-normal);
+}
+.cs-comm-row__name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+}
+.cs-comm-row__badge {
+  background: rgba(220, 80, 80, 0.7);
+  color: white;
+  border-radius: 2px;
+  font-size: 0.6rem;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  padding: 0 4px;
+}
+.cs-comm-row__badge.hidden { display: none; }
+
+/* Open-link button (arrow icon) */
+.cs-home-section__open {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--text-faint);
+  padding: 0;
+  transition: all 0.2s;
+}
+.cs-home-section__open:hover {
+  color: var(--text-muted);
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+}
+
+/* ─── BACKSTAGE: Crystal filter bar ─── */
+.cs-filter-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 0 10px 0;
+  scrollbar-width: none;
+}
+.cs-filter-bar::-webkit-scrollbar { display: none; }
+
+.cs-filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.64rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.25s;
+}
+.cs-filter-chip:hover {
+  color: var(--text-muted);
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+}
+.cs-filter-chip.active {
+  color: var(--text-normal);
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.3);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.06);
+}
+
+/* ─── BACKSTAGE: search input ─── */
+.cs-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  color: var(--text-normal);
+  font-size: 0.72rem;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  transition: border-color 0.25s;
+}
+.cs-search-input:focus {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.25);
+}
+.cs-search-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ─── BACKSTAGE: create button ─── */
+.cs-create-btn {
+  border: 1px dashed var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  padding: 6px 14px;
+  font-size: 0.68rem;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-faint);
+  transition: all 0.25s;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cs-create-btn:hover {
+  color: var(--text-muted);
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.2);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.03);
+}
+
+/* ─── BACKSTAGE: item cards (skills, minions, masters) ─── */
+.cs-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cs-item-card {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.cs-item-card:hover {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
+  border-left-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.25);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.03);
+}
+
+.cs-item-card__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.cs-item-card__desc {
+  font-size: 0.66rem;
+  color: var(--text-faint);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.cs-item-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.cs-item-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  font-size: 0.58rem;
+  color: var(--text-faint);
+}
+
+.cs-item-card__agents {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+.cs-agent-link {
+  cursor: pointer;
+  transition: color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cs-agent-link:hover {
+  color: var(--text-normal);
+}
+
+/* ─── BACKSTAGE: tool groups ─── */
+.cs-tool-group {
+  margin-bottom: 12px;
+}
+.cs-tool-group__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+}
+.cs-tool-group__title svg { opacity: 0.5; }
+
+.cs-tool-card {
+  border: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  transition: all 0.25s;
+}
+.cs-tool-card:hover {
+  border-color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.12);
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.02);
+}
+
+.cs-tool-card__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cs-tool-card__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.cs-tool-card__label {
+  font-size: 0.74rem;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.cs-tool-card__name {
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  margin-left: auto;
+  font-family: var(--font-monospace);
+}
+.cs-tool-card__desc {
+  font-size: 0.64rem;
+  color: var(--text-faint);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+/* ─── BACKSTAGE: footer ─── */
+.cs-backstage-footer {
+  padding: 14px 0;
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.6;
+}
+
+/* ─── SETTINGS: Crystal section headers ─── */
+.cs-settings-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--cs-border, rgba(235,219,178,0.08));
+  margin-bottom: 12px;
+}
+.cs-settings-section svg { opacity: 0.6; }
+
+/* ─── LIGHT THEME OVERRIDES ─── */
+.theme-light .cs-settings-section {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+.theme-light .cs-mem-card {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.theme-light .cs-perm-row {
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+.theme-light .cs-perm-row::before {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+.theme-light .cs-search-input {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.theme-light .cs-create-btn {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.theme-light .cs-home-section {
+  border-top-color: rgba(0, 0, 0, 0.06);
+}
+.theme-light .cs-home-section__open {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.theme-light .cs-comm-row__badge {
+  background: rgba(220, 80, 80, 0.8);
+}
+
+/* ═══════════════════════════════════════════ */
+/* PLAYBOOK BUILDER                           */
+/* ═══════════════════════════════════════════ */
+
+.cs-playbook-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.cs-playbook-block {
+  cursor: default;
+}
+
+.cs-playbook-block__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding-bottom: 6px;
+}
+.cs-playbook-block__header .cs-shard__main-label {
+  font-size: 0.72rem;
+}
+
+.cs-playbook-block__chevron {
+  margin-left: auto;
+  opacity: 0.3;
+  display: flex;
+  align-items: center;
+}
+
+.cs-playbook-block__preview {
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  line-height: 1.5;
+  white-space: pre-line;
+  max-height: 48px;
+  overflow: hidden;
+}
+
+.cs-playbook-block__editor {
+  margin-top: 6px;
+}
+.cs-playbook-block__editor .cs-shard__textarea {
+  font-size: 0.64rem;
+  line-height: 1.5;
+  font-family: var(--font-monospace);
+}
+
+.cs-playbook-block__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* ─── BADGES ─── */
+
+.cs-badge--auto {
+  background: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.08);
+  color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.6);
+  border: 1px solid rgba(var(--cs-agent-color-rgb, 150,130,100), 0.15);
+  font-size: 0.5rem;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.cs-badge--edited {
+  background: rgba(220, 180, 50, 0.08);
+  color: rgba(220, 180, 50, 0.7);
+  border: 1px solid rgba(220, 180, 50, 0.2);
+  font-size: 0.5rem;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ─── CUSTOM RULES (Procedury) ─── */
+
+.cs-playbook-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.cs-playbook-rule {
+  padding: 8px 10px;
+  position: relative;
+}
+
+.cs-playbook-rule--disabled {
+  opacity: 0.35;
+}
+
+.cs-playbook-rule__trigger,
+.cs-playbook-rule__action {
+  font-size: 0.66rem;
+  color: var(--text-normal);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.cs-playbook-rule__label {
+  font-weight: 600;
+  color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.7);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cs-playbook-rule__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.cs-playbook-rule:hover .cs-playbook-rule__actions {
+  opacity: 0.7;
+}
+
+/* ─── RULE FORM ─── */
+
+.cs-playbook-rule-form {
+  padding: 10px;
+  border-style: dashed !important;
+}
+
+.cs-playbook-rule-form label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: rgba(var(--cs-agent-color-rgb, 150,130,100), 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+  display: block;
+}
+
+.cs-playbook-rule-form__buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ─── Light theme overrides ─── */
+
+.theme-light .cs-badge--auto {
+  background: rgba(var(--cs-agent-color-rgb, 100,80,60), 0.06);
+  color: rgba(var(--cs-agent-color-rgb, 100,80,60), 0.7);
+  border-color: rgba(var(--cs-agent-color-rgb, 100,80,60), 0.15);
+}
+.theme-light .cs-badge--edited {
+  background: rgba(180, 140, 30, 0.06);
+  color: rgba(180, 140, 30, 0.8);
+  border-color: rgba(180, 140, 30, 0.2);
+}
+.theme-light .cs-playbook-rule__label {
+  color: rgba(var(--cs-agent-color-rgb, 100,80,60), 0.8);
 }

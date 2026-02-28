@@ -197,16 +197,28 @@ export class AgentLoader {
                 agent.permissions = { ...agent.permissions, ...data.default_permissions };
             }
             if (data.skills) agent.skills = data.skills;
-            if (data.minion !== undefined) agent.minion = data.minion;
+            // Multi-delegate: handle both old (minion: string) and new (minions: array) format
+            if (data.minions) {
+                agent._minions = Agent._normalizeDelegateAssignments(data.minions, null);
+            } else if (data.minion !== undefined) {
+                agent._minions = Agent._normalizeDelegateAssignments(null, data.minion);
+            }
+            if (data.masters) {
+                agent._masters = Agent._normalizeDelegateAssignments(data.masters, null);
+            } else if (data.master !== undefined) {
+                agent._masters = Agent._normalizeDelegateAssignments(null, data.master);
+            }
             if (data.minion_enabled !== undefined) agent.minionEnabled = data.minion_enabled;
             if (data.temperature !== undefined) agent.temperature = data.temperature;
             if (data.personality) agent.personality = data.personality;
-            if (data.emoji) agent.emoji = data.emoji;
             if (data.models) agent.models = data.models;
             if (data.model) agent.model = data.model;
             if (data.focus_folders) agent.focusFolders = data.focus_folders;
             if (data.enabled_tools) agent.enabledTools = data.enabled_tools;
             if (data.role) agent.role = data.role;
+            if (data.description) agent.description = data.description;
+            if (data.created_at) agent.createdAt = data.created_at;
+            if (data.color) agent.color = data.color;
         } catch (e) {
             // No overrides or error reading - use defaults
         }

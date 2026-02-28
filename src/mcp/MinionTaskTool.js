@@ -52,16 +52,26 @@ export function createMinionTaskTool(app) {
                     };
                 }
 
-                // Resolve which minion to use: args.minion (explicit) > activeAgent.minion (default)
-                const requestedMinionName = args.minion || activeAgent.minion;
+                // Resolve which minion to use: args.minion (explicit) > agent's default minion
+                const requestedMinionName = args.minion || activeAgent.defaultMinion?.name;
                 if (!requestedMinionName) {
+                    const available = activeAgent.getMinionNames?.() || [];
+                    if (available.length > 0) {
+                        return {
+                            success: false,
+                            error: `Brak domyślnego miniona. Dostępni: ${available.join(', ')}. Podaj parametr minion.`
+                        };
+                    }
                     return {
                         success: false,
-                        error: `Agent ${activeAgent.name} nie ma przypisanego miniona. Skonfiguruj pole "minion" w profilu agenta lub podaj parametr minion.`
+                        error: `Agent ${activeAgent.name} nie ma przypisanego miniona. Dodaj miniony w profilu agenta lub podaj parametr minion.`
                     };
                 }
 
-                const minionConfig = agentManager.minionLoader.getMinion(requestedMinionName);
+                // Resolve with per-agent overrides
+                const minionConfig = agentManager.resolveMinionConfig
+                    ? agentManager.resolveMinionConfig(requestedMinionName, activeAgent)
+                    : agentManager.minionLoader.getMinion(requestedMinionName);
                 if (!minionConfig) {
                     const available = agentManager.minionLoader.getAllMinions().map(m => m.name).join(', ') || 'brak';
                     return {

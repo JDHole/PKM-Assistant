@@ -4,6 +4,7 @@
  * Triggered from editor context menu.
  */
 import { Modal, Notice } from 'obsidian';
+import { UiIcons } from '../crystal-soul/UiIcons.js';
 
 export class SendToAgentModal extends Modal {
     /**
@@ -25,7 +26,8 @@ export class SendToAgentModal extends Modal {
         contentEl.style.maxWidth = '450px';
 
         // Title
-        contentEl.createEl('h3', { text: '📨 Wyślij do asystenta' });
+        const h3 = contentEl.createEl('h3');
+        h3.innerHTML = `${UiIcons.send(18)} Wyślij do asystenta`;
 
         // Selected text preview
         const preview = contentEl.createDiv({
@@ -59,7 +61,7 @@ export class SendToAgentModal extends Modal {
             for (const agent of agents) {
                 const opt = agentSelect.createEl('option', {
                     value: agent.name,
-                    text: `${agent.emoji} ${agent.name}`
+                    text: agent.name
                 });
                 // Pre-select active agent
                 if (agent.name === agentManager.getActiveAgent()?.name) {
@@ -87,9 +89,9 @@ export class SendToAgentModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const sendBtn = buttons.createEl('button', {
-            text: '📨 Wyślij',
             cls: 'mod-cta'
         });
+        sendBtn.innerHTML = `${UiIcons.send(14)} Wyślij`;
 
         sendBtn.addEventListener('click', async () => {
             const toAgent = agentSelect.value;
