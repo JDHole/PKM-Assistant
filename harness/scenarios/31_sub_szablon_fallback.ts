@@ -43,8 +43,19 @@ import type { FixturePayload, Scenario } from './_asserts.js';
 const SZABLON_DOBRY = 'poligon-worker';
 const SZABLON_ZEPSUTY = 'poligon-zepsuty';
 
-/** 1 ms — timeout MUSI wygrać z pełnym round-tripem HTTP do fake-serwera (determinizm). */
-const TIMEOUT_MS = 1;
+/**
+ * Limit fazy 3. Fake-serwer PRZYTRZYMUJE odpowiedź dla suba w fazie 3 (`PRZYTRZYMANIE_MS`,
+ * czterokrotnie dłużej), więc timeout wygrywa wyścig Z KONSTRUKCJI — żądanie zawsze zdąży
+ * dotrzeć do serwera (licznik `odpowiedziSuba` = 3), a odpowiedź zawsze przyjdzie za późno.
+ * Dawne 1 ms wygrywało z SAMYM WYSŁANIEM żądania: na szybkiej maszynie fetch zdążył wyjść
+ * z procesu, na wolniejszym runnerze CI — nie, i asercja „3 żądania" była loterią.
+ */
+const TIMEOUT_MS = 100;
+const PRZYTRZYMANIE_MS = 400;
+
+function poczekaj(ms: number): Promise<void> {
+  return new Promise<void>((r) => { const t = setTimeout(r, ms); t?.unref?.(); });
+}
 
 const ZADANIE = 'Zerknij do notatek i oddaj jedno zdanie.';
 
@@ -150,10 +161,12 @@ export default ({
     );
   },
 
-  offlineScript: (ctx: FixturePayload) => {
+  offlineScript: async (ctx: FixturePayload) => {
     if (jestPodzapytaniem(ctx.request)) {
       stan.odpowiedziSuba += 1;
-      // Sub kończy NATYCHMIAST — po timeoucie faza 3 zostawia go wiszącego w tle.
+      // Faza 3: odpowiedź PRZYTRZYMANA dłużej niż `timeout_ms` — budzik ubija bieg w tle,
+      // a spóźniona odpowiedź trafia w zerwane połączenie (fake-serwer to łyka).
+      if (stan.faza === 3) await poczekaj(PRZYTRZYMANIE_MS);
       return textTurn('Sub oddaje krótki wynik.');
     }
     // Pętla główna: pierwsze żądanie tury (brak wyników narzędzi) = start kolejnej fazy.

@@ -66,13 +66,16 @@ export function startFakeLlmServer({ script = [], chunkDelayMs = 3 }: Runtime = 
 
       // `script` może być: funkcją (responder na turę), albo tablicą tur; każda tura = tablica
       // delt LUB funkcja `(ctx)=>delty`. Poza zakresem tablicy → powtórz ostatnią turę.
+      // Responder może być ASYNCHRONICZNY (zwrócić promisę) — wtedy odpowiedź czeka na jego
+      // rozstrzygnięcie. Scenariusz 31 tak „przytrzymuje" odpowiedź dla suba, żeby `timeout_ms`
+      // wygrał wyścig z konstrukcji, a nie dlatego, że zdążył przed wysłaniem żądania.
       let turn: Runtime;
       if (typeof script === 'function') {
-        turn = script(ctx);
+        turn = await script(ctx);
       } else if (Array.isArray(script) && script.length > 0) {
         turn = script[Math.min(turnIndex, script.length - 1)];
       }
-      const deltas = (typeof turn === 'function' ? turn(ctx) : turn) || [
+      const deltas = (typeof turn === 'function' ? await turn(ctx) : turn) || [
         { choices: [{ index: 0, delta: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] },
       ];
 

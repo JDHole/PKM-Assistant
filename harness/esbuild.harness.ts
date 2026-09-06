@@ -22,7 +22,7 @@
  */
 import path from 'node:path';
 import process from 'node:process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 import type { Plugin } from 'esbuild';
@@ -119,6 +119,11 @@ async function buildHarness(): Promise<void> {
         },
         plugins: [cssImportPlugin, markdownImportPlugin],
     });
+    // Znacznik modułu obok bundli: wyjście jest ESM, więc `harness/dist/package.json` MUSI mówić
+    // `"type": "module"`. Poprzedni harness (sprzed clean-room) zostawiał tu `"commonjs"`,
+    // a katalog jest gitignorowany — stary klon dziedziczył znacznik i Node czytał nowy bundle
+    // jako CJS („Cannot use import statement outside a module"). Zapis jest idempotentny.
+    await writeFile(path.join(HARNESS_DIR, 'dist', 'package.json'), '{\n  "type": "module"\n}\n', 'utf8');
 }
 
 buildHarness().catch((err: unknown) => {
