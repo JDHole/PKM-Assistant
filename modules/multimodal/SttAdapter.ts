@@ -134,7 +134,7 @@ interface WhisperResponse {
  * Groq Whisper — najszybszy STT, darmowy tier.
  */
 async function _groqWhisper(apiKey: string | undefined, audioBlob: Blob, language: string): Promise<Transcription> {
-    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'Groq (groq_api_key)' }));
+    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'Groq' }));
     const fields: Record<string, string> = { model: 'whisper-large-v3-turbo' };
     if (language !== 'auto') fields.language = language;
     const { body, contentType } = await _buildMultipartFormData(fields, 'file', audioBlob, 'audio.webm');
@@ -157,7 +157,7 @@ async function _groqWhisper(apiKey: string | undefined, audioBlob: Blob, languag
  * OpenAI Whisper.
  */
 async function _openaiWhisper(apiKey: string | undefined, audioBlob: Blob, language: string): Promise<Transcription> {
-    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'OpenAI (openai_api_key)' }));
+    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'OpenAI' }));
     const fields: Record<string, string> = { model: 'whisper-1' };
     if (language !== 'auto') fields.language = language;
     const { body, contentType } = await _buildMultipartFormData(fields, 'file', audioBlob, 'audio.webm');
@@ -180,7 +180,7 @@ async function _openaiWhisper(apiKey: string | undefined, audioBlob: Blob, langu
  * Google Cloud STT via Gemini API.
  */
 async function _googleStt(apiKey: string | undefined, audioBlob: Blob, language: string): Promise<Transcription> {
-    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'Google (gemini_api_key)' }));
+    if (!apiKey) throw new Error(t('stt.no_api_key', { key: 'Google' }));
     const base64Audio = await blobToBase64(audioBlob);
 
     const resp = await requestUrl({

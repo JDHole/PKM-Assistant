@@ -1858,14 +1858,14 @@ export const pl: Record<string, string> = {
   // ── STT Adapter ──
   'stt.no_audio': 'Brak nagrania audio',
   'stt.unsupported_platform': 'Nieobsługiwana platforma STT: {{platform}}',
-  'stt.no_api_key': 'Brak klucza API {{key}}',
+  'stt.no_api_key': 'Brak klucza API {{key}} — wpisz go w Ustawieniach pluginu',
   'stt.assemblyai_upload_fail': 'AssemblyAI: upload nie powiódł się',
   'stt.ollama_not_supported': 'Ollama nie obsługuje jeszcze natywnej transkrypcji audio. Użyj Groq Whisper (darmowy) lub OpenAI Whisper.',
 
   // ── ImageGen Adapter ──
   'image.no_prompt': 'Brak prompta do generowania obrazu',
   'image.unsupported_platform': 'Nieobsługiwana platforma generowania: {{platform}}',
-  'image.no_api_key': 'Brak klucza API {{key}}',
+  'image.no_api_key': 'Brak klucza API {{key}} — wpisz go w Ustawieniach pluginu',
   'image.no_response': '{{platform}}: brak odpowiedzi',
   'image.no_image_data': '{{platform}}: brak danych obrazu',
   'image.no_image_url': 'Replicate: brak URL obrazu w wyniku',
