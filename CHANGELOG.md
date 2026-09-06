@@ -123,6 +123,11 @@ To, co widać z fotela użytkownika — bez chronologii i bez nazw sprintów. Za
 
 #### Fixed
 
+- **Mikrofon (mowa na tekst) znów widzi klucz Groq/OpenAI/Gemini.** Po wpisaniu klucza
+  w Ustawieniach nagranie kończyło się komunikatem „Brak klucza API", bo przycisk mikrofonu
+  szukał klucza w starym miejscu (sprzed migracji ustawień), a nie w tej samej puli kluczy,
+  z której korzysta czat. Komunikat o brakującym kluczu mówi teraz wprost, żeby wpisać go
+  w Ustawieniach, zamiast podawać wewnętrzną nazwę pola (2026-09-06).
 - **Koniec fałszywego „dostępna nowa wersja".** Najpierw (03.09) naprawiono porównanie wersji
   (tag „v2.1.0" kontra „2.1.0" ogłaszał nową wersję po każdym starcie), a dzień później (04.09,
   decyzja D1) cały mechanizm sprawdzania aktualizacji z GitHuba wycięto — patrz „Removed".
@@ -352,6 +357,19 @@ To, co widać z fotela użytkownika — bez chronologii i bez nazw sprintów. Za
   widzi i nie kasuje. Kto chce, usuwa je ręcznie.
 
 ### Szczegóły techniczne (zapis dewelopera)
+
+### fix(chat): STT czyta klucze z puli `chat.apiKeys`, nie z płaskich pól sprzed migracji (2026-09-06)
+
+Zgłoszenie Kuby: Groq Whisper melduje „Brak klucza API" mimo wpisanego klucza. Warstwa: kod
+(nie config, nie dane). `_toggleRecording` w `modules/chat/chat/chat_model.ts` składał klucze
+z `chat.openai_api_key` / `chat.groq_api_key` / `chat.gemini_api_key` — kształtu, który migrator
+(`core/runtime/legacySettingsMigration.ts`) przenosi do puli `pkmAssistant.chat.apiKeys.<platforma>`;
+pole płaskie było więc zawsze puste. Naprawa: STT czyta z tej samej puli co `modelResolver`
+i `GenerateImageTool`. Strażnik po źródle w `chat_model.test.ts` (pada na starym kształcie).
+Przy okazji: etykiety w `stt.no_api_key` / `image.no_api_key` przestały podawać nieistniejące
+nazwy pól (`groq_api_key`, `xai_api_key`…) — etykieta to nazwa platformy, a i18n (pl/en) dopowiada,
+żeby klucz wpisać w Ustawieniach pluginu; test `GenerateImageTool.test.ts` i scenariusz harnessu
+`38_multimodal_fake` dopasowane do nowego komunikatu. Branch `fix/stt-klucze-z-puli-apikeys`.
 
 ### release-pack fala 2 — wytyczne katalogu, updater OUT, minAppVersion 1.11.0, F2.13 (2026-09-04)
 
