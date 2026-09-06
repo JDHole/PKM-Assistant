@@ -1,0 +1,46 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.obsidian
+.vscode
+dist
+node_modules
+stylesheets
+ref
+
+*.sublime-*
+
+.git-dev
+
+# Separate tool repositories (managed independently)
+jdhole-skills/
+jdhole-mcp-servers/
+
+# ── Harness „Szklane Pudło" (dev-only) ──
+harness/.env.local
+harness/dist/
+# vault-fixture/.obsidian jest łapane przez globalny wzorzec `.obsidian` (wyżej) —
+# wymuś wersjonowanie fixture (data.json MUSI się commitować):
+!harness/vault-fixture/.obsidian/
+!harness/vault-fixture/.obsidian/**
+
+# Development/personal files (not for distribution)
+Prompt Startowy 25/
+.agent/
+BUGI_SESJA_*.md
+TESTY_SESJA_*.md
+SESJA_*.md
+CHEATSHEET.md
+*_GUIDELINES.md
+PLAYBOOK_DRAFT.md
+PROMPT_VISUAL_AUDIT.md
+_BRAINSTORM_*.md
+
+# Worktree'y agentów (lokalny artefakt; wcześniej tylko w .git/info/exclude — nieprzenośne)
+.claude/worktrees/
+
+# Osobiste ustawienia Claude Code (reguły uprawnień per maszyna — nie commitować)
+.claude/settings.local.json
+
+audyt/biegi/*/surowe/

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["werdykt", "uzasadnienie", "korekta_severity", "co_sprawdzilem"],
+  "additionalProperties": false,
+  "properties": {
+    "werdykt": { "type": "string", "enum": ["POTWIERDZONE", "OBALONE", "NIEWERYFIKOWALNE"] },
+    "uzasadnienie": { "type": "string" },
+    "korekta_severity": { "type": "string", "description": "nowe severity, jesli obalacz koryguje; pusty string, jesli bez korekty" },
+    "co_sprawdzilem": { "type": "array", "items": { "type": "string" } }
+  }
+}

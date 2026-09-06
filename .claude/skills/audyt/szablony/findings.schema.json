@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bieg audytu PKM Assistant",
+  "type": "object",
+  "required": ["bieg", "znaleziska"],
+  "additionalProperties": false,
+  "properties": {
+    "bieg": {
+      "type": "object",
+      "required": ["id", "karta", "data", "tryb", "srodowisko", "rundy", "powod_stopu", "kawalki"],
+      "properties": {
+        "id": { "type": "string", "description": "YYYY-MM-DD_karta[_N]" },
+        "karta": { "type": "string", "enum": ["security", "code-review", "testy", "bledy", "dead-code", "docs", "wydajnosc", "deps"] },
+        "data": { "type": "string", "description": "YYYY-MM-DD HH:mm" },
+        "tryb": { "type": "string", "enum": ["dzien", "noc"] },
+        "poprzeczka": { "type": "string" },
+        "srodowisko": {
+          "type": "object",
+          "required": ["os", "node", "head", "branch", "wykonanie"],
+          "properties": {
+            "os": { "type": "string" },
+            "node": { "type": "string" },
+            "head": { "type": "string" },
+            "branch": { "type": "string" },
+            "env_local": { "type": "boolean" },
+            "wykonanie": { "type": "string", "enum": ["workflow", "agent"] }
+          }
+        },
+        "rundy": { "type": "integer", "minimum": 0 },
+        "suche_rundy_na_koniec": { "type": "integer", "minimum": 0 },
+        "powod_stopu": { "type": "string", "enum": ["zbieznosc", "sufit_rund", "sufit_budzetu", "przerwanie"] },
+        "kawalki": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "nazwa", "zakres", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "nazwa": { "type": "string" },
+              "zakres": { "type": "array", "items": { "type": "string" } },
+              "status": { "type": "string", "enum": ["zbiezny", "niezbiezny", "pominiety"] },
+              "najwieksza_luka": { "type": "string" }
+            }
+          }
+        },
+        "poprzednie_biegi": { "type": "array", "items": { "type": "string" } },
+        "znane_status": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["skrot", "status"],
+            "properties": {
+              "skrot": { "type": "string" },
+              "zrodlo": { "type": "string" },
+              "status": { "type": "string", "enum": ["nadal", "naprawione", "nie_sprawdzono"] }
+            }
+          }
+        },
+        "klastry": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "przyczyna", "znaleziska"],
+            "properties": {
+              "id": { "type": "string" },
+              "przyczyna": { "type": "string" },
+              "znaleziska": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "co_dziala_dobrze": { "type": "array", "items": { "type": "string" } },
+        "tldr": { "type": "string" },
+        "liczby": {
+          "type": "object",
+          "properties": {
+            "zgloszone": { "type": "integer" },
+            "obalone": { "type": "integer" },
+            "potwierdzone": { "type": "integer" },
+            "niezweryfikowalne": { "type": "integer" },
+            "agentow": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "znaleziska": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kawalek", "tytul", "twierdzenie", "severity", "pewnosc", "status", "dowod", "scenariusz", "obalanie"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^AUD-[a-z-]+-[0-9]{3}$" },
+          "kawalek": { "type": "string" },
+          "tytul": { "type": "string", "maxLength": 120 },
+          "twierdzenie": { "type": "string", "description": "jedno zdanie: co jest nie tak i gdzie" },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+          "pewnosc": { "type": "string", "enum": ["potwierdzone", "prawdopodobne", "niezweryfikowalne"] },
+          "status": { "type": "string", "enum": ["nowe", "znane", "obalone"] },
+          "klaster": { "type": "string" },
+          "dowod": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["plik", "linie", "cytat"],
+              "properties": {
+                "plik": { "type": "string", "description": "ścieżka względem korzenia repo, ukośniki /" },
+                "linie": { "type": "string", "pattern": "^[0-9]+(-[0-9]+)?$" },
+                "cytat": { "type": "string", "description": "dosłowny fragment, max 3 linie" }
+              }
+            }
+          },
+          "scenariusz": { "type": "string", "description": "kto / co robi / co dostaje, albo warunki -> skutek" },
+          "granica": { "type": "string", "description": "security: nazwana granica zaufania, która zostaje przekroczona" },
+          "reprodukcja": { "type": "string", "description": "komenda lub kroki, albo 'source-only'" },
+          "obalanie": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["werdykt", "uzasadnienie"],
+              "properties": {
+                "werdykt": { "type": "string", "enum": ["POTWIERDZONE", "OBALONE", "NIEWERYFIKOWALNE"] },
+                "uzasadnienie": { "type": "string" },
+                "korekta_severity": { "type": "string" },
+                "model": { "type": "string" }
+              }
+            }
+          },
+          "kierunek": { "type": "string", "description": "kierunek naprawy, NIE patch" },
+          "powiazane": { "type": "array", "items": { "type": "string" } },
+          "zrodlo_znane": { "type": "string" },
+          "runda": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

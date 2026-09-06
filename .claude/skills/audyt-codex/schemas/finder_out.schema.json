@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "required": ["znaleziska", "co_dziala_dobrze", "najwieksza_luka", "sprawdzone"],
+  "additionalProperties": false,
+  "properties": {
+    "znaleziska": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tytul", "twierdzenie", "severity", "pewnosc", "dowod", "scenariusz", "reprodukcja", "granica", "kierunek"],
+        "additionalProperties": false,
+        "properties": {
+          "tytul": { "type": "string" },
+          "twierdzenie": { "type": "string" },
+          "scenariusz": { "type": "string" },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+          "pewnosc": { "type": "string", "enum": ["potwierdzone", "prawdopodobne", "niezweryfikowalne"] },
+          "dowod": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["plik", "linie", "cytat"],
+              "additionalProperties": false,
+              "properties": {
+                "plik": { "type": "string" },
+                "linie": { "type": "string" },
+                "cytat": { "type": "string" }
+              }
+            }
+          },
+          "granica": { "type": "string", "description": "przekroczona granica zaufania; pusty string, jesli nie dotyczy" },
+          "reprodukcja": { "type": "string" },
+          "kierunek": { "type": "string", "description": "kierunek naprawy; pusty string, jesli brak" }
+        }
+      }
+    },
+    "co_dziala_dobrze": { "type": "array", "items": { "type": "string" } },
+    "najwieksza_luka": { "type": "string" },
+    "sprawdzone": { "type": "array", "items": { "type": "string" } }
+  }
+}

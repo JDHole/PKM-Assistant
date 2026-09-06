@@ -1,0 +1,111 @@
+{
+  "bieg": {
+    "id": "2026-08-22_bledy",
+    "karta": "bledy",
+    "data": "2026-08-22 12:40",
+    "tryb": "dzien",
+    "poprzeczka": "Każdy catch obsługuje, loguje z kontekstem albo rzuca dalej; komunikat dla usera to zdanie, nie surowa linia SSE; każdy timer i strumień ginie na unload; awaria zostawia spójny stan.",
+    "srodowisko": {
+      "os": "Windows 11",
+      "node": "v24.12.0",
+      "head": "962908d2",
+      "branch": "feat/skills-audyt",
+      "env_local": true,
+      "wykonanie": "workflow"
+    },
+    "rundy": 3,
+    "suche_rundy_na_koniec": 2,
+    "powod_stopu": "zbieznosc",
+    "kawalki": [
+      {
+        "id": "k1-limity",
+        "nazwa": "Konfiguracja limitów i sanityzacja override",
+        "zakres": ["config/limits.ts"],
+        "status": "zbiezny",
+        "najwieksza_luka": "Nie sprawdzono, czy ktoś czyta settings.pkmAssistant.limits z pominięciem getLimits."
+      },
+      {
+        "id": "k2-logger",
+        "nazwa": "Logger i sink plikowy",
+        "zakres": ["core/utils/Logger.ts", "core/utils/LogFileSink.ts"],
+        "status": "zbiezny",
+        "najwieksza_luka": "Ścieżka rotacji pliku logu przejrzana pobieżnie, bez odpalenia harnessa."
+      }
+    ],
+    "znane_status": [
+      {
+        "skrot": "Sub-agent przeżywa unload pluginu (risk register 08-16)",
+        "zrodlo": "Katalog_Audytow.md, Risk register",
+        "status": "nie_sprawdzono"
+      }
+    ],
+    "co_dziala_dobrze": [
+      "Logger nigdy nie wywala wołającego: zapis do sinka jest owinięty w catch z komentarzem, dlaczego tak ma być.",
+      "config/limits.ts trzyma wszystkie limity w jednym miejscu, każdy z komentarzem skąd wartość."
+    ],
+    "tldr": "Nic pilnego: jedna drobna rzecz do poprawy i jeden fałszywy alarm, który obalacz zdjął ze stołu. Sanityzacja limitów po cichu wraca do wartości domyślnej, gdy user wpisze śmieć, i nigdzie tego nie odnotowuje. Skutek jest łagodny, bo plugin i tak jedzie na bezpiecznym defaulcie. Zgłoszony wcześniej pusty catch w Loggerze okazał się zamierzony i udokumentowany komentarzem w kodzie.",
+    "liczby": {
+      "zgloszone": 2,
+      "obalone": 1,
+      "potwierdzone": 1,
+      "niezweryfikowalne": 0,
+      "agentow": 8
+    }
+  },
+  "znaleziska": [
+    {
+      "id": "AUD-bledy-001",
+      "kawalek": "k1-limity",
+      "tytul": "sanitizeLimit po cichu odrzuca zły override limitu, bez śladu w logach",
+      "twierdzenie": "W config/limits.ts funkcja sanitizeLimit przy każdym nieprawidłowym override zwraca wartość domyślną i nie zostawia żadnego wpisu w logu, więc zignorowane ustawienie usera jest niewidoczne.",
+      "severity": "LOW",
+      "pewnosc": "potwierdzone",
+      "status": "nowe",
+      "dowod": [
+        {
+          "plik": "config/limits.ts",
+          "linie": "217-219",
+          "cytat": "function sanitizeLimit(key: string, rawValue: unknown, fallback: number): number {\n  const spec = LIMIT_SPECS[key as LimitKey];\n  if (!spec) return fallback;"
+        }
+      ],
+      "scenariusz": "User wpisuje w ustawieniach pluginu limits.chat_max_iterations = \"osiem\". getLimits woła sanitizeLimit, ta zwraca fallback, agent jedzie na wartości domyślnej. Ani w konsoli, ani w pliku logu nie ma nic o odrzuconym override, więc user przy zgłaszaniu buga twierdzi, że ustawił inny limit.",
+      "reprodukcja": "source-only",
+      "obalanie": [
+        {
+          "werdykt": "POTWIERDZONE",
+          "uzasadnienie": "Przeczytałem całą funkcję sanitizeLimit (config/limits.ts:217-229) i getLimits (config/limits.ts:238-250): każda gałąź kończy się gołym return fallback albo return spec.ceiling. Grep po console., Logger i log( w config/limits.ts daje zero trafień, więc plik faktycznie nie ma jak nic zgłosić. Twierdzenie stoi, skutek jest realny, choć drobny.",
+          "korekta_severity": "MEDIUM -> LOW, bo fallback trafia na bezpieczną wartość domyślną, nic się nie psuje ani nie ginie",
+          "model": "opus"
+        }
+      ],
+      "kierunek": "Dołożyć jedno ostrzeżenie z Loggera przy każdym odrzuconym override (klucz, surowa wartość, wartość użyta). Bez zmiany zachowania fallbacku.",
+      "runda": 1
+    },
+    {
+      "id": "AUD-bledy-002",
+      "kawalek": "k2-logger",
+      "tytul": "Pusty catch w Logger._toSink połyka błąd zapisu do pliku logu",
+      "twierdzenie": "W core/utils/Logger.ts zapis do sinka plikowego jest owinięty w catch bez obsługi, więc awaria zapisu logu przepada bez śladu.",
+      "severity": "INFO",
+      "pewnosc": "prawdopodobne",
+      "status": "obalone",
+      "dowod": [
+        {
+          "plik": "core/utils/Logger.ts",
+          "linie": "140-142",
+          "cytat": "try {\n            sink.write(level, module, maskLogText(String(message ?? '')), (data || []).map(maskLogValue));\n        } catch (_) { /* logging must never throw */ }"
+        }
+      ],
+      "scenariusz": "Dysk pełny albo brak uprawnień do pliku logu, sink.write rzuca, Logger połyka wyjątek i nikt nie wie, że logi przestały się zapisywać.",
+      "reprodukcja": "source-only",
+      "obalanie": [
+        {
+          "werdykt": "OBALONE",
+          "uzasadnienie": "To jest catch best-effort z jawnym komentarzem intencji w tej samej linii (core/utils/Logger.ts:142: logging must never throw), a karta bledy wprost każe takich nie flagować. Alternatywa jest gorsza od problemu: logowanie, które rzuca, wywaliłoby dowolnego wołającego w środku jego roboty. To samo zabezpieczenie stoi w Logger.ts:123 przy dispose sinka, więc jest to świadoma konwencja modułu, nie przeoczenie.",
+          "model": "sonnet"
+        }
+      ],
+      "runda": 1
+    }
+  ]
+}
