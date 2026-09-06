@@ -196,11 +196,15 @@ export function _toggleRecording(this: ChatViewMixinContext) {
             this._micBtn.createSpan({ cls: 'pkm-stt-spinner', text: '⏳' });
             try {
                 const sttSettings = this.env?.settings?.pkmAssistant?.stt || {};
-                const scSettings = this.env?.settings?.pkmAssistant?.chat || {};
+                // Klucze czatu żyją w JEDNEJ puli `pkmAssistant.chat.apiKeys.<platforma>` (ta sama,
+                // z której czyta modelResolver i GenerateImageTool). Płaskie `groq_api_key` to kształt
+                // sprzed migracji ustawień — migrator przenosi je do puli, więc tu było ZAWSZE puste
+                // i mikrofon meldował „brak klucza" mimo wpisanego klucza (bug Kuby 2026-09-06).
+                const chatKeys = this.env?.settings?.pkmAssistant?.chat?.apiKeys || {};
                 const keys = {
-                    openai: scSettings.openai_api_key,
-                    groq: scSettings.groq_api_key,
-                    gemini: scSettings.gemini_api_key,
+                    openai: chatKeys.openai,
+                    groq: chatKeys.groq,
+                    gemini: chatKeys.gemini,
                     deepgram: sttSettings.deepgram_api_key,
                     assemblyai: sttSettings.assemblyai_api_key,
                 };

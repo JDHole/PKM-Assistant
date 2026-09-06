@@ -1852,14 +1852,14 @@ export const en: Record<string, string> = {
   // ── STT Adapter ──
   'stt.no_audio': 'No audio recording',
   'stt.unsupported_platform': 'Unsupported STT platform: {{platform}}',
-  'stt.no_api_key': 'Missing API key {{key}}',
+  'stt.no_api_key': 'Missing API key {{key}} — enter it in the plugin Settings',
   'stt.assemblyai_upload_fail': 'AssemblyAI: upload failed',
   'stt.ollama_not_supported': 'Ollama does not support native audio transcription yet. Use Groq Whisper (free) or OpenAI Whisper.',
 
   // ── ImageGen Adapter ──
   'image.no_prompt': 'No prompt for image generation',
   'image.unsupported_platform': 'Unsupported generation platform: {{platform}}',
-  'image.no_api_key': 'Missing API key {{key}}',
+  'image.no_api_key': 'Missing API key {{key}} — enter it in the plugin Settings',
   'image.no_response': '{{platform}}: no response',
   'image.no_image_data': '{{platform}}: no image data',
   'image.no_image_url': 'Replicate: no image URL in result',

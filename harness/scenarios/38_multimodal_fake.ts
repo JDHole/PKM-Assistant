@@ -174,9 +174,11 @@ export default ({
     );
 
     const bladKlucza = await komunikatBledu(() => transcribeAudio('groq', {}, nagranie, 'pl'));
+    // Od 2026-09-06 etykieta to nazwa platformy (pole `groq_api_key` nie istnieje — klucz żyje
+    // w `chat.apiKeys.groq`), a i18n dopowiada, żeby wpisać go w Ustawieniach.
     assert(
-      bladKlucza.includes('groq_api_key'),
-      `Brak klucza miał odbić się PRZED requestem, z nazwą pola klucza. Jest: ${JSON.stringify(bladKlucza)}`,
+      bladKlucza.includes('Groq') && /Ustawieniach|Settings/.test(bladKlucza),
+      `Brak klucza miał odbić się PRZED requestem, z nazwą platformy i wskazówką o Ustawieniach. Jest: ${JSON.stringify(bladKlucza)}`,
     );
 
     const bladApi = await komunikatBledu(() => transcribeAudio('openai', { openai: 'harness-fake-openai' }, nagranie, 'pl'));

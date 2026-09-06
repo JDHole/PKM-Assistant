@@ -93,7 +93,7 @@ export const IMAGE_GEN_PLATFORMS: ImageGenPlatform[] = [
  * Obrazy zwracane jako base64 data URL w message.images[].
  */
 async function _openRouter(apiKey: string | undefined, params: ImageGenParams): Promise<GeneratedImage> {
-    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'OpenRouter (open_router_api_key)' }));
+    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'OpenRouter' }));
     const { prompt, size = '1024x1024', model = 'google/gemini-2.5-flash-image' } = params;
     const { aspect } = _sizeToAspect(size);
     const modalities = _isImageOnlyModel(model) ? ['image'] : ['image', 'text'];
@@ -139,7 +139,7 @@ async function _openRouter(apiKey: string | undefined, params: ImageGenParams): 
  * OpenAI DALL-E 3.
  */
 async function _openaiDalle(apiKey: string | undefined, params: ImageGenParams): Promise<GeneratedImage> {
-    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'OpenAI (openai_api_key)' }));
+    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'OpenAI' }));
     const { prompt, size = '1024x1024', style = 'vivid' } = params;
     const resp = await requestUrl({
         url: 'https://api.openai.com/v1/images/generations',
@@ -232,7 +232,7 @@ async function _replicate(apiKey: string | undefined, params: ImageGenParams): P
  * Google Gemini — Imagen 3.
  */
 async function _geminiImagen(apiKey: string | undefined, params: ImageGenParams): Promise<GeneratedImage> {
-    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'Gemini (gemini_api_key)' }));
+    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'Gemini' }));
     const { prompt } = params;
     const geminiModel = params.model || 'imagen-3.0-generate-002';
     const resp = await requestUrl({
@@ -260,7 +260,7 @@ async function _geminiImagen(apiKey: string | undefined, params: ImageGenParams)
  * Models: grok-imagine-image (standard), grok-imagine-image-pro (wyzsza jakosc)
  */
 async function _xaiAurora(apiKey: string | undefined, params: ImageGenParams): Promise<GeneratedImage> {
-    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'xAI (xai_api_key)' }));
+    if (!apiKey) throw new Error(t('image.no_api_key', { key: 'xAI' }));
     const { prompt, size = '1024x1024' } = params;
     const { aspect } = _sizeToAspect(size);
     const resp = await requestUrl({

@@ -72,7 +72,9 @@ test('E3.2: ścieżka chmurowa nie została ruszona — walidacja przepuszcza zn
 
     t.false(res.success);
     t.notRegex(res.error, /Available|Dostępne/, 'to nie jest odbicie na walidacji platformy');
-    t.regex(res.error, /openai_api_key/i, 'poleciało dalej, do adaptera OpenAI');
+    // Od 2026-09-06 etykieta w „brak klucza" to nazwa platformy, nie nazwa pola (`openai_api_key`
+    // nie istnieje — klucz żyje w `chat.apiKeys.openai`).
+    t.regex(res.error, /OpenAI/, 'poleciało dalej, do adaptera OpenAI');
 });
 
 test('E3.2: schemat generate_image nie ma już parametru workflow (ComfyUI)', t => {
