@@ -36,3 +36,23 @@ test('L-21: get_chat_model deleguje do createModelForRole i nie ma własnej drab
     // Slot runtime'u zostaje — na nim stoją Stop (chat_streaming) i fallback delegacji.
     t.true(src.includes('this.env.chatModel = model'), 'wynik nadal ląduje we wspólnym slocie runtime');
 });
+
+/**
+ * Bug 2026-09-06: mikrofon (STT) czytał klucze z płaskich pól `chat.groq_api_key` /
+ * `openai_api_key` / `gemini_api_key` — kształtu sprzed migracji ustawień. Migrator przenosi
+ * je do puli `chat.apiKeys.<platforma>`, więc płaskie pole było zawsze puste i Groq Whisper
+ * meldował „brak klucza API" mimo wpisanego klucza. STT ma czytać z TEJ SAMEJ puli co
+ * modelResolver i GenerateImageTool.
+ */
+test('STT: klucze czatu z puli chat.apiKeys, nie z płaskich pól sprzed migracji', async t => {
+    const src = await readFile(SRC, 'utf8');
+
+    t.true(src.includes('pkmAssistant?.chat?.apiKeys'), 'klucze STT biorą się z puli chat.apiKeys');
+    for (const platform of ['openai', 'groq', 'gemini']) {
+        t.true(src.includes(`${platform}: chatKeys.${platform}`), `${platform}: klucz z puli apiKeys`);
+        t.false(new RegExp('[.]' + platform + '_api_key').test(src), `.${platform}_api_key = odczyt martwego kształtu sprzed migracji`);
+    }
+    // Klucze STT-only (Deepgram, AssemblyAI) mają własny slice `pkmAssistant.stt` — bez zmian.
+    t.true(src.includes('sttSettings.deepgram_api_key'));
+    t.true(src.includes('sttSettings.assemblyai_api_key'));
+});
